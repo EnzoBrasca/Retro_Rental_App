@@ -1,0 +1,9 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate      # NO toca el schema; solo verifica que coincide
+    show-sql: false
+logging:
+  level:
+    root: WARN
+    com.retrorental.backend: INFO

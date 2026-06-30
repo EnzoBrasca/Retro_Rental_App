@@ -1,0 +1,9 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update        # Hibernate ajusta el schema solo
+    show-sql: true
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    com.retrorental.backend: DEBUG
