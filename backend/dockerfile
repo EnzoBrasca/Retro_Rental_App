@@ -1,0 +1,26 @@
+# ---------- Etapa 1: Build ----------
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /app
+
+# 1. Copiamos solo el pom y bajamos dependencias (capa cacheable)
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# 2. Ahora sí el código fuente y compilamos
+COPY src ./src
+RUN mvn clean package -DskipTests -B
+
+# ---------- Etapa 2: Runtime ----------
+FROM eclipse-temurin:21-jre AS runtime
+WORKDIR /app
+
+# Usuario no-root por seguridad
+RUN groupadd -r spring && useradd -r -g spring spring
+
+# Copiamos SOLO el jar generado en la etapa anterior
+COPY --from=build /app/target/*.jar app.jar
+
+USER spring
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
