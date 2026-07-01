@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// En el celular físico no podés usar localhost, necesitás la IP de tu máquina
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+// El backend (Spring Boot) corre en el puerto 8080 por defecto.
+// En el celular físico no podés usar localhost: necesitás la IP de tu máquina
+// (por ej. http://192.168.0.10:8080) vía la env var EXPO_PUBLIC_API_URL.
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
 
 async function getToken(): Promise<string | null> {
   const stored = await AsyncStorage.getItem('user');
