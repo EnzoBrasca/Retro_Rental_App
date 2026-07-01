@@ -4,6 +4,11 @@ services:
     env_file: .env
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # Dentro de la red de compose, Postgres es alcanzable por el nombre del
+      # servicio: "postgres". Esto pisa cualquier DB_HOST del .env (que sirve
+      # para correr el backend fuera de Docker).
+      DB_HOST: postgres
+      DB_PORT: "5432"
     ports: ["8080:8080"]
     depends_on:
       postgres: { condition: service_healthy }
