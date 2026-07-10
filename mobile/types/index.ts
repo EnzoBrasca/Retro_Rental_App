@@ -6,8 +6,10 @@ export enum TipoTelefono {
 }
 
 export enum TipoCombustible {
-  DIESEL = 'DIESEL',
-  NAFTA = 'NAFTA',
+  NAFTA_SUPER = 'NAFTA_SUPER',
+  NAFTA_PREMIUM = 'NAFTA_PREMIUM',
+  GASOIL_GRADO_2 = 'GASOIL_GRADO_2',
+  GASOIL_GRADO_3 = 'GASOIL_GRADO_3',
   GNC = 'GNC',
 }
 

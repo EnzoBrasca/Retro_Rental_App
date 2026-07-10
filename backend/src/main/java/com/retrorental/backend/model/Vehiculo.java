@@ -8,7 +8,9 @@ import java.time.LocalDate;
 import java.math.BigDecimal;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 @Entity
 @Table(name = "vehiculos")
 @Data
@@ -46,4 +48,20 @@ public class Vehiculo {
 
     @Column(name = "consumo_promedio", nullable = false, precision = 10, scale = 2)
     private BigDecimal consumoPromedio;
+
+    // Ciclo de vida (baja lógica), mismo patrón que Empleado.fechaBaja. Null =
+    // vehiculo activo. No se borra físicamente porque los tickets lo referencian
+    // con FK NOT NULL: desactivar solo setea esta fecha.
+    @Column(name = "fecha_baja")
+    private LocalDate fechaBaja;
+
+    // Operario actual del vehiculo (lado dueño del OneToMany Empleado→Vehiculo:
+    // un vehiculo tiene a lo sumo un operario). Null = libre, disponible para
+    // que un empleado lo tome. Se excluye de toString/equals para cortar la
+    // recursión con Empleado (ambos usan @Data).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_operario")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private Empleado operario;
 }

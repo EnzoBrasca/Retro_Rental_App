@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "FuelTrack",
+    "slug": "fueltrack-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "fueltrack",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#16181B",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "FuelTrack usa la cámara para escanear tickets de carga de combustible."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#16181B"
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FuelTrack usa la cámara para escanear tickets de carga de combustible."
+        }
+      ],
+      "expo-asset"
+    ]
+  }
+}

@@ -1,5 +1,4 @@
-// controller/HealthController.java
-package com.fleettracker.backend.controller;
+package com.retrorental.backend.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

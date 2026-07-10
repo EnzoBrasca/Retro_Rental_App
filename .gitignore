@@ -3,6 +3,10 @@
 .env.local
 .env.production
 
+# Certificados TLS de produccion — NUNCA subir (ver docs/DEPLOYMENT.md)
+infra/nginx/certs/*
+!infra/nginx/certs/.gitkeep
+
 # Dependencias
 node_modules/
 .pnp

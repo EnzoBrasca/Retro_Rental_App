@@ -13,11 +13,13 @@ async function getToken(): Promise<string | null> {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getToken();
+  // Con FormData NO seteamos Content-Type: fetch pone el multipart boundary solo.
+  const isForm = options.body instanceof FormData;
 
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isForm ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
@@ -28,6 +30,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(error.message ?? `Error ${response.status}`);
   }
 
+  // 204 No Content (ej. baja de vehiculo) no trae body para parsear.
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
 
@@ -39,4 +43,7 @@ export const api = {
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) =>
     request<T>(path, { method: 'DELETE' }),
+  // Envío multipart (ej. crear ticket con foto).
+  postForm: <T>(path: string, form: FormData) =>
+    request<T>(path, { method: 'POST', body: form }),
 };

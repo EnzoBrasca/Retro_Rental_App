@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    input, button, select, textarea { font-family: inherit; }
+    input:focus, select:focus { outline: none; }
+    ::-webkit-scrollbar { width: 0; height: 0; }
+    @keyframes ff-spin { to { transform: rotate(360deg); } }
+    @keyframes ff-scan { 0% { top: 8%; } 50% { top: 88%; } 100% { top: 8%; } }
+    @keyframes ff-pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+    @keyframes ff-fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    @keyframes ff-blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+    @keyframes ff-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  </style>
+</helmet>
+
+<div style="min-height:100vh;width:100%;background:#101215;background-image:repeating-linear-gradient(135deg,rgba(245,197,24,0.035) 0 22px,transparent 22px 44px),radial-gradient(1200px 600px at 50% -10%,rgba(245,197,24,0.06),transparent 60%);font-family:'IBM Plex Sans',sans-serif;color:#E8E6E1;display:flex;flex-direction:column;align-items:center;padding:26px 16px 60px;">
+
+  <div style="width:100%;max-width:1180px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:26px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:13px;">
+      <div style="width:42px;height:42px;border-radius:9px;background:#F5C518;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px rgba(245,197,24,0.18);">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 20V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v14" stroke="#101215" stroke-width="2" stroke-linecap="round"></path><path d="M15 10h2.5L20 12.5V18a1.5 1.5 0 0 1-3 0v-1H4" stroke="#101215" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="18.5" cy="7" r="1.4" fill="#101215"></circle></svg>
+      </div>
+      <div>
+        <div style="font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:1.5px;font-size:19px;line-height:1;">FUEL<span style="color:#F5C518;">TRACK</span></div>
+        <div style="font-size:10.5px;letter-spacing:2.5px;color:#8A9099;text-transform:uppercase;margin-top:3px;">Gestión de Flota &amp; Combustible</div>
+      </div>
+    </div>
+    <div style="display:flex;background:#1B1E22;border:1px solid #2C3138;border-radius:11px;padding:4px;gap:4px;">
+      <button onClick="{{ showApp }}" style="{{ appTabStyle }}">Aplicación</button>
+      <button onClick="{{ showAdmin }}" style="{{ adminTabStyle }}">Panel Admin</button>
+    </div>
+  </div>
+
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+  <div style="position:relative;width:392px;height:820px;border-radius:46px;background:#050607;padding:11px;box-shadow:0 40px 90px -20px rgba(0,0,0,0.8),0 0 0 2px #23262b,inset 0 0 0 2px #000;">
+    <div style="position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;background:#16181B;">
+
+      <div style="position:absolute;top:0;left:0;right:0;height:34px;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12px;font-weight:600;color:#E8E6E1;font-family:'IBM Plex Mono',monospace;pointer-events:none;">
+        <span>9:41</span>
+        <div style="position:absolute;left:50%;top:9px;transform:translateX(-50%);width:15px;height:15px;background:#050607;border-radius:50%;"></div>
+        <span style="letter-spacing:1px;">4G ▪ 84%</span>
+      </div>
+
+      <sc-if value="{{ notAuthed }}" hint-placeholder-val="{{ true }}">
+        <dc-import name="AuthScreen"
+          set-login="{{ setLogin }}"
+          set-register="{{ setRegister }}"
+          do-login="{{ doLogin }}"
+          is-register="{{ isRegister }}"
+          login-tab-style="{{ loginTabStyle }}"
+          register-tab-style="{{ registerTabStyle }}"
+          auth-cta="{{ authCta }}"
+        ></dc-import>
+      </sc-if>
+
+      <sc-if value="{{ isAuthed }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;padding-top:34px;">
+
+        <sc-if value="{{ screenHome }}" hint-placeholder-val="{{ true }}">
+          <dc-import name="HomeScreen"
+            start-tutorial="{{ startTutorial }}"
+            machinery="{{ machinery }}"
+          ></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ screenScanner }}" hint-placeholder-val="{{ true }}">
+          <dc-import name="ScannerScreen"
+            scan-camera="{{ scanCamera }}"
+            scan-scanning="{{ scanScanning }}"
+            scan-results="{{ scanResults }}"
+            scan="{{ scan }}"
+            scan-total="{{ scanTotal }}"
+            do-scan="{{ doScan }}"
+            reset-scan="{{ resetScan }}"
+            confirm-scan="{{ confirmScan }}"
+            set-proveedor="{{ setProveedor }}"
+            set-litros="{{ setLitros }}"
+            set-precio="{{ setPrecio }}"
+            set-patente="{{ setPatente }}"
+            set-fecha="{{ setFecha }}"
+            set-combustible="{{ setCombustible }}"
+          ></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ screenHistory }}" hint-placeholder-val="{{ true }}">
+          <dc-import name="HistoryScreen"
+            history="{{ history }}"
+          ></dc-import>
+        </sc-if>
+
+        <sc-if value="{{ screenProfile }}" hint-placeholder-val="{{ true }}">
+          <dc-import name="ProfileScreen"
+            profile-fields="{{ profileFields }}"
+            start-tutorial="{{ startTutorial }}"
+            do-logout="{{ doLogout }}"
+          ></dc-import>
+        </sc-if>
+
+        <dc-import name="NavigationBar"
+          go-home="{{ goHome }}"
+          go-history="{{ goHistory }}"
+          go-scanner="{{ goScanner }}"
+          go-profile="{{ goProfile }}"
+          nav-home-style="{{ navHomeStyle }}"
+          nav-history-style="{{ navHistoryStyle }}"
+          nav-history2-style="{{ navHistory2Style }}"
+          nav-profile-style="{{ navProfileStyle }}"
+        ></dc-import>
+
+        <dc-import name="TutorialOverlay"
+          tutorial-active="{{ tutorialActive }}"
+          tut-box="{{ tutBox }}"
+          tut-card-top="{{ tutCardTop }}"
+          tut-step-label="{{ tutStepLabel }}"
+          tut-title="{{ tutTitle }}"
+          tut-text="{{ tutText }}"
+          tut-dots="{{ tutDots }}"
+          tut-next-label="{{ tutNextLabel }}"
+          tut-next="{{ tutNext }}"
+          end-tutorial="{{ endTutorial }}"
+        ></dc-import>
+
+      </div>
+      </sc-if>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isAdmin }}" hint-placeholder-val="{{ false }}">
+  <div style="position:relative;width:392px;height:820px;border-radius:46px;background:#050607;padding:11px;box-shadow:0 40px 90px -20px rgba(0,0,0,0.8),0 0 0 2px #23262b,inset 0 0 0 2px #000;">
+    <div style="position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;background:#16181B;">
+      <div style="position:absolute;top:0;left:0;right:0;height:34px;z-index:30;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12px;font-weight:600;color:#E8E6E1;font-family:'IBM Plex Mono',monospace;pointer-events:none;">
+        <span>9:41</span>
+        <div style="position:absolute;left:50%;top:9px;transform:translateX(-50%);width:15px;height:15px;background:#050607;border-radius:50%;"></div>
+        <span style="letter-spacing:1px;">4G ▪ 84%</span>
+      </div>
+
+      <dc-import name="AdminScreen"
+        set-range7="{{ setRange7 }}"
+        set-range30="{{ setRange30 }}"
+        set-range90="{{ setRange90 }}"
+        range7-style="{{ range7Style }}"
+        range30-style="{{ range30Style }}"
+        range90-style="{{ range90Style }}"
+        filter-user="{{ filterUser }}"
+        set-filter-user="{{ setFilterUser }}"
+        filter-vehicle="{{ filterVehicle }}"
+        set-filter-vehicle="{{ setFilterVehicle }}"
+        filter-range-label="{{ filterRangeLabel }}"
+        kpi-total="{{ kpiTotal }}"
+        kpi-liters="{{ kpiLiters }}"
+        kpi-loads="{{ kpiLoads }}"
+        kpi-avg="{{ kpiAvg }}"
+        selected-chart="{{ selectedChart }}"
+        set-chart="{{ setChart }}"
+        is-chart-trend="{{ isChartTrend }}"
+        is-chart-provider="{{ isChartProvider }}"
+        is-chart-user="{{ isChartUser }}"
+        trend-chart="{{ trendChart }}"
+        provider-chart="{{ providerChart }}"
+        user-chart="{{ userChart }}"
+      ></dc-import>
+    </div>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1220,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = {
+    mode: 'app',
+    authed: false,
+    authTab: 'login',
+    screen: 'home',
+    scanStage: 'camera',
+    scan: { proveedor: 'YPF', litros: '58,00', precioL: '915,00', patente: 'AB 123 CO', fecha: '05/07/2026', combustible: 'Diésel' },
+    tut: false,
+    tutStep: 0,
+    range: '7d',
+    filterUser: 'Todos',
+    filterVehicle: 'Todos',
+    selectedChart: 'trend',
+  };
+
+  fmt(n) { return '$' + Math.round(n).toLocaleString('es-AR'); }
+
+  tabBtn(active) {
+    return 'border:none;cursor:pointer;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;font-family:IBM Plex Sans,sans-serif;transition:all .2s;' +
+      (active ? 'background:#F5C518;color:#101215;' : 'background:transparent;color:#9AA0A6;');
+  }
+  segBtn(active) {
+    return 'border:none;cursor:pointer;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;transition:all .15s;' +
+      (active ? 'background:#F5C518;color:#101215;' : 'background:transparent;color:#9AA0A6;');
+  }
+  navBtn(active) {
+    return 'flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;padding-top:2px;transition:color .2s;' +
+      (active ? 'color:#F5C518;' : 'color:#6E747C;');
+  }
+
+  get tutSteps() {
+    return [
+      { label: 'Paso 1 de 4', title: 'Tu flota, de un vistazo', text: 'Acá ves tu vehículo asignado, su nivel de combustible y toda la maquinaria a tu cargo.',
+        box: { top: '150px', left: '16px', width: '360px', height: '186px' }, cardTop: '360px' },
+      { label: 'Paso 2 de 4', title: 'Escaneá el ticket', text: 'Tocá el botón central para fotografiar el ticket de carga. La app extrae los datos automáticamente.',
+        box: { top: '706px', left: '160px', width: '72px', height: '72px' }, cardTop: '430px' },
+      { label: 'Paso 3 de 4', title: 'Revisá el historial', text: 'Consultá todas las cargas registradas de tu flota, con su estado y monto.',
+        box: { top: '746px', left: '294px', width: '92px', height: '70px' }, cardTop: '470px' },
+      { label: 'Paso 4 de 4', title: 'Gestioná tu cuenta', text: 'Desde tu perfil editás tus datos, cambiás el idioma y cerrás sesión.',
+        box: { top: '746px', left: '294px', width: '92px', height: '70px' }, cardTop: '470px' },
+    ];
+  }
+
+  renderVals() {
+    const s = this.state;
+    const step = this.tutSteps[s.tutStep] || this.tutSteps[0];
+    const boxes = [
+      { top: '197px', left: '17px', width: '339px', height: '191px' },
+      { top: '692px', left: '150px', width: '70px', height: '72px' },
+      { top: '717px', left: '210px', width: '85px', height: '53px' },
+      { top: '717px', left: '283px', width: '85px', height: '53px' },
+    ];
+    const cardTops = ['422px', '486px', '486px', '486px'];
+    const litrosNum = parseFloat(String(s.scan.litros).replace('.', '').replace(',', '.')) || 0;
+    const precioNum = parseFloat(String(s.scan.precioL).replace('.', '').replace(',', '.')) || 0;
+    const total = litrosNum * precioNum;
+
+    const dots = this.tutSteps.map((_, i) =>
+      React.createElement('div', { key: i, style: {
+        width: i === s.tutStep ? '18px' : '6px', height: '6px', borderRadius: '4px',
+        background: i === s.tutStep ? '#F5C518' : '#4d525a', transition: 'all .25s'
+      } }));
+
+    return {
+      isApp: s.mode === 'app', isAdmin: s.mode === 'admin',
+      showApp: () => this.setState({ mode: 'app' }),
+      showAdmin: () => this.setState({ mode: 'admin' }),
+      appTabStyle: this.tabBtn(s.mode === 'app'), adminTabStyle: this.tabBtn(s.mode === 'admin'),
+
+      notAuthed: !s.authed, isAuthed: s.authed,
+      isRegister: s.authTab === 'register',
+      authCta: s.authTab === 'register' ? 'Crear cuenta' : 'Ingresar',
+      loginTabStyle: this.tabBtn(s.authTab === 'login'),
+      registerTabStyle: this.tabBtn(s.authTab === 'register'),
+      setLogin: () => this.setState({ authTab: 'login' }),
+      setRegister: () => this.setState({ authTab: 'register' }),
+      doLogin: () => this.setState({ authed: true, screen: 'home', tut: true, tutStep: 0 }),
+      doLogout: () => this.setState({ authed: false, authTab: 'login', screen: 'home' }),
+
+      screenHome: s.screen === 'home', screenScanner: s.screen === 'scanner',
+      screenHistory: s.screen === 'history', screenProfile: s.screen === 'profile',
+      goHome: () => this.setState({ screen: 'home' }),
+      goHistory: () => this.setState({ screen: 'history' }),
+      goProfile: () => this.setState({ screen: 'profile' }),
+      goScanner: () => this.setState({ screen: 'scanner', scanStage: 'camera' }),
+      navHomeStyle: this.navBtn(s.screen === 'home'),
+      navHistoryStyle: this.navBtn(false),
+      navHistory2Style: this.navBtn(s.screen === 'history'),
+      navProfileStyle: this.navBtn(s.screen === 'profile'),
+
+      machinery: [
+        { icon: '🚜', name: 'Retroexcavadora CAT 320', operator: 'Carlos Díaz', lastRefuel: 'Hoy 08:10', level: '54%', levelPct: '54%', levelColor: '#F5C518' },
+        { icon: '🏗️', name: 'Motoniveladora JD 670G', operator: 'Ana López', lastRefuel: 'Ayer 17:40', level: '81%', levelPct: '81%', levelColor: '#3FB65E' },
+        { icon: '🚛', name: 'Camión Volquete Iveco Trakker', operator: 'Marta Ruiz', lastRefuel: '04 Jul 11:25', level: '23%', levelPct: '23%', levelColor: '#FF6A00' },
+        { icon: '⚙️', name: 'Cargadora Frontal CAT 950', operator: 'Sin asignar', lastRefuel: '02 Jul 09:00', level: '18%', levelPct: '18%', levelColor: '#FF6A00' },
+      ],
+
+      // scanner
+      scanCamera: s.scanStage === 'camera', scanScanning: s.scanStage === 'scanning', scanResults: s.scanStage === 'results',
+      scan: s.scan, scanTotal: this.fmt(total),
+      doScan: () => { this.setState({ scanStage: 'scanning' }); clearTimeout(this._t); this._t = setTimeout(() => this.setState({ scanStage: 'results' }), 2200); },
+      resetScan: () => this.setState({ scanStage: 'camera' }),
+      confirmScan: () => this.setState({ screen: 'history', scanStage: 'camera' }),
+      setProveedor: (e) => this.setState({ scan: { ...s.scan, proveedor: e.target.value } }),
+      setLitros: (e) => this.setState({ scan: { ...s.scan, litros: e.target.value } }),
+      setPrecio: (e) => this.setState({ scan: { ...s.scan, precioL: e.target.value } }),
+      setPatente: (e) => this.setState({ scan: { ...s.scan, patente: e.target.value } }),
+      setFecha: (e) => this.setState({ scan: { ...s.scan, fecha: e.target.value } }),
+      setCombustible: (e) => this.setState({ scan: { ...s.scan, combustible: e.target.value } }),
+
+      history: [
+        { icon: '005-camioneta.svg', vehicle: 'Toyota Hilux SRV', date: '05 Jul 2026 · 14:20', provider: 'YPF', liters: '58 L', cost: '$53.070', status: 'Verificado', statusBg: '#173d24', statusColor: '#5fd07f' },
+        { icon: '006-excavador.svg', vehicle: 'Retroexcavadora CAT 320', date: '05 Jul 2026 · 08:10', provider: 'Shell', liters: '120 L', cost: '$109.800', status: 'Pendiente', statusBg: '#3a2a15', statusColor: '#f0a94a' },
+        { icon: '007-camin-de-carga.svg', vehicle: 'Camión Iveco Trakker', date: '04 Jul 2026 · 11:25', provider: 'Axion', liters: '210 L', cost: '$189.000', status: 'Verificado', statusBg: '#173d24', statusColor: '#5fd07f' },
+        { icon: '006-excavador.svg', vehicle: 'Motoniveladora JD 670G', date: '03 Jul 2026 · 17:40', provider: 'Puma', liters: '95 L', cost: '$86.450', status: 'Verificado', statusBg: '#173d24', statusColor: '#5fd07f' },
+        { icon: '005-camioneta.svg', vehicle: 'Toyota Hilux SRV', date: '02 Jul 2026 · 09:15', provider: 'YPF', liters: '52 L', cost: '$47.580', status: 'Verificado', statusBg: '#173d24', statusColor: '#5fd07f' },
+        { icon: '006-excavador.svg', vehicle: 'Cargadora CAT 950', date: '01 Jul 2026 · 16:05', provider: 'Petrobras', liters: '140 L', cost: '$127.400', status: 'Pendiente', statusBg: '#3a2a15', statusColor: '#f0a94a' },
+      ],
+
+      profileFields: [
+        { label: 'Nombre completo', value: 'Juan Pérez' },
+        { label: 'Correo', value: 'juan.perez@vialsur.com' },
+        { label: 'Teléfono', value: '+54 9 342 555-1234' },
+        { label: 'Legajo', value: 'OP-3391' },
+      ],
+
+      // tutorial
+      tutorialActive: s.tut,
+      startTutorial: () => this.setState({ tut: true, tutStep: 0, screen: 'home' }),
+      endTutorial: () => this.setState({ tut: false }),
+      tutBox: boxes[s.tutStep] || boxes[0],
+      tutCardTop: cardTops[s.tutStep] || cardTops[0],
+      tutStepLabel: step.label, tutTitle: step.title, tutText: step.text,
+      tutDots: dots,
+      tutNextLabel: s.tutStep >= this.tutSteps.length - 1 ? 'Empezar' : 'Siguiente',
+      tutNext: () => { if (s.tutStep >= this.tutSteps.length - 1) this.setState({ tut: false }); else this.setState({ tutStep: s.tutStep + 1 }); },
+
+      // admin
+      setRange7: () => this.setState({ range: '7d' }),
+      setRange30: () => this.setState({ range: '30d' }),
+      setRange90: () => this.setState({ range: '90d' }),
+      range7Style: this.segBtn(s.range === '7d'), range30Style: this.segBtn(s.range === '30d'), range90Style: this.segBtn(s.range === '90d'),
+      filterUser: s.filterUser, filterVehicle: s.filterVehicle,
+      setFilterUser: (e) => this.setState({ filterUser: e.target.value }),
+      setFilterVehicle: (e) => this.setState({ filterVehicle: e.target.value }),
+      filterRangeLabel: s.range === '7d' ? '29 Jun – 05 Jul 2026' : (s.range === '30d' ? '06 Jun – 05 Jul 2026' : '06 Abr – 05 Jul 2026'),
+      filterRangeLabelShown: true,
+
+      kpiTotal: this.fmt(s.range === '7d' ? 613300 : (s.range === '30d' ? 2480000 : 7150000)),
+      kpiLiters: (s.range === '7d' ? '675 L' : (s.range === '30d' ? '2.720 L' : '7.840 L')),
+      kpiLoads: (s.range === '7d' ? 12 : (s.range === '30d' ? 48 : 139)),
+      kpiAvg: this.fmt(s.range === '7d' ? 51108 : (s.range === '30d' ? 51667 : 51439)),
+
+      selectedChart: s.selectedChart,
+      setChart: (e) => this.setState({ selectedChart: e.target.value }),
+      isChartTrend: s.selectedChart === 'trend',
+      isChartProvider: s.selectedChart === 'provider',
+      isChartUser: s.selectedChart === 'user',
+
+      trendChart: this.buildTrend(s.range),
+      providerChart: this.buildProviders(s.range),
+      userChart: this.buildUsers(s.range),
+    };
+  }
+
+  buildTrend(range) {
+    const data = range === '7d'
+      ? [{ l: 'Lun', v: 78 }, { l: 'Mar', v: 62 }, { l: 'Mié', v: 121 }, { l: 'Jue', v: 54 }, { l: 'Vie', v: 138 }, { l: 'Sáb', v: 96 }, { l: 'Dom', v: 64 }]
+      : (range === '30d'
+        ? [{ l: 'S1', v: 540 }, { l: 'S2', v: 610 }, { l: 'S3', v: 720 }, { l: 'S4', v: 610 }]
+        : [{ l: 'Abr', v: 2100 }, { l: 'May', v: 2450 }, { l: 'Jun', v: 2600 }]);
+    const W = 560, H = 210, pl = 44, pr = 12, pt = 14, pb = 28;
+    const max = Math.max(...data.map(d => d.v)) * 1.15;
+    const iw = W - pl - pr, ih = H - pt - pb;
+    const x = i => pl + (data.length === 1 ? iw / 2 : (iw * i / (data.length - 1)));
+    const y = v => pt + ih - (v / max) * ih;
+    const pts = data.map((d, i) => [x(i), y(d.v)]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+    const area = line + ` L${x(data.length - 1).toFixed(1)} ${pt + ih} L${pl} ${pt + ih} Z`;
+    const grid = [0, 0.25, 0.5, 0.75, 1].map((f, i) => {
+      const gy = pt + ih - f * ih;
+      return React.createElement('g', { key: i },
+        React.createElement('line', { x1: pl, x2: W - pr, y1: gy, y2: gy, stroke: '#2A2F35', strokeWidth: 1 }),
+        React.createElement('text', { x: pl - 8, y: gy + 4, fill: '#6E747C', fontSize: 10, textAnchor: 'end', fontFamily: 'IBM Plex Mono' }, '$' + Math.round(max * f) + 'k')
+      );
+    });
+    return React.createElement('svg', { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: 'auto', display: 'block' } },
+      React.createElement('defs', null,
+        React.createElement('linearGradient', { id: 'ffTrend', x1: 0, y1: 0, x2: 0, y2: 1 },
+          React.createElement('stop', { offset: '0%', stopColor: '#F5C518', stopOpacity: 0.35 }),
+          React.createElement('stop', { offset: '100%', stopColor: '#F5C518', stopOpacity: 0 }))),
+      grid,
+      React.createElement('path', { d: area, fill: 'url(#ffTrend)' }),
+      React.createElement('path', { d: line, fill: 'none', stroke: '#F5C518', strokeWidth: 2.5, strokeLinejoin: 'round', strokeLinecap: 'round' }),
+      pts.map((p, i) => React.createElement('circle', { key: i, cx: p[0], cy: p[1], r: 3.5, fill: '#16181B', stroke: '#F5C518', strokeWidth: 2 })),
+      data.map((d, i) => React.createElement('text', { key: 'l' + i, x: x(i), y: H - 8, fill: '#8A9099', fontSize: 11, textAnchor: 'middle', fontFamily: 'IBM Plex Sans' }, d.l))
+    );
+  }
+
+  buildProviders(range) {
+    const mult = range === '7d' ? 1 : (range === '30d' ? 4 : 11.6);
+    const data = [
+      { l: 'YPF', v: 185, c: '#F5C518' }, { l: 'Shell', v: 142, c: '#ffd94d' },
+      { l: 'Axion', v: 110, c: '#c99a00' }, { l: 'Puma', v: 74, c: '#8a7220' }, { l: 'Petrobras', v: 52, c: '#5f5220' },
+    ];
+    const max = Math.max(...data.map(d => d.v));
+    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '13px', paddingTop: '4px' } },
+      data.map((d, i) => React.createElement('div', { key: i },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' } },
+          React.createElement('span', { style: { color: '#C9CDD2' } }, d.l),
+          React.createElement('span', { style: { fontFamily: 'IBM Plex Mono', color: '#E8E6E1', fontWeight: 600 } }, this.fmt(d.v * 1000 * mult))),
+        React.createElement('div', { style: { height: '9px', background: '#151719', borderRadius: '5px', overflow: 'hidden' } },
+          React.createElement('div', { style: { width: (d.v / max * 100) + '%', height: '100%', background: d.c, borderRadius: '5px', transformOrigin: 'left', animation: 'ff-grow .5s ease' } }))
+      ))
+    );
+  }
+
+  buildUsers(range) {
+    const mult = range === '7d' ? 1 : (range === '30d' ? 4 : 11.6);
+    const data = [
+      { l: 'Juan Pérez', v: 168 }, { l: 'Ana López', v: 132 }, { l: 'Carlos Díaz', v: 108 }, { l: 'Marta Ruiz', v: 76 }, { l: 'Sin asignar', v: 41 },
+    ];
+    const max = Math.max(...data.map(d => d.v));
+    return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '13px', paddingTop: '4px' } },
+      data.map((d, i) => React.createElement('div', { key: i },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '5px' } },
+          React.createElement('span', { style: { color: i === 0 ? '#F5C518' : '#C9CDD2' } }, d.l),
+          React.createElement('span', { style: { fontFamily: 'IBM Plex Mono', color: '#E8E6E1', fontWeight: 600 } }, this.fmt(d.v * 1000 * mult))),
+        React.createElement('div', { style: { height: '9px', background: '#151719', borderRadius: '5px', overflow: 'hidden' } },
+          React.createElement('div', { style: { width: (d.v / max * 100) + '%', height: '100%', background: i === 0 ? '#F5C518' : '#3a3f45', borderRadius: '5px', transformOrigin: 'left', animation: 'ff-grow .5s ease' } }))
+      ))
+    );
+  }
+}
+</script>
+</body>
+</html>
