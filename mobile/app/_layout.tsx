@@ -1,6 +1,17 @@
 import { useEffect } from 'react';
+import { View, ActivityIndicator } from 'react-native';
 import { Slot, useRouter, useSegments } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts, Oswald_600SemiBold, Oswald_700Bold } from '@expo-google-fonts/oswald';
+import {
+  IBMPlexSans_400Regular,
+  IBMPlexSans_500Medium,
+  IBMPlexSans_600SemiBold,
+} from '@expo-google-fonts/ibm-plex-sans';
+import { IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { colors } from '../constants/theme';
 
 /**
  * Layout RAÍZ de la app (Expo Router).
@@ -9,10 +20,11 @@ import { AuthProvider, useAuth } from '../context/AuthContext';
  * usa esa convención para identificar layouts; sin el guion sería tratado como
  * una pantalla común y el AuthProvider nunca envolvería la app.
  *
- * Este layout cumple dos roles:
- *  1) Envolver TODA la navegación con <AuthProvider>, para que cualquier
+ * Este layout cumple tres roles:
+ *  1) Cargar las tipografías (Oswald / IBM Plex) que usa todo el diseño oscuro.
+ *  2) Envolver TODA la navegación con <AuthProvider>, para que cualquier
  *     pantalla pueda leer la sesión con useAuth().
- *  2) Actuar como "guardia" de navegación: según haya o no sesión y según el
+ *  3) Actuar como "guardia" de navegación: según haya o no sesión y según el
  *     rol, redirige al grupo de rutas correcto.
  */
 
@@ -46,9 +58,31 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Oswald_600SemiBold,
+    Oswald_700Bold,
+    IBMPlexSans_400Regular,
+    IBMPlexSans_500Medium,
+    IBMPlexSans_600SemiBold,
+    IBMPlexMono_500Medium,
+  });
+
+  // Hasta que las fuentes estén listas mostramos un spinner sobre el fondo
+  // oscuro: evita el "flash" de texto con la tipografía del sistema.
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar style="light" />
+        <RootLayoutNav />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

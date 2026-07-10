@@ -1,0 +1,58 @@
+package com.retrorental.backend.controller;
+
+import com.retrorental.backend.dto.request.CreateTicketRequest;
+import com.retrorental.backend.dto.response.TicketAnalysisResponse;
+import com.retrorental.backend.dto.response.TicketResponse;
+import com.retrorental.backend.service.TicketService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/tickets")
+@RequiredArgsConstructor
+public class TicketController {
+
+    private final TicketService ticketService;
+
+    // Crea un ticket con sus dos fotos. El empleado sale del JWT, no del request.
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<TicketResponse> create(
+            @Valid @ModelAttribute CreateTicketRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(ticketService.create(request, authentication.getName()));
+    }
+
+    // Analiza la foto de un ticket con OCR y devuelve los campos pre-cargados
+    // (sin persistir). El empleado revisa/completa antes de crear el ticket.
+    @PostMapping(path = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<TicketAnalysisResponse> analyze(
+            @RequestParam("ticketFoto") MultipartFile ticketFoto) {
+        return ResponseEntity.ok(ticketService.analyze(ticketFoto));
+    }
+
+    // Historial del empleado autenticado: sus tickets, más recientes primero.
+    // El empleado sale del JWT, no de un parámetro, para que solo vea los suyos.
+    @GetMapping("/me")
+    public ResponseEntity<List<TicketResponse>> misTickets(Authentication authentication) {
+        return ResponseEntity.ok(ticketService.listMine(authentication.getName()));
+    }
+
+    // Devuelve un ticket con URLs presignadas frescas para sus imagenes.
+    @GetMapping("/{id}")
+    public ResponseEntity<TicketResponse> get(@PathVariable Integer id) {
+        return ResponseEntity.ok(ticketService.get(id));
+    }
+}

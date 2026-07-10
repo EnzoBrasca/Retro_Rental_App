@@ -1,0 +1,41 @@
+# Entorno de PRODUCCION.
+#
+# NO se aplica solo: hay que activarlo EXPLICITAMENTE combinandolo con el base
+# (asi Compose ignora el override.yml de dev):
+#
+#   docker compose --env-file .env.production \
+#     -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Diferencias clave con dev:
+#   - Ningun servicio de datos (postgres/minio) expone puertos al host.
+#   - El backend TAMPOCO se publica directo: el unico con puertos al host es el
+#     reverse proxy (nginx, 80/443). Todo lo demas vive solo en la red interna.
+#   - restart: unless-stopped para sobrevivir reinicios del servidor.
+services:
+  backend:
+    env_file: .env.production
+    restart: unless-stopped
+    # SIN ports: inalcanzable desde afuera salvo a traves de nginx.
+
+  postgres:
+    restart: unless-stopped
+    # SIN ports: la base nunca se expone. Solo el backend la toca por la red.
+
+  minio:
+    restart: unless-stopped
+    # SIN ports: se accede solo via nginx (subdominio de archivos).
+
+  # Reverse proxy: unico punto de entrada publico. Termina TLS y rutea por
+  # subdominio hacia el backend y hacia MinIO (para las URLs presignadas).
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - minio

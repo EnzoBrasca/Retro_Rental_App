@@ -4,10 +4,6 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
   datasource:
-    # La URL se arma por partes: en Docker, DB_HOST=postgres (nombre del
-    # servicio en la red de compose). Para correr local sin Docker, el default
-    # localhost alcanza. DB_NAME es el MISMO valor que usa POSTGRES_DB, así no
-    # hay forma de que la URL apunte a una base que no existe.
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:postgres}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
@@ -25,14 +21,31 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET}            # sin default → obligatoria (mín. 32 caracteres)
+    secret: ${JWT_SECRET}       
     expiration: ${JWT_EXPIRATION:3600000}
 
+mistral:
+  # API key de Mistral (console.mistral.ai). Sin ella, el cliente no se crea y el
+  # analisis de tickets queda inactivo (la app arranca igual).
+  api-key: ${MISTRAL_API_KEY:}
+  # Host base de la API de Mistral.
+  base-url: ${MISTRAL_BASE_URL:https://api.mistral.ai}
+  # Modelo de OCR para leer la foto del ticket.
+  model: ${MISTRAL_MODEL:mistral-ocr-latest}
+  # Timeout de cada request al modelo, en segundos.
+  timeout-seconds: ${MISTRAL_TIMEOUT_SECONDS:30}
+
 minio:
+  # Endpoint interno: lo usa el backend para operar contra MinIO.
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  # Endpoint publico: host con el que se firman las URLs presignadas para que un
+  # cliente externo (app mobile) pueda descargarlas. Por defecto, igual al interno.
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
   access-key: ${MINIO_ACCESS_KEY}
   secret-key: ${MINIO_SECRET_KEY}
   bucket: ${MINIO_BUCKET:tickets}
+  # Validez de las URLs presignadas, en segundos (por defecto 1 hora).
+  presigned-expiry-seconds: ${MINIO_PRESIGNED_EXPIRY:3600}
 
 server:
   port: ${SERVER_PORT:8080}

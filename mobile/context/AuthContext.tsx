@@ -27,6 +27,9 @@ export interface Usuario {
   email: string;
   rol: Rol;
   token: string;
+  // Teléfono formateado que llega en el AuthResponse. Puede faltar en sesiones
+  // viejas persistidas antes de este campo → tratar como opcional.
+  telefono?: string | null;
 }
 
 interface AuthContextType {

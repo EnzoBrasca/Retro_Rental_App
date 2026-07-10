@@ -1,15 +1,21 @@
+# Base compartida por TODOS los entornos.
+#
+# Define QUE servicios existen y como se comunican ENTRE ELLOS por la red interna
+# de Docker (por nombre de servicio: postgres, minio). Es "seguro por defecto":
+# NO publica ningun puerto al host ni asume acceso externo. Cada entorno agrega
+# lo suyo encima:
+#   - dev  -> docker-compose.override.yml (auto-mergeado por `docker compose up`)
+#   - prod -> docker-compose.prod.yml (se activa explicitamente con -f)
+#
+# Este archivo NO se corre solo en la practica: siempre se combina con uno de los
+# dos de arriba.
 services:
   backend:
     build: ./backend
-    env_file: .env
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      # Dentro de la red de compose, Postgres es alcanzable por el nombre del
-      # servicio: "postgres". Esto pisa cualquier DB_HOST del .env (que sirve
-      # para correr el backend fuera de Docker).
       DB_HOST: postgres
       DB_PORT: "5432"
-    ports: ["8080:8080"]
+      MINIO_ENDPOINT: http://minio:9000
     depends_on:
       postgres: { condition: service_healthy }
       minio:    { condition: service_healthy }
@@ -32,7 +38,6 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-    ports: ["9000:9000", "9001:9001"]
     volumes: ["miniodata:/data"]
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]

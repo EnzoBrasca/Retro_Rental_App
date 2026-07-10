@@ -1,0 +1,27 @@
+# Entorno de DESARROLLO.
+#
+# Docker Compose mergea este archivo con el base AUTOMATICAMENTE al hacer
+# `docker compose up` (sin ningun -f). Aca vive TODA la comodidad de desarrollo:
+# los secretos desde .env y los puertos abiertos al host para pegarle directo a
+# cada servicio (Postman, pgAdmin, la consola de MinIO, correr tests, etc.).
+#
+# Nada de esto se aplica en produccion: prod usa su propio archivo.
+services:
+  backend:
+    env_file: .env
+    environment:
+      # Host con el que se FIRMAN las URLs presignadas de MinIO: tiene que ser
+      # alcanzable por el cliente que descarga la foto. En simulador/navegador de
+      # la misma maquina alcanza localhost; en un celular fisico localhost es el
+      # telefono, asi que debe ser la IP LAN de tu maquina (la MISMA que usa el
+      # mobile en EXPO_PUBLIC_API_URL). Se toma de .env con fallback a localhost.
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
+    ports: ["8080:8080"]
+
+  postgres:
+    # Publicado al host para pgAdmin / DBeaver / correr contextLoads desde afuera.
+    ports: ["5432:5432"]
+
+  minio:
+    # 9000 = API S3, 9001 = consola web.
+    ports: ["9000:9000", "9001:9001"]

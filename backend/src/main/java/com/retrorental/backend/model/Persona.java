@@ -1,6 +1,8 @@
 package com.retrorental.backend.model;
 
 import com.retrorental.backend.model.enums.Rol;
+import com.retrorental.backend.model.embeddable.Direccion;
+import com.retrorental.backend.model.embeddable.Telefono;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -37,5 +39,11 @@ public class Persona {
     @Column(name = "rol", nullable = false)
     private Rol rol;
 
+    @Embedded
+    @AttributeOverride(name = "numero", column = @Column(name = "direccion_numero"))
+    private Direccion direccion;
 
+    @Embedded
+    @AttributeOverride(name = "telefono", column = @Column(name = "telefono_numero"))
+    private Telefono telefono;
 }

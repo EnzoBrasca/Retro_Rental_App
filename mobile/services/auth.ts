@@ -10,7 +10,8 @@ import { api } from './api';
  *
  * Contrato espejo del backend (Spring Boot):
  *   POST /auth/login    -> { email, password }
- *   POST /auth/register -> { nombre, apellido, documento, email, password, rol }
+ *   POST /auth/register -> { nombre, apellido, documento, email, password, rol,
+ *                            direccion, telefono }
  *   Respuesta (ambos)   -> AuthResponse
  */
 
@@ -26,12 +27,30 @@ export interface AuthResponse {
   apellido: string;
   email: string;
   rol: Rol;
+  // Teléfono ya formateado por el backend. null si no hay uno cargado.
+  telefono: string | null;
 }
 
 // Cuerpo que espera POST /auth/login.
 export interface LoginPayload {
   email: string;
   password: string;
+}
+
+// Dirección del usuario. Espejo de DireccionRequest en el backend.
+export interface DireccionPayload {
+  calle: string;
+  numero: string;
+  ciudad: string;
+  provincia: string;
+  codigoPostal: string;
+  barrio: string;
+}
+
+// Teléfono del usuario. Espejo de TelefonoRequest en el backend.
+export interface TelefonoPayload {
+  codigoArea: string;
+  numero: string;
 }
 
 // Cuerpo que espera POST /auth/register.
@@ -42,6 +61,8 @@ export interface RegisterPayload {
   email: string;
   password: string;
   rol: Rol;
+  direccion: DireccionPayload;
+  telefono: TelefonoPayload;
 }
 
 export function loginRequest(payload: LoginPayload): Promise<AuthResponse> {

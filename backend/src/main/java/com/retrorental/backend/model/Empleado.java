@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -24,11 +25,11 @@ public class Empleado extends Persona {
     @JoinColumn(name = "id_administrador")
     private Administrador jefe;
 
-    @ManyToMany
-    @JoinTable(
-        name = "empleado_vehiculo",
-        joinColumns = @JoinColumn(name = "id_empleado"),
-        inverseJoinColumns = @JoinColumn(name = "id_vehiculo")
-    )
+    // Vehiculos asignados a este empleado (lado inverso). El dueño de la
+    // relación es Vehiculo.operario (FK id_operario). Un empleado puede tener
+    // varios vehiculos; cada vehiculo, un solo operario.
+    @OneToMany(mappedBy = "operario", fetch = FetchType.LAZY)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private List<Vehiculo> vehiculos;
 }

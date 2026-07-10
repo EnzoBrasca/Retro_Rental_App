@@ -19,11 +19,24 @@
       },
       "predictiveBackGestureEnabled": false
     },
-  "web": {
+    "web": {
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-font",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "La app usa la cámara para escanear los tickets de carga de combustible."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "La app accede a tus fotos para adjuntar el ticket de carga desde la galería."
+        }
+      ]
     ]
   }
 }

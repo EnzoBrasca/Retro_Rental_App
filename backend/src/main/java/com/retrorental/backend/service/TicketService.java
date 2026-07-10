@@ -1,0 +1,368 @@
+package com.retrorental.backend.service;
+
+import com.retrorental.backend.dto.request.CreateTicketRequest;
+import com.retrorental.backend.dto.response.TicketAnalysisResponse;
+import com.retrorental.backend.dto.response.TicketResponse;
+import com.retrorental.backend.exception.ConflictException;
+import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.exception.ForbiddenException;
+import com.retrorental.backend.exception.ResourceNotFoundException;
+import com.retrorental.backend.exception.TicketAnalysisException;
+import com.retrorental.backend.model.Empleado;
+import com.retrorental.backend.model.Persona;
+import com.retrorental.backend.model.Precio;
+import com.retrorental.backend.model.Proveedor;
+import com.retrorental.backend.model.Ticket;
+import com.retrorental.backend.model.Vehiculo;
+import com.retrorental.backend.model.enums.Estado;
+import com.retrorental.backend.model.enums.Servicio;
+import com.retrorental.backend.model.enums.TipoCombustible;
+import com.retrorental.backend.repository.PersonaRepository;
+import com.retrorental.backend.repository.PrecioRepository;
+import com.retrorental.backend.repository.ProveedorRepository;
+import com.retrorental.backend.repository.TicketRepository;
+import com.retrorental.backend.repository.VehiculoRepository;
+import jakarta.persistence.criteria.Predicate;
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.web.PagedModel;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class TicketService {
+
+    private final TicketRepository ticketRepository;
+    private final PrecioRepository precioRepository;
+    private final ProveedorRepository proveedorRepository;
+    private final VehiculoRepository vehiculoRepository;
+    private final PersonaRepository personaRepository;
+    private final StorageService storageService;
+    // Opcional: el bean de análisis solo existe si hay API key de Mistral. Crear
+    // tickets NO debe depender de eso, por eso se inyecta con ObjectProvider.
+    private final ObjectProvider<TicketAnalysisService> analysisProvider;
+
+    @Transactional
+    public TicketResponse create(CreateTicketRequest request, String empleadoEmail) {
+        Empleado empleado = resolveEmpleado(empleadoEmail);
+
+        // Validamos las FK baratas ANTES de subir archivos, para no dejar
+        // objetos huerfanos en MinIO si el request es invalido.
+        Precio precio = precioRepository.findById(request.getIdPrecio())
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.PRECIO_NOT_FOUND, "No existe el precio indicado", "idPrecio"));
+        Proveedor proveedor = proveedorRepository.findById(request.getIdProveedor())
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.PROVEEDOR_NOT_FOUND, "No existe el proveedor indicado", "idProveedor"));
+
+        // Coherencia precio↔proveedor: si el precio pertenece a una estación, debe
+        // ser la MISMA que la del ticket. El precio es por (proveedor, combustible),
+        // así que cargar una compra con el precio de OTRA estación sería un dato
+        // inconsistente. (Precios legacy sin proveedor no se validan.)
+        if (precio.getProveedor() != null
+            && !precio.getProveedor().getId().equals(proveedor.getId())) {
+            throw new ConflictException(
+                ErrorCode.PRECIO_PROVEEDOR_MISMATCH,
+                "El precio indicado corresponde a otra estación de servicio", "idPrecio");
+        }
+
+        Vehiculo vehiculo = resolveVehiculoCargable(request.getIdVehiculo());
+
+        // Pool compartido: el operario "actual" del vehiculo se actualiza en cada
+        // carga al empleado que la registra. Así la card de la flota muestra quién
+        // lo usó por última vez, pisándose cada vez que otro operario le carga.
+        vehiculo.setOperario(empleado);
+        vehiculoRepository.save(vehiculo);
+
+        // Subimos a MinIO y guardamos SOLO la key (la URL presignada expira).
+        String ticketFotoKey = storageService.upload(request.getTicketFoto(), "tickets");
+        // La foto del tablero es opcional (ver CreateTicketRequest): solo se sube
+        // si el cliente la envió. Sin ella, la key queda null.
+        String tableroFotoKey = request.getTableroFoto() != null && !request.getTableroFoto().isEmpty()
+            ? storageService.upload(request.getTableroFoto(), "tableros")
+            : null;
+
+        Ticket ticket = new Ticket();
+        ticket.setLitros(request.getLitros());
+        ticket.setFechaCarga(request.getFechaCarga() != null ? request.getFechaCarga() : LocalDateTime.now());
+        ticket.setPrecio(precio);
+        ticket.setProveedor(proveedor);
+        ticket.setEmpleado(empleado);
+        ticket.setVehiculo(vehiculo);
+        ticket.setTicketFotoUrl(ticketFotoKey);
+        ticket.setTableroFotoUrl(tableroFotoKey);
+
+        return toResponse(ticketRepository.save(ticket));
+    }
+
+    /**
+     * Analiza la foto de un ticket con el OCR y lo resuelve contra el catálogo
+     * para pre-cargar el formulario de creación.
+     *
+     * ATENCIÓN: además de leer, este método PUEDE ESCRIBIR. Si el OCR devuelve
+     * un proveedor o un precio que no existe en el catálogo, los da de alta
+     * automáticamente (ver resolveProveedor/resolvePrecio). Por eso es
+     * transaccional de escritura, no readOnly.
+     */
+    @Transactional
+    public TicketAnalysisResponse analyze(MultipartFile ticketFoto) {
+        TicketAnalysisService analysisService = analysisProvider.getIfAvailable();
+        if (analysisService == null) {
+            throw new TicketAnalysisException(ErrorCode.ANALYSIS_UNAVAILABLE,
+                "El análisis de tickets no está configurado (falta la API key de Mistral)");
+        }
+
+        var ocr = analysisService.analyze(ticketFoto);
+
+        Proveedor proveedor = resolveProveedor(ocr.estacion(), ocr.cuit());
+        // El precio se resuelve PARA el proveedor: cada estación tiene su propio
+        // precio del combustible. Si no se pudo resolver el proveedor, no hay a
+        // quién asociar el precio → queda en blanco.
+        Precio precio = resolvePrecio(proveedor, ocr.tipoCombustible(), ocr.precioPorLitro());
+
+        return new TicketAnalysisResponse(
+            ocr.litros(),
+            ocr.fechaCarga(),
+            ocr.importeTotal(),
+            ocr.precioPorLitro(),
+            ocr.estacion(),
+            ocr.tipoCombustible(),
+            proveedor != null ? proveedor.getId() : null,
+            proveedor != null ? proveedor.getNombre() : null,
+            precio != null ? precio.getId() : null,
+            precio != null ? precio.getPrecioUnitario() : null
+        );
+    }
+
+    // Resuelve el proveedor para la estación leída. Si no hay match existente y
+    // el OCR trae los datos necesarios (nombre + CUIT), lo crea automáticamente.
+    // Sin CUIT no se puede crear (columna NOT NULL): se deja null para carga
+    // manual.
+    private Proveedor resolveProveedor(String estacion, String cuit) {
+        if (estacion == null || estacion.isBlank()) {
+            return null;
+        }
+
+        Proveedor matched = matchProveedor(estacion);
+        if (matched != null) {
+            return matched;
+        }
+
+        if (cuit == null || cuit.isBlank()) {
+            return null;
+        }
+        String cuitLimpio = cuit.trim();
+
+        // Idempotencia: si ya existe uno con ese CUIT, se reutiliza en vez de
+        // crear un duplicado (analyze puede llamarse varias veces).
+        return proveedorRepository.findByCuit(cuitLimpio).orElseGet(() -> {
+            Proveedor nuevo = new Proveedor();
+            nuevo.setNombre(estacion.trim());
+            nuevo.setCuit(cuitLimpio);
+            nuevo.setServicio(Servicio.COMBUSTIBLE);
+            return proveedorRepository.save(nuevo);
+        });
+    }
+
+    // Resuelve el precio del ticket PARA UN PROVEEDOR, dándole prioridad sobre el
+    // catálogo (que puede estar desactualizado). El precio es por (proveedor,
+    // combustible): distintas estaciones tienen precios distintos del mismo
+    // producto.
+    //
+    // - Sin proveedor, sin combustible o sin precio leído → null: "dejar vacío lo
+    //   que no se leyó"; el empleado completa eligiendo el vehículo.
+    // - Si el vigente de ese (proveedor, combustible) YA coincide → se reutiliza.
+    // - Si difiere (o no hay) → el precio leído pasa a ser el NUEVO vigente de ese
+    //   (proveedor, combustible), cerrando el anterior (invariante: un único
+    //   vigente por proveedor+producto). Nunca se muta un Precio existente porque
+    //   hay tickets históricos que lo referencian; siempre se crea una fila nueva.
+    //
+    // Cuando el proveedor es NUEVO (recién dado de alta desde el ticket), esto
+    // carga SOLO el precio del combustible leído; los demás combustibles quedan
+    // sin precio hasta que aparezcan en otro ticket.
+    private Precio resolvePrecio(Proveedor proveedor, TipoCombustible tipoCombustible, Double precioPorLitro) {
+        if (proveedor == null || tipoCombustible == null || precioPorLitro == null) {
+            return null;
+        }
+
+        BigDecimal objetivo = BigDecimal.valueOf(precioPorLitro);
+        Precio vigente = precioRepository
+            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, tipoCombustible)
+            .orElse(null);
+
+        // compareTo ignora la escala (2083 == 2083.00).
+        if (vigente != null && vigente.getPrecioUnitario() != null
+            && vigente.getPrecioUnitario().compareTo(objetivo) == 0) {
+            return vigente;
+        }
+
+        LocalDate hoy = LocalDate.now();
+        if (vigente != null) {
+            vigente.setFechaHasta(hoy);
+        }
+        Precio nuevo = new Precio();
+        nuevo.setPrecioUnitario(objetivo);
+        nuevo.setServicio(Servicio.COMBUSTIBLE);
+        nuevo.setTipoCombustible(tipoCombustible);
+        nuevo.setProveedor(proveedor);
+        nuevo.setFechaDesde(hoy);
+        nuevo.setFechaHasta(null);
+        return precioRepository.save(nuevo);
+    }
+
+    // Busca un proveedor de COMBUSTIBLE cuyo nombre coincida (contención, sin
+    // distinguir mayúsculas) con el texto "estacion" que leyó el OCR. Solo se
+    // considera match si es ÚNICO: con 0 o varios candidatos se devuelve null.
+    private Proveedor matchProveedor(String estacion) {
+        if (estacion == null || estacion.isBlank()) {
+            return null;
+        }
+        String needle = estacion.toLowerCase();
+        List<Proveedor> candidatos = proveedorRepository.findByServicio(Servicio.COMBUSTIBLE).stream()
+            .filter(p -> {
+                String nombre = p.getNombre() == null ? "" : p.getNombre().toLowerCase();
+                return !nombre.isBlank() && (needle.contains(nombre) || nombre.contains(needle));
+            })
+            .toList();
+        return candidatos.size() == 1 ? candidatos.get(0) : null;
+    }
+
+    /**
+     * Listado paginado de tickets para el administrador. Todos los filtros son
+     * opcionales; sin ninguno devuelve todos. El mapeo a TicketResponse (que
+     * genera URLs presignadas) ocurre dentro de la transacción para que las
+     * asociaciones LAZY del Ticket se resuelvan con la sesión abierta.
+     */
+    @Transactional(readOnly = true)
+    public PagedModel<TicketResponse> listForAdmin(
+            Integer empleadoId, Integer proveedorId, Integer vehiculoId,
+            LocalDateTime desde, LocalDateTime hasta, Pageable pageable) {
+        // Se construye la Specification agregando SOLO los filtros presentes.
+        // Con Criteria API se omite el predicado cuando el filtro es null, en
+        // vez de un ":param IS NULL OR ..." (que en Postgres rompe con
+        // "could not determine data type" al pasar un timestamp null).
+        Specification<Ticket> spec = (root, query, cb) -> {
+            // Evita el N+1: trae empleado, proveedor y precio en la MISMA query
+            // (JOIN FETCH). Solo en la query de datos, no en la de count — un
+            // fetch en el count rompe. Son todos @ManyToOne (single-valued), así
+            // que el fetch join es seguro con paginación.
+            if (query != null && query.getResultType() != Long.class
+                    && query.getResultType() != long.class) {
+                root.fetch("empleado");
+                root.fetch("proveedor");
+                root.fetch("precio");
+                root.fetch("vehiculo");
+            }
+
+            List<Predicate> predicates = new ArrayList<>();
+            if (empleadoId != null) {
+                predicates.add(cb.equal(root.get("empleado").get("id"), empleadoId));
+            }
+            if (proveedorId != null) {
+                predicates.add(cb.equal(root.get("proveedor").get("id"), proveedorId));
+            }
+            if (vehiculoId != null) {
+                predicates.add(cb.equal(root.get("vehiculo").get("id"), vehiculoId));
+            }
+            if (desde != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("fechaCarga"), desde));
+            }
+            if (hasta != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("fechaCarga"), hasta));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return new PagedModel<>(
+            ticketRepository.findAll(spec, pageable).map(this::toResponse)
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public TicketResponse get(Integer id) {
+        Ticket ticket = ticketRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.TICKET_NOT_FOUND, "Ticket no encontrado"));
+        return toResponse(ticket);
+    }
+
+    /**
+     * Tickets del empleado autenticado, más recientes primero. Alimenta la
+     * pestaña "Historial" de la app del empleado. El empleado sale del JWT, no
+     * de un parámetro, para que solo pueda ver los suyos.
+     */
+    @Transactional(readOnly = true)
+    public List<TicketResponse> listMine(String empleadoEmail) {
+        Empleado empleado = resolveEmpleado(empleadoEmail);
+        return ticketRepository.findByEmpleadoIdOrderByFechaCargaDesc(empleado.getId())
+            .stream().map(this::toResponse).toList();
+    }
+
+    private Empleado resolveEmpleado(String email) {
+        Persona persona = personaRepository.findByEmail(email)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.USER_NOT_FOUND, "Usuario no encontrado"));
+        if (!(persona instanceof Empleado empleado)) {
+            throw new ForbiddenException(
+                ErrorCode.NOT_EMPLOYEE, "Solo un empleado puede cargar tickets");
+        }
+        return empleado;
+    }
+
+    // Valida que el vehiculo se pueda cargar: que exista (404), que no esté dado
+    // de baja y que no esté en mantenimiento (409). Modelo de pool compartido:
+    // cualquier empleado activo puede cargar cualquier vehiculo operativo, NO se
+    // exige asignación previa. Quién cargó queda registrado en el propio ticket
+    // (campo empleado), así que la trazabilidad no depende de una asignación.
+    private Vehiculo resolveVehiculoCargable(Integer vehiculoId) {
+        Vehiculo vehiculo = vehiculoRepository.findById(vehiculoId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.VEHICULO_NOT_FOUND, "No existe el vehiculo indicado", "idVehiculo"));
+
+        // No se pueden cargar tickets sobre un vehiculo dado de baja, aunque el
+        // cliente tenga una vista vieja donde todavía aparezca.
+        if (vehiculo.getFechaBaja() != null) {
+            throw new ConflictException(
+                ErrorCode.VEHICULO_ALREADY_INACTIVE, "El vehiculo está dado de baja", "idVehiculo");
+        }
+
+        // Un vehiculo en mantenimiento está fuera de operación: no se le cargan
+        // tickets aunque el cliente lo muestre.
+        if (vehiculo.getEstado() == Estado.EN_MANTENIMIENTO) {
+            throw new ConflictException(
+                ErrorCode.VEHICULO_NOT_AVAILABLE, "El vehiculo está en mantenimiento", "idVehiculo");
+        }
+        return vehiculo;
+    }
+
+    // Construye la respuesta generando URLs presignadas frescas a partir de las
+    // keys almacenadas. La URL NUNCA se persiste: se calcula en cada lectura.
+    private TicketResponse toResponse(Ticket ticket) {
+        // La foto del tablero es opcional: si no hay key, no se genera URL (evita
+        // pedirle a MinIO una presignada para un objeto inexistente).
+        String tableroKey = ticket.getTableroFotoUrl();
+        return new TicketResponse(
+            ticket.getId(),
+            ticket.getLitros(),
+            ticket.getFechaCarga(),
+            ticket.getPrecio().getId(),
+            ticket.getProveedor().getId(),
+            ticket.getVehiculo().getId(),
+            ticket.getEmpleado().getEmail(),
+            ticket.getTicketFotoUrl(),
+            storageService.getUrl(ticket.getTicketFotoUrl()),
+            tableroKey,
+            tableroKey != null ? storageService.getUrl(tableroKey) : null
+        );
+    }
+}

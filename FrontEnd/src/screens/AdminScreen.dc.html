@@ -1,0 +1,96 @@
+<x-dc>
+  <div style="position:absolute;inset:0;padding-top:34px;overflow-y:auto;">
+    <div style="padding:14px 16px 40px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div>
+          <div style="font-size:11px;color:#8A9099;letter-spacing:1.5px;text-transform:uppercase;">Panel de control</div>
+          <div style="font-family:'Oswald',sans-serif;font-weight:700;font-size:24px;letter-spacing:0.5px;line-height:1.1;margin-top:2px;">ANALÍTICA</div>
+        </div>
+        <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#F5C518,#c99a00);display:flex;align-items:center;justify-content:center;font-family:'Oswald';font-weight:700;color:#101215;font-size:14px;">AD</div>
+      </div>
+      <div style="font-size:11.5px;color:#8A9099;margin-bottom:16px;">Consumo de combustible · Obra Ruta 33 Sur</div>
+
+      <div style="background:#1F2226;border:1px solid #2A2F35;border-radius:13px;padding:14px;margin-bottom:16px;">
+        <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#F5C518;font-weight:600;margin-bottom:10px;">Filtros</div>
+        <div style="font-size:11px;color:#8A9099;margin-bottom:6px;">Período</div>
+        <div style="display:flex;background:#16181B;border:1px solid #2C3138;border-radius:9px;padding:3px;gap:2px;margin-bottom:12px;">
+          <button onClick="{{ setRange7 }}" style="flex:1;{{ range7Style }}">7 días</button>
+          <button onClick="{{ setRange30 }}" style="flex:1;{{ range30Style }}">30 días</button>
+          <button onClick="{{ setRange90 }}" style="flex:1;{{ range90Style }}">Trimestre</button>
+        </div>
+        <div style="font-size:11px;color:#8A9099;margin-bottom:6px;">Operario</div>
+        <select value="{{ filterUser }}" onChange="{{ setFilterUser }}" style="width:100%;background:#16181B;border:1px solid #2C3138;border-radius:9px;height:40px;padding:0 12px;color:#E8E6E1;font-size:13px;margin-bottom:12px;">
+          <option>Todos</option><option>Juan Pérez</option><option>Ana López</option><option>Carlos Díaz</option><option>Marta Ruiz</option>
+        </select>
+        <div style="font-size:11px;color:#8A9099;margin-bottom:6px;">Vehículo o maquinaria</div>
+        <select value="{{ filterVehicle }}" onChange="{{ setFilterVehicle }}" style="width:100%;background:#16181B;border:1px solid #2C3138;border-radius:9px;height:40px;padding:0 12px;color:#E8E6E1;font-size:13px;margin-bottom:12px;">
+          <option>Todos</option><option>Toyota Hilux SRV</option><option>Retroexcavadora CAT 320</option><option>Camión Iveco Trakker</option><option>Motoniveladora JD 670G</option>
+        </select>
+        <div style="font-size:11px;color:#6E747C;font-family:'IBM Plex Mono',monospace;">{{ filterRangeLabel }}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="background:#1F2226;border:1px solid #2A2F35;border-radius:13px;padding:14px;position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;width:4px;height:100%;background:#F5C518;"></div>
+          <div style="font-size:10.5px;color:#8A9099;">Costo total</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#F5C518;margin-top:6px;">{{ kpiTotal }}</div>
+          <div style="font-size:10.5px;color:#3FB65E;margin-top:4px;">↑ 8,4%</div>
+        </div>
+        <div style="background:#1F2226;border:1px solid #2A2F35;border-radius:13px;padding:14px;">
+          <div style="font-size:10.5px;color:#8A9099;">Litros cargados</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;margin-top:6px;">{{ kpiLiters }}</div>
+          <div style="font-size:10.5px;color:#8A9099;margin-top:4px;">en {{ kpiLoads }} cargas</div>
+        </div>
+        <div style="background:#1F2226;border:1px solid #2A2F35;border-radius:13px;padding:14px;">
+          <div style="font-size:10.5px;color:#8A9099;">Promedio / carga</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;margin-top:6px;">{{ kpiAvg }}</div>
+          <div style="font-size:10.5px;color:#FF6A00;margin-top:4px;">↑ 3,1% precio/L</div>
+        </div>
+        <div style="background:#1F2226;border:1px solid #2A2F35;border-radius:13px;padding:14px;">
+          <div style="font-size:10.5px;color:#8A9099;">Tickets pendientes</div>
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;color:#FF6A00;margin-top:6px;">7</div>
+          <div style="font-size:10.5px;color:#8A9099;margin-top:4px;">de {{ kpiLoads }} cargas</div>
+        </div>
+      </div>
+
+      <div style="background:#1F2226;border:1px solid #2A2F35;border-radius:14px;padding:16px;margin-bottom:12px;">
+        
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+          <div>
+            <sc-if value="{{ isChartTrend }}">
+              <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;letter-spacing:0.5px;">COSTO TOTAL DE COMBUSTIBLE</div>
+              <div style="font-size:11px;color:#8A9099;margin-top:2px;">Evolución del gasto en el período</div>
+            </sc-if>
+            <sc-if value="{{ isChartProvider }}">
+              <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;letter-spacing:0.5px;">COSTO POR PROVEEDOR</div>
+              <div style="font-size:11px;color:#8A9099;margin-top:2px;">Distribución del gasto</div>
+            </sc-if>
+            <sc-if value="{{ isChartUser }}">
+              <div style="font-family:'Oswald',sans-serif;font-weight:600;font-size:15px;letter-spacing:0.5px;">COSTO POR OPERARIO</div>
+              <div style="font-size:11px;color:#8A9099;margin-top:2px;">Gasto asignado a cada usuario</div>
+            </sc-if>
+          </div>
+          
+          <select value="{{ selectedChart }}" onChange="{{ setChart }}" style="background:#16181B;border:1px solid #2C3138;border-radius:9px;height:32px;padding:0 10px;color:#E8E6E1;font-size:12px;cursor:pointer;outline:none;">
+            <option value="trend">Evolución</option>
+            <option value="provider">Por Proveedor</option>
+            <option value="user">Por Operario</option>
+          </select>
+        </div>
+
+        <sc-if value="{{ isChartTrend }}">{{ trendChart }}</sc-if>
+        <sc-if value="{{ isChartProvider }}">{{ providerChart }}</sc-if>
+        <sc-if value="{{ isChartUser }}">{{ userChart }}</sc-if>
+
+      </div>
+    </div>
+  </div>
+</x-dc>
+
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return this.props;
+  }
+}
+</script>

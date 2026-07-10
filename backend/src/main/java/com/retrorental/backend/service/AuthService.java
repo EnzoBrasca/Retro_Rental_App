@@ -6,6 +6,11 @@ import com.retrorental.backend.dto.response.AuthResponse;
 import com.retrorental.backend.model.Administrador;
 import com.retrorental.backend.model.Empleado;
 import com.retrorental.backend.model.Persona;
+import com.retrorental.backend.exception.ConflictException;
+import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.exception.InvalidCredentialsException;
+import com.retrorental.backend.model.embeddable.Direccion;
+import com.retrorental.backend.model.embeddable.Telefono;
 import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.security.JwtUtil;
@@ -26,11 +31,13 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request) {
 
         if (personaRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Ya existe un usuario con ese email");
+            throw new ConflictException(
+                ErrorCode.EMAIL_ALREADY_EXISTS, "Ya existe un usuario con ese email", "email");
         }
 
         if (personaRepository.existsByDocumento(request.getDocumento())) {
-            throw new RuntimeException("Ya existe un usuario con ese documento");
+            throw new ConflictException(
+                ErrorCode.DOCUMENTO_ALREADY_EXISTS, "Ya existe un usuario con ese documento", "documento");
         }
 
         Persona persona;
@@ -50,36 +57,53 @@ public class AuthService {
         persona.setPassword(passwordEncoder.encode(request.getPassword()));
         persona.setRol(request.getRol());
 
+        Direccion direccion = new Direccion();
+        direccion.setCalle(request.getDireccion().getCalle());
+        direccion.setNumero(request.getDireccion().getNumero());
+        direccion.setCiudad(request.getDireccion().getCiudad());
+        direccion.setProvincia(request.getDireccion().getProvincia());
+        direccion.setCodigoPostal(request.getDireccion().getCodigoPostal());
+        direccion.setBarrio(request.getDireccion().getBarrio());
+        persona.setDireccion(direccion);
+
+        Telefono telefono = new Telefono();
+        telefono.setCodigoArea(request.getTelefono().getCodigoArea());
+        telefono.setTelefono(request.getTelefono().getNumero());
+        persona.setTelefono(telefono);
+
         personaRepository.save(persona);
 
         String token = jwtUtil.generateToken(persona.getEmail(), persona.getRol().name());
 
-        return new AuthResponse(
-            token,
-            persona.getNombre(),
-            persona.getApellido(),
-            persona.getEmail(),
-            persona.getRol()
-        );
+        return toAuthResponse(persona, token);
     }
 
     public AuthResponse login(LoginRequest request) {
 
         Persona persona = personaRepository.findByEmail(request.getEmail())
-            .orElseThrow(() -> new RuntimeException("Email o contraseña incorrectos"));
+            .orElseThrow(() -> new InvalidCredentialsException("Email o contraseña incorrectos"));
 
         if (!passwordEncoder.matches(request.getPassword(), persona.getPassword())) {
-            throw new RuntimeException("Email o contraseña incorrectos");
+            throw new InvalidCredentialsException("Email o contraseña incorrectos");
         }
 
         String token = jwtUtil.generateToken(persona.getEmail(), persona.getRol().name());
 
+        return toAuthResponse(persona, token);
+    }
+
+    // Arma la respuesta de auth desde la persona ya persistida. Formatea el
+    // teléfono ("codigoArea numero") y tolera que no haya uno cargado (null).
+    private AuthResponse toAuthResponse(Persona persona, String token) {
+        Telefono tel = persona.getTelefono();
+        String telefono = tel != null ? (tel.getCodigoArea() + " " + tel.getTelefono()).trim() : null;
         return new AuthResponse(
             token,
             persona.getNombre(),
             persona.getApellido(),
             persona.getEmail(),
-            persona.getRol()
+            persona.getRol(),
+            telefono
         );
     }
 }

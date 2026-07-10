@@ -1,17 +1,27 @@
 package com.retrorental.backend.config;
 
+import com.retrorental.backend.dto.response.ApiError;
+import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.security.JwtFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.io.IOException;
+
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableWebSecurity
@@ -20,6 +30,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final ObjectMapper objectMapper;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -29,16 +40,48 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
-                // Endpoints públicos — no requieren token
-                .requestMatchers("/auth/**", "/health").permitAll()
+                // Endpoints públicos — no requieren token. /error debe ser
+                // público: cuando un controller lanza una excepción, Spring hace
+                // un forward interno a /error; si no estuviera permitido, la
+                // seguridad lo bloquearía con 403 y enmascararía el error real.
+                .requestMatchers("/auth/**", "/health", "/error").permitAll()
                 // Endpoints solo para administradores
                 .requestMatchers("/admin/**").hasRole("ADMINISTRADOR")
                 // Cualquier otro endpoint requiere estar autenticado
                 .anyRequest().authenticated()
             )
+            // Errores de seguridad como JSON ApiError (mismo contrato que el
+            // resto de la API), no como respuestas vacías del filtro.
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(authenticationEntryPoint())
+                .accessDeniedHandler(accessDeniedHandler())
+            )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // 401: sin token o token inválido/expirado.
+    private AuthenticationEntryPoint authenticationEntryPoint() {
+        return (request, response, authException) -> writeError(
+            response, ErrorCode.UNAUTHENTICATED,
+            "Necesitas iniciar sesión para acceder a este recurso");
+    }
+
+    // 403: autenticado pero sin el rol requerido (ej. empleado en /admin/**).
+    private AccessDeniedHandler accessDeniedHandler() {
+        return (request, response, accessDeniedException) -> writeError(
+            response, ErrorCode.ACCESS_DENIED,
+            "No tenes permiso para acceder a este recurso");
+    }
+
+    private void writeError(HttpServletResponse response, ErrorCode code, String message)
+            throws IOException {
+        response.setStatus(code.getStatus().value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        ApiError body = new ApiError(code.getStatus().value(), code.name(), message);
+        response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 
     @Bean

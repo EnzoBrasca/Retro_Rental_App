@@ -1,0 +1,2 @@
+# Los certificados TLS reales (api.fullchain.pem, api.privkey.pem, etc.) van aca
+# pero NO se commitean. Ver docs/DEPLOYMENT.md, seccion "Certificados TLS".
