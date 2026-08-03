@@ -3,9 +3,8 @@
 .env.local
 .env.production
 
-# Certificados TLS de produccion — NUNCA subir (ver docs/DEPLOYMENT.md)
-infra/nginx/certs/*
-!infra/nginx/certs/.gitkeep
+# Backups de produccion (base + fotos). Ver docs/DEPLOYMENT.md
+backups/
 
 # Dependencias
 node_modules/
@@ -39,3 +38,6 @@ mobile/ios/
 
 # Coverage
 coverage/
+
+# Config local de DBeaver (incluye credenciales de conexion)
+.dbeaver/
