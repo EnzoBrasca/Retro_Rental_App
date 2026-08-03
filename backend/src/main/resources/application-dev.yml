@@ -1,7 +1,10 @@
 spring:
   jpa:
     hibernate:
-      ddl-auto: update        # Hibernate ajusta el schema solo
+      # Igual que prod: el schema lo construye Flyway y Hibernate solo verifica
+      # que las entidades coincidan. Si agregas un campo, va en una migracion
+      # nueva; si no, la app no arranca y te enteras aca y no en produccion.
+      ddl-auto: validate
     show-sql: true
 logging:
   level:

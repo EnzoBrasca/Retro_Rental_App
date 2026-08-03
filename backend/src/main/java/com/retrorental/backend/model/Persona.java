@@ -1,7 +1,6 @@
 package com.retrorental.backend.model;
 
 import com.retrorental.backend.model.enums.Rol;
-import com.retrorental.backend.model.embeddable.Direccion;
 import com.retrorental.backend.model.embeddable.Telefono;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -29,8 +28,8 @@ public class Persona {
     @Column(name = "documento", nullable = false)
     private String documento;
 
-    @Column(name = "email", nullable = false)
-    private String email;
+    @Column(name = "username", nullable = false)
+    private String username;
 
     @Column(name = "password", nullable = false)
     private String password;
@@ -39,11 +38,11 @@ public class Persona {
     @Column(name = "rol", nullable = false)
     private Rol rol;
 
+    // El @AttributeOverride REEMPLAZA la @Column del embeddable, no la extiende:
+    // hay que repetir length y nullable o se pierden los de Telefono.
     @Embedded
-    @AttributeOverride(name = "numero", column = @Column(name = "direccion_numero"))
-    private Direccion direccion;
-
-    @Embedded
-    @AttributeOverride(name = "telefono", column = @Column(name = "telefono_numero"))
+    @AttributeOverride(
+        name = "telefono",
+        column = @Column(name = "telefono_numero", length = 15, nullable = false))
     private Telefono telefono;
 }

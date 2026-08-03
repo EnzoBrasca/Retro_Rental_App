@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,11 @@ import java.util.Map;
  *
  * Es idempotente: cada tabla se siembra solo si está vacía, así reiniciar la
  * app no genera duplicados.
+ *
+ * OJO en producción: esto es solo dev. El perfil `prod` arranca con proveedores
+ * y precios VACÍOS, y sin catálogo el formulario de carga de tickets no puede
+ * resolver el precio. Cargarlo es un paso explícito del despliegue
+ * (ver docs/DEPLOYMENT.md).
  */
 @Component
 @Profile("dev")
@@ -84,56 +90,26 @@ public class DataSeeder implements CommandLineRunner {
         "Gulf", new BigDecimal("0.98")
     );
 
-    // Garantiza un precio vigente por cada (proveedor, combustible): asume que toda
+    // Siembra un precio vigente por cada (proveedor, combustible): asume que toda
     // estación vende todos los productos. El precio nace del base × factor de la
     // estación, redondeado a 2 decimales.
-    //
-    // Es SELF-HEALING, no idempotente-por-count. No se puede gatear con "la tabla
-    // ya tiene precios y me voy": con ddl-auto=update la data persiste entre
-    // reinicios, así que una DB sembrada ANTES de que Precio tuviera `proveedor`
-    // quedó con TODOS los precios en proveedor_id NULL. Como el front elige el
-    // precio por (proveedor + combustible), esos legacy no matchean nunca y el
-    // precio no aparece al elegir proveedor. Acá se rellenan los (proveedor,
-    // combustible) que falten y se retiran los vigentes de combustible sin
-    // proveedor, dejando el catálogo consistente con el modelo por estación.
     private void seedPrecios() {
+        if (precioRepository.count() > 0) {
+            log.info("[seed] precios ya existen, se omite");
+            return;
+        }
         LocalDate hoy = LocalDate.now();
-        List<Proveedor> proveedores = proveedorRepository.findAll();
 
-        int creados = 0;
-        for (Proveedor prov : proveedores) {
+        List<Precio> precios = new ArrayList<>();
+        for (Proveedor prov : proveedorRepository.findAll()) {
             BigDecimal factor = FACTOR_POR_PROVEEDOR.getOrDefault(prov.getNombre(), BigDecimal.ONE);
             for (TipoCombustible tc : TipoCombustible.values()) {
-                // Ya hay un vigente para esta estación y producto: no se toca (puede
-                // haber sido actualizado por un ticket, invariante: un solo vigente).
-                boolean yaVigente = precioRepository
-                    .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(prov, tc)
-                    .isPresent();
-                if (yaVigente) {
-                    continue;
-                }
                 BigDecimal valor = PRECIO_BASE.get(tc).multiply(factor).setScale(2, RoundingMode.HALF_UP);
-                precioRepository.save(precio(prov, tc, valor, hoy));
-                creados++;
+                precios.add(precio(prov, tc, valor, hoy));
             }
         }
-
-        // Retira los precios de combustible legacy sin proveedor: el front ya no los
-        // puede elegir (elige por proveedor) y ensucian el catálogo vigente. Se
-        // cierran con fechaHasta (no se borran) para no romper tickets históricos
-        // que los referencian por id.
-        List<Precio> legacySinProveedor = precioRepository.findByServicio(Servicio.COMBUSTIBLE).stream()
-            .filter(p -> p.getFechaHasta() == null && p.getProveedor() == null)
-            .toList();
-        legacySinProveedor.forEach(p -> p.setFechaHasta(hoy));
-        precioRepository.saveAll(legacySinProveedor);
-
-        if (creados > 0 || !legacySinProveedor.isEmpty()) {
-            log.info("[seed] precios reparados: {} creados por (estacion x producto), {} legacy sin proveedor retirados",
-                creados, legacySinProveedor.size());
-        } else {
-            log.info("[seed] precios ya consistentes, no se aplicaron cambios");
-        }
+        precioRepository.saveAll(precios);
+        log.info("[seed] {} precios creados (estacion x producto)", precios.size());
     }
 
     private Proveedor proveedor(String nombre, String cuit) {
