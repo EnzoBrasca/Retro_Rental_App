@@ -75,8 +75,55 @@ done
 # --- 2. nginx arriba, sirviendo el puerto 80 para la validacion --------------
 echo
 echo ">> [2/4] Levantando nginx..."
-"${COMPOSE[@]}" up -d nginx
-sleep 5
+# --force-recreate limpia cualquier backoff de reinicio de un intento anterior:
+# si nginx venia crasheando, `up -d` a secas lo deja en el ciclo de espera de
+# Docker y puede no estar escuchando cuando certbot pida la validacion.
+"${COMPOSE[@]}" up -d --force-recreate nginx
+
+# Esperar a que REALMENTE sirva el puerto 80. Sin esto, certbot puede pedir la
+# validacion mientras nginx todavia arranca y Let's Encrypt recibe un
+# "connection refused", gastando cuota por un problema de tiempos.
+echo -n ">> Esperando a que nginx responda en el puerto 80"
+for _ in $(seq 1 30); do
+    if curl -sf -o /dev/null "http://localhost/.well-known/acme-challenge/" \
+       || curl -s -o /dev/null -w '%{http_code}' "http://localhost/" | grep -qE '^(200|301|404)$'; then
+        echo " OK"
+        break
+    fi
+    echo -n "."
+    sleep 2
+done
+
+# Prueba de extremo a extremo ANTES de gastar cuota: se escribe un archivo en el
+# webroot y se verifica que Let's Encrypt podria descargarlo por HTTP. Si esto
+# falla, el problema esta en nginx o en el firewall, no en certbot.
+echo ">> Verificando que el webroot se sirva correctamente..."
+TOKEN_PRUEBA="prueba-$(date +%s)"
+"${COMPOSE[@]}" run --rm --entrypoint sh certbot -c \
+    "mkdir -p /var/www/certbot/.well-known/acme-challenge &&
+     echo '${TOKEN_PRUEBA}' > /var/www/certbot/.well-known/acme-challenge/${TOKEN_PRUEBA}"
+
+for dominio in "${DOMAINS[@]}"; do
+    respuesta="$(curl -s --max-time 10 "http://${dominio}/.well-known/acme-challenge/${TOKEN_PRUEBA}" || true)"
+    if [[ "$respuesta" != "$TOKEN_PRUEBA" ]]; then
+        echo >&2
+        echo "ABORTADO: ${dominio} no sirve el webroot de validacion." >&2
+        echo "Se esperaba '${TOKEN_PRUEBA}' y se recibio: '${respuesta:-(nada)}'" >&2
+        echo >&2
+        echo "Revisa, en este orden:" >&2
+        echo "  1. Que el DNS de ${dominio} apunte a este servidor: dig +short ${dominio}" >&2
+        echo "  2. Que el puerto 80 este abierto en el firewall del proveedor" >&2
+        echo "  3. Que nginx haya generado app.conf:" >&2
+        echo "     docker compose ... exec nginx ls /etc/nginx/conf.d/" >&2
+        echo "  4. Los logs: docker compose ... logs nginx" >&2
+        echo >&2
+        echo "No se pidio ningun certificado, asi que no se gasto cuota." >&2
+        exit 1
+    fi
+    echo "    ${dominio}: OK"
+done
+"${COMPOSE[@]}" run --rm --entrypoint sh certbot -c \
+    "rm -f /var/www/certbot/.well-known/acme-challenge/${TOKEN_PRUEBA}"
 
 # --- 3. Certificados reales --------------------------------------------------
 echo
