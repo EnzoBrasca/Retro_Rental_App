@@ -46,6 +46,33 @@ Resultado: `backend:8080`, `postgres:5432` y `minio:9000/9001` quedan publicados
 en `localhost` para que les pegues directo (Postman, pgAdmin, la consola de MinIO,
 o correr `contextLoads` desde el host — ver `docs/backend-session-*` y el README de tests).
 
+### Preparación del servidor (una sola vez, en un VPS Ubuntu limpio)
+
+Desde **tu máquina**, con el repo clonado:
+
+```bash
+# 1. Preparar el servidor: usuario, firewall, swap y Docker
+scp infra/scripts/server-bootstrap.sh root@IP_DEL_VPS:/root/
+ssh root@IP_DEL_VPS 'bash /root/server-bootstrap.sh enzo "$(cat ~/.ssh/id_ed25519.pub)"'
+
+# 2. VERIFICAR el acceso por clave en una terminal nueva, sin cerrar la otra
+ssh enzo@IP_DEL_VPS
+
+# 3. Recién si el paso 2 funcionó, endurecer SSH
+scp infra/scripts/server-harden-ssh.sh enzo@IP_DEL_VPS:/tmp/
+ssh enzo@IP_DEL_VPS 'sudo bash /tmp/server-harden-ssh.sh'
+```
+
+**Los dos scripts están separados a propósito.** `server-harden-ssh.sh` desactiva
+el login por contraseña, que hasta ese momento es tu vía de entrada de respaldo.
+Si lo corrieras junto con el bootstrap y la clave estuviera mal cargada, te
+quedarías afuera del servidor y habría que recuperarlo desde la consola del panel
+del proveedor. Por eso el paso 2 no es opcional.
+
+`server-bootstrap.sh` además crea **2GB de swap**: la app en marcha usa ~2,5GB,
+pero `docker compose up --build` compila el backend con Maven **en el servidor**,
+y ese build es el pico de memoria de todo el sistema.
+
 ### Producción (servidor externo)
 
 ```bash
