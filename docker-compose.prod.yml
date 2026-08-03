@@ -55,12 +55,24 @@ services:
     depends_on:
       - backend
       - minio
-    # Recarga periodica para tomar los certificados renovados. Sin esto nginx
-    # seguiria sirviendo el certificado viejo en memoria hasta el proximo
-    # reinicio, y se venceria igual que si no hubiera renovacion.
-    command: >
-      sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done &
-             exec nginx -g 'daemon off;'"
+    # OJO CON ESTE command: el entrypoint de la imagen solo procesa
+    # /etc/nginx/templates cuando su primer argumento es "nginx". Como aca el
+    # comando empieza con "sh" (hace falta para el bucle de recarga), hay que
+    # invocar el entrypoint A MANO o app.conf nunca se genera y nginx arranca
+    # con la config por defecto de la imagen: la API responde 404 en todo,
+    # incluido el challenge de Let's Encrypt.
+    #
+    # La recarga periodica toma los certificados renovados. Sin ella nginx
+    # seguiria sirviendo el viejo desde memoria hasta el proximo reinicio, y se
+    # venceria igual que si no hubiera renovacion.
+    command:
+      - sh
+      - -c
+      - |
+        /docker-entrypoint.sh nginx -v
+        rm -f /etc/nginx/conf.d/default.conf
+        while :; do sleep 6h & wait $${!}; nginx -s reload; done &
+        exec nginx -g 'daemon off;'
 
   # Renovacion automatica de los certificados de Let's Encrypt (duran 90 dias).
   # La EMISION inicial no la hace este servicio: la hace init-letsencrypt.sh,
