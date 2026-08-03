@@ -6,6 +6,9 @@
 #   docker compose --env-file .env.production \
 #     -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 #
+# La PRIMERA vez, antes de esto, hay que emitir los certificados TLS:
+#   ./infra/scripts/init-letsencrypt.sh
+#
 # Diferencias clave con dev:
 #   - Ningun servicio de datos (postgres/minio) expone puertos al host.
 #   - El backend TAMPOCO se publica directo: el unico con puertos al host es el
@@ -14,6 +17,13 @@
 services:
   backend:
     env_file: .env.production
+    environment:
+      # Se impone ACA y no en el .env a proposito, igual que DB_HOST en el base:
+      # es critico e invariable, y olvidarlo es silencioso y grave. El default de
+      # application.yml es `dev`, y con el perfil dev activo en produccion
+      # correria DataSeeder (@Profile("dev")) sembrando proveedores y precios de
+      # prueba en la base del cliente, ademas de logging en DEBUG.
+      SPRING_PROFILES_ACTIVE: prod
     restart: unless-stopped
     # SIN ports: inalcanzable desde afuera salvo a traves de nginx.
 
@@ -33,9 +43,40 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      # Limita envsubst a las variables APP_*: sin esto se comeria tambien las
+      # variables propias de nginx ($host, $scheme...) y romperia la config.
+      NGINX_ENVSUBST_FILTER: "^APP_"
     volumes:
-      - ./infra/nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./infra/nginx/certs:/etc/nginx/certs:ro
+      - ./infra/nginx/templates:/etc/nginx/templates:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
     depends_on:
       - backend
       - minio
+    # Recarga periodica para tomar los certificados renovados. Sin esto nginx
+    # seguiria sirviendo el certificado viejo en memoria hasta el proximo
+    # reinicio, y se venceria igual que si no hubiera renovacion.
+    command: >
+      sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done &
+             exec nginx -g 'daemon off;'"
+
+  # Renovacion automatica de los certificados de Let's Encrypt (duran 90 dias).
+  # La EMISION inicial no la hace este servicio: la hace init-letsencrypt.sh,
+  # porque requiere una secuencia de arranque especial (ver ese script).
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do
+               certbot renew --webroot -w /var/www/certbot;
+               sleep 12h & wait $${!};
+             done"
+
+volumes:
+  letsencrypt:
+  certbot-www:
