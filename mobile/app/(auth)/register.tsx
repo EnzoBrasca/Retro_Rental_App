@@ -10,11 +10,12 @@ import {
   Platform,
   ScrollView,
   KeyboardTypeOptions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
-import { registerRequest, Rol } from '../../services/auth';
+import { registerRequest } from '../../services/auth';
 import { colors, fonts, radius } from '../../constants/theme';
 import { Logo, Wordmark } from '../../components/ui';
 
@@ -22,13 +23,16 @@ import { Logo, Wordmark } from '../../components/ui';
  * Pantalla de Registro (look FuelTrack sobre la autenticación JWT real).
  *
  * Refleja exactamente el RegisterRequest del backend:
- *   { nombre, apellido, documento, email, password, rol, direccion, telefono }
+ *   { nombre, apellido, documento, password, telefono }
  *
- * El rol se elige con un selector de dos opciones (EMPLEADO / ADMINISTRADOR)
- * en lugar de un Picker, para no sumar dependencias nativas nuevas.
+ * No hay selector de rol: el registro siempre crea un EMPLEADO. Las altas de
+ * administrador se hacen fuera de la app (ver docs/DEPLOYMENT.md).
  *
- * Tras un registro exitoso hacemos auto-login: el backend ya devuelve un token
- * en el AuthResponse, así que persistimos la sesión y el _layout redirige.
+ * El `username` con el que el usuario después inicia sesión lo genera el
+ * backend a partir de nombre + apellido: no se pide acá. Tras un registro
+ * exitoso mostramos ese username en un Alert (es la única vez que se ve)
+ * y recién ahí hacemos auto-login: el backend ya devuelve un token en el
+ * AuthResponse, así que persistimos la sesión y el _layout redirige.
  */
 export default function RegisterScreen() {
   const { login } = useAuth();
@@ -37,17 +41,7 @@ export default function RegisterScreen() {
   const [nombre, setNombre] = useState('');
   const [apellido, setApellido] = useState('');
   const [documento, setDocumento] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rol, setRol] = useState<Rol>('EMPLEADO');
-
-  // Dirección
-  const [calle, setCalle] = useState('');
-  const [numero, setNumero] = useState('');
-  const [ciudad, setCiudad] = useState('');
-  const [provincia, setProvincia] = useState('');
-  const [codigoPostal, setCodigoPostal] = useState('');
-  const [barrio, setBarrio] = useState('');
 
   // Teléfono
   const [codigoArea, setCodigoArea] = useState('');
@@ -63,14 +57,7 @@ export default function RegisterScreen() {
       !nombre.trim() ||
       !apellido.trim() ||
       !documento.trim() ||
-      !email.trim() ||
       !password ||
-      !calle.trim() ||
-      !numero.trim() ||
-      !ciudad.trim() ||
-      !provincia.trim() ||
-      !codigoPostal.trim() ||
-      !barrio.trim() ||
       !codigoArea.trim() ||
       !telefonoNumero.trim()
     ) {
@@ -84,23 +71,24 @@ export default function RegisterScreen() {
         nombre: nombre.trim(),
         apellido: apellido.trim(),
         documento: documento.trim(),
-        email: email.trim(),
         password,
-        rol,
-        direccion: {
-          calle: calle.trim(),
-          numero: numero.trim(),
-          ciudad: ciudad.trim(),
-          provincia: provincia.trim(),
-          codigoPostal: codigoPostal.trim(),
-          barrio: barrio.trim(),
-        },
         telefono: {
           codigoArea: codigoArea.trim(),
           numero: telefonoNumero.trim(),
         },
       });
-      await login(res); // auto-login + redirección por rol
+      Alert.alert(
+        '¡Registro exitoso!',
+        `Tu usuario es: ${res.username}\nGuardalo para iniciar sesión.`,
+        [
+          {
+            text: 'Continuar',
+            onPress: () => {
+              void login(res); // auto-login + redirección por rol
+            },
+          },
+        ],
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear la cuenta.');
     } finally {
@@ -136,38 +124,8 @@ export default function RegisterScreen() {
           <Field label="Documento">
             <Input value={documento} onChangeText={setDocumento} editable={!loading} keyboardType="number-pad" placeholder="30123456" />
           </Field>
-          <Field label="Correo">
-            <Input
-              value={email}
-              onChangeText={setEmail}
-              editable={!loading}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="tu@correo.com"
-            />
-          </Field>
           <Field label="Contraseña">
             <Input value={password} onChangeText={setPassword} editable={!loading} secureTextEntry placeholder="••••••••" />
-          </Field>
-
-          <Text style={styles.section}>Dirección</Text>
-          <Field label="Calle">
-            <Input value={calle} onChangeText={setCalle} editable={!loading} />
-          </Field>
-          <Field label="Número">
-            <Input value={numero} onChangeText={setNumero} editable={!loading} keyboardType="number-pad" />
-          </Field>
-          <Field label="Barrio">
-            <Input value={barrio} onChangeText={setBarrio} editable={!loading} />
-          </Field>
-          <Field label="Ciudad">
-            <Input value={ciudad} onChangeText={setCiudad} editable={!loading} />
-          </Field>
-          <Field label="Provincia">
-            <Input value={provincia} onChangeText={setProvincia} editable={!loading} />
-          </Field>
-          <Field label="Código postal">
-            <Input value={codigoPostal} onChangeText={setCodigoPostal} editable={!loading} />
           </Field>
 
           <Text style={styles.section}>Teléfono</Text>
@@ -177,25 +135,6 @@ export default function RegisterScreen() {
           <Field label="Número">
             <Input value={telefonoNumero} onChangeText={setTelefonoNumero} editable={!loading} keyboardType="number-pad" />
           </Field>
-
-          <Text style={styles.section}>Rol</Text>
-          <View style={styles.roleRow}>
-            {(['EMPLEADO', 'ADMINISTRADOR'] as Rol[]).map((opcion) => {
-              const selected = rol === opcion;
-              return (
-                <Pressable
-                  key={opcion}
-                  style={[styles.roleOption, selected && styles.roleOptionSelected]}
-                  onPress={() => setRol(opcion)}
-                  disabled={loading}
-                >
-                  <Text style={[styles.roleText, selected && styles.roleTextSelected]}>
-                    {opcion === 'EMPLEADO' ? 'Empleado' : 'Administrador'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
 
           {error && <Text style={styles.error}>{error}</Text>}
 
@@ -282,22 +221,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: fonts.sans,
   },
-  roleRow: { flexDirection: 'row', gap: 12, marginBottom: 18 },
-  roleOption: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    backgroundColor: colors.surfaceInput,
-    borderRadius: 10,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  roleOptionSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.amberBg,
-  },
-  roleText: { fontSize: 14, color: colors.textMuted, fontFamily: fonts.sansMed },
-  roleTextSelected: { color: colors.primary, fontFamily: fonts.sansSemi },
   error: { color: colors.danger, fontSize: 13, marginBottom: 12, fontFamily: fonts.sans },
   cta: {
     height: 52,

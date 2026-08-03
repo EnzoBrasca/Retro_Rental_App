@@ -1,8 +1,6 @@
 package com.retrorental.backend.dto.request;
 
-import com.retrorental.backend.model.enums.Rol;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -24,21 +22,14 @@ public class RegisterRequest {
     @Pattern(regexp = "\\d{7,9}", message = "El documento debe tener entre 7 y 9 dígitos")
     private String documento;
 
-    @NotBlank(message = "El email es obligatorio")
-    @Email(message = "El email no tiene un formato válido")
-    @Size(max = 150, message = "El email no puede superar los 150 caracteres")
-    private String email;
-
     @NotBlank(message = "La contraseña es obligatoria")
     @Size(min = 8, max = 100, message = "La contraseña debe tener entre 8 y 100 caracteres")
     private String password;
 
-    @NotNull(message = "El rol es obligatorio")
-    private Rol rol;
-
-    @NotNull(message = "La dirección es obligatoria")
-    @Valid
-    private DireccionRequest direccion;
+    // El rol NO se acepta desde el body: el registro público siempre crea un
+    // EMPLEADO. Si el cliente lo mandara, sería el propio usuario decidiendo sus
+    // permisos. Los administradores se crean fuera de este endpoint
+    // (ver docs/DEPLOYMENT.md).
 
     @NotNull(message = "El teléfono es obligatorio")
     @Valid

@@ -3,13 +3,11 @@ package com.retrorental.backend.service;
 import com.retrorental.backend.dto.request.LoginRequest;
 import com.retrorental.backend.dto.request.RegisterRequest;
 import com.retrorental.backend.dto.response.AuthResponse;
-import com.retrorental.backend.model.Administrador;
 import com.retrorental.backend.model.Empleado;
 import com.retrorental.backend.model.Persona;
 import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.InvalidCredentialsException;
-import com.retrorental.backend.model.embeddable.Direccion;
 import com.retrorental.backend.model.embeddable.Telefono;
 import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.repository.PersonaRepository;
@@ -27,44 +25,30 @@ public class AuthService {
     private final PersonaRepository personaRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final UsernameGenerator usernameGenerator;
 
     public AuthResponse register(RegisterRequest request) {
-
-        if (personaRepository.existsByEmail(request.getEmail())) {
-            throw new ConflictException(
-                ErrorCode.EMAIL_ALREADY_EXISTS, "Ya existe un usuario con ese email", "email");
-        }
 
         if (personaRepository.existsByDocumento(request.getDocumento())) {
             throw new ConflictException(
                 ErrorCode.DOCUMENTO_ALREADY_EXISTS, "Ya existe un usuario con ese documento", "documento");
         }
 
-        Persona persona;
-
-        if (request.getRol() == Rol.ADMINISTRADOR) {
-            persona = new Administrador();
-        } else {
-            Empleado empleado = new Empleado();
-            empleado.setFechaAlta(LocalDate.now());
-            persona = empleado;
-        }
+        // El registro público SIEMPRE crea un empleado. El rol no se toma del
+        // request: dejar que el cliente lo eligiera significaba que cualquiera con
+        // la app se daba permisos de administrador. Las altas de administrador se
+        // hacen fuera de este endpoint (ver docs/DEPLOYMENT.md).
+        Empleado persona = new Empleado();
+        persona.setFechaAlta(LocalDate.now());
 
         persona.setNombre(request.getNombre());
         persona.setApellido(request.getApellido());
         persona.setDocumento(request.getDocumento());
-        persona.setEmail(request.getEmail());
         persona.setPassword(passwordEncoder.encode(request.getPassword()));
-        persona.setRol(request.getRol());
+        persona.setRol(Rol.EMPLEADO);
 
-        Direccion direccion = new Direccion();
-        direccion.setCalle(request.getDireccion().getCalle());
-        direccion.setNumero(request.getDireccion().getNumero());
-        direccion.setCiudad(request.getDireccion().getCiudad());
-        direccion.setProvincia(request.getDireccion().getProvincia());
-        direccion.setCodigoPostal(request.getDireccion().getCodigoPostal());
-        direccion.setBarrio(request.getDireccion().getBarrio());
-        persona.setDireccion(direccion);
+        String username = usernameGenerator.generate(request.getNombre(), request.getApellido());
+        persona.setUsername(username);
 
         Telefono telefono = new Telefono();
         telefono.setCodigoArea(request.getTelefono().getCodigoArea());
@@ -73,21 +57,28 @@ public class AuthService {
 
         personaRepository.save(persona);
 
-        String token = jwtUtil.generateToken(persona.getEmail(), persona.getRol().name());
+        String token = jwtUtil.generateToken(persona.getUsername(), persona.getRol().name());
 
         return toAuthResponse(persona, token);
     }
 
     public AuthResponse login(LoginRequest request) {
 
-        Persona persona = personaRepository.findByEmail(request.getEmail())
-            .orElseThrow(() -> new InvalidCredentialsException("Email o contraseña incorrectos"));
+        Persona persona = personaRepository.findByUsername(request.getUsername())
+            .orElseThrow(() -> new InvalidCredentialsException("Usuario o contraseña incorrectos"));
 
         if (!passwordEncoder.matches(request.getPassword(), persona.getPassword())) {
-            throw new InvalidCredentialsException("Email o contraseña incorrectos");
+            throw new InvalidCredentialsException("Usuario o contraseña incorrectos");
         }
 
-        String token = jwtUtil.generateToken(persona.getEmail(), persona.getRol().name());
+        // Un empleado dado de baja no puede loguearse. Mismo mensaje genérico
+        // que el resto de los rechazos de este método: no revela si la cuenta
+        // existe o si simplemente está inactiva.
+        if (persona instanceof Empleado emp && emp.getFechaBaja() != null) {
+            throw new InvalidCredentialsException("Usuario o contraseña incorrectos");
+        }
+
+        String token = jwtUtil.generateToken(persona.getUsername(), persona.getRol().name());
 
         return toAuthResponse(persona, token);
     }
@@ -101,9 +92,10 @@ public class AuthService {
             token,
             persona.getNombre(),
             persona.getApellido(),
-            persona.getEmail(),
+            persona.getUsername(),
             persona.getRol(),
-            telefono
+            telefono,
+            jwtUtil.extractExpirationMillis(token)
         );
     }
 }

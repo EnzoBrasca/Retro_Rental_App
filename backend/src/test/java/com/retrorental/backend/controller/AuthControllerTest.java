@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.retrorental.backend.config.SecurityConfig;
-import com.retrorental.backend.dto.request.DireccionRequest;
 import com.retrorental.backend.dto.request.LoginRequest;
 import com.retrorental.backend.dto.request.RegisterRequest;
 import com.retrorental.backend.dto.request.TelefonoRequest;
@@ -40,18 +39,7 @@ class AuthControllerTest extends AbstractControllerTest {
         req.setNombre("Juan");
         req.setApellido("Perez");
         req.setDocumento("30123456");
-        req.setEmail("juan@example.com");
         req.setPassword("password123");
-        req.setRol(Rol.EMPLEADO);
-
-        DireccionRequest dir = new DireccionRequest();
-        dir.setCalle("San Martin");
-        dir.setNumero("123");
-        dir.setCiudad("Cordoba");
-        dir.setProvincia("Cordoba");
-        dir.setCodigoPostal("5000");
-        dir.setBarrio("Centro");
-        req.setDireccion(dir);
 
         TelefonoRequest tel = new TelefonoRequest();
         tel.setCodigoArea("351");
@@ -63,20 +51,20 @@ class AuthControllerTest extends AbstractControllerTest {
     @Test
     void register_devuelve200_conDatosValidos() throws Exception {
         when(authService.register(any())).thenReturn(
-            new AuthResponse("token-abc", "Juan", "Perez", "juan@example.com", Rol.EMPLEADO, "342 5551234"));
+            new AuthResponse("token-abc", "Juan", "Perez", "juanperez", Rol.EMPLEADO, "342 5551234", 1_700_000_000_000L));
 
         mockMvc.perform(post("/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(validRegister())))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.token").value("token-abc"))
+            .andExpect(jsonPath("$.username").value("juanperez"))
             .andExpect(jsonPath("$.rol").value("EMPLEADO"));
     }
 
     @Test
-    void register_devuelve400_conEmailInvalidoYPasswordCorta() throws Exception {
+    void register_devuelve400_conPasswordCorta() throws Exception {
         RegisterRequest req = validRegister();
-        req.setEmail("no-es-un-email");
         req.setPassword("123");
 
         mockMvc.perform(post("/auth/register")
@@ -88,25 +76,25 @@ class AuthControllerTest extends AbstractControllerTest {
     }
 
     @Test
-    void register_devuelve409_conEmailDuplicado() throws Exception {
+    void register_devuelve409_conDocumentoDuplicado() throws Exception {
         when(authService.register(any())).thenThrow(new ConflictException(
-            ErrorCode.EMAIL_ALREADY_EXISTS, "Ya existe un usuario con ese email", "email"));
+            ErrorCode.DOCUMENTO_ALREADY_EXISTS, "Ya existe un usuario con ese documento", "documento"));
 
         mockMvc.perform(post("/auth/register")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(validRegister())))
             .andExpect(status().isConflict())
-            .andExpect(jsonPath("$.code").value("EMAIL_ALREADY_EXISTS"))
-            .andExpect(jsonPath("$.field").value("email"));
+            .andExpect(jsonPath("$.code").value("DOCUMENTO_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.field").value("documento"));
     }
 
     @Test
     void login_devuelve200_conCredencialesValidas() throws Exception {
         when(authService.login(any())).thenReturn(
-            new AuthResponse("token-abc", "Juan", "Perez", "juan@example.com", Rol.ADMINISTRADOR, "342 5551234"));
+            new AuthResponse("token-abc", "Juan", "Perez", "juanperez", Rol.ADMINISTRADOR, "342 5551234", 1_700_000_000_000L));
 
         LoginRequest req = new LoginRequest();
-        req.setEmail("juan@example.com");
+        req.setUsername("juanperez");
         req.setPassword("password123");
 
         mockMvc.perform(post("/auth/login")
@@ -114,16 +102,17 @@ class AuthControllerTest extends AbstractControllerTest {
                 .content(objectMapper.writeValueAsString(req)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.token").value("token-abc"))
-            .andExpect(jsonPath("$.rol").value("ADMINISTRADOR"));
+            .andExpect(jsonPath("$.rol").value("ADMINISTRADOR"))
+            .andExpect(jsonPath("$.expiresAt").value(1_700_000_000_000L));
     }
 
     @Test
     void login_devuelve401_conCredencialesIncorrectas() throws Exception {
         when(authService.login(any())).thenThrow(
-            new InvalidCredentialsException("Email o contraseña incorrectos"));
+            new InvalidCredentialsException("Usuario o contraseña incorrectos"));
 
         LoginRequest req = new LoginRequest();
-        req.setEmail("juan@example.com");
+        req.setUsername("juanperez");
         req.setPassword("wrong");
 
         mockMvc.perform(post("/auth/login")
