@@ -16,8 +16,14 @@
 # quedarse afuera del propio servidor.
 #
 # Uso, desde TU maquina (con el repo clonado):
-#   scp infra/scripts/server-bootstrap.sh root@IP_DEL_VPS:/root/
-#   ssh root@IP_DEL_VPS 'bash /root/server-bootstrap.sh enzo "$(cat ~/.ssh/id_ed25519.pub)"'
+#   scp -P PUERTO infra/scripts/server-bootstrap.sh root@IP_DEL_VPS:/root/
+#   ssh -p PUERTO root@IP_DEL_VPS 'bash /root/server-bootstrap.sh enzo "$(cat ~/.ssh/id_ed25519.pub)"'
+#
+# OJO CON EL PUERTO: varios proveedores no usan el 22. DonWeb, por ejemplo,
+# asigna uno aleatorio que figura en el panel (Cloud & IaaS > Administrar >
+# Software y Accesos > SSH). El script detecta solo el puerto real para el
+# firewall, pero vos necesitas saberlo para conectarte.
+# Ojo tambien con la mayuscula: scp usa -P y ssh usa -p.
 
 set -euo pipefail
 
@@ -70,9 +76,24 @@ chown -R "${USUARIO}:${USUARIO}" "${HOME_USUARIO}/.ssh"
 
 echo "==> [3/5] Configurando el firewall..."
 apt-get install -y -qq ufw
-# El orden importa: primero se permite SSH, DESPUES se activa. Al reves, ufw
-# corta tu propia sesion en el acto.
-ufw allow 22/tcp   comment 'SSH'
+
+# NO se asume el puerto 22. Varios proveedores (DonWeb entre ellos) mueven SSH a
+# un puerto aleatorio por seguridad. Abrir el 22 a ciegas y activar ufw abriria
+# un puerto que no se usa mientras cierra el que si, expulsandote del servidor
+# en el acto. Se lee el puerto real de la config efectiva de sshd.
+PUERTOS_SSH="$(sshd -T 2>/dev/null | awk '/^port /{print $2}')"
+if [[ -z "$PUERTOS_SSH" ]]; then
+    echo "ERROR: no pude detectar en que puerto escucha SSH." >&2
+    echo "Sin ese dato, activar el firewall te dejaria afuera. Abortando." >&2
+    echo "Revisalo con: sshd -T | grep '^port'" >&2
+    exit 1
+fi
+echo "    SSH detectado en el/los puerto(s): ${PUERTOS_SSH}"
+
+# El orden importa: primero se permite, DESPUES se activa.
+for puerto in $PUERTOS_SSH; do
+    ufw allow "${puerto}/tcp" comment 'SSH'
+done
 ufw allow 80/tcp   comment 'HTTP (redirect + validacion ACME)'
 ufw allow 443/tcp  comment 'HTTPS'
 ufw --force enable

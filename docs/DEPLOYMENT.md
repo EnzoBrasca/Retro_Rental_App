@@ -51,17 +51,35 @@ o correr `contextLoads` desde el host — ver `docs/backend-session-*` y el READ
 Desde **tu máquina**, con el repo clonado:
 
 ```bash
+PUERTO=22   # ver aviso de abajo: puede NO ser 22
+
 # 1. Preparar el servidor: usuario, firewall, swap y Docker
-scp infra/scripts/server-bootstrap.sh root@IP_DEL_VPS:/root/
-ssh root@IP_DEL_VPS 'bash /root/server-bootstrap.sh enzo "$(cat ~/.ssh/id_ed25519.pub)"'
+scp -P $PUERTO infra/scripts/server-bootstrap.sh root@IP_DEL_VPS:/root/
+ssh -p $PUERTO root@IP_DEL_VPS 'bash /root/server-bootstrap.sh enzo "$(cat ~/.ssh/id_ed25519.pub)"'
 
 # 2. VERIFICAR el acceso por clave en una terminal nueva, sin cerrar la otra
-ssh enzo@IP_DEL_VPS
+ssh -p $PUERTO enzo@IP_DEL_VPS
 
 # 3. Recién si el paso 2 funcionó, endurecer SSH
-scp infra/scripts/server-harden-ssh.sh enzo@IP_DEL_VPS:/tmp/
-ssh enzo@IP_DEL_VPS 'sudo bash /tmp/server-harden-ssh.sh'
+scp -P $PUERTO infra/scripts/server-harden-ssh.sh enzo@IP_DEL_VPS:/tmp/
+ssh -p $PUERTO enzo@IP_DEL_VPS 'sudo bash /tmp/server-harden-ssh.sh'
 ```
+
+**El puerto de SSH puede no ser el 22.** Varios proveedores lo mueven a uno
+aleatorio por seguridad. En DonWeb figura en *Cloud & IaaS → Administrar →
+Software y Accesos → pestaña SSH*. El síntoma de usar el puerto equivocado es
+`Operation timed out` (no `Connection refused`), porque el firewall del proveedor
+descarta el paquete en silencio. Ojo también con la mayúscula: `scp` usa `-P` y
+`ssh` usa `-p`.
+
+`server-bootstrap.sh` **detecta solo** el puerto real leyendo la configuración
+efectiva de `sshd` y abre ese en el firewall, en vez de asumir el 22. Si asumiera,
+activar `ufw` cerraría el puerto por el que estás conectado y te expulsaría.
+
+**El firewall del proveedor es otra capa.** `ufw` protege el servidor por dentro,
+pero DonWeb tiene además un firewall virtual delante. Hay que abrir ahí los
+puertos **80 y 443**, o nginx quedará inalcanzable desde internet y la emisión de
+certificados fallará.
 
 **Los dos scripts están separados a propósito.** `server-harden-ssh.sh` desactiva
 el login por contraseña, que hasta ese momento es tu vía de entrada de respaldo.
