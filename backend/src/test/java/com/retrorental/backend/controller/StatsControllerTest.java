@@ -32,7 +32,7 @@ class StatsControllerTest extends AbstractControllerTest {
     private StatsResponse sample() {
         return new StatsResponse(
             LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8),
-            120.5, new BigDecimal("240000"), 4L, 3, 40.16, List.of());
+            120.5, new BigDecimal("240000"), 4L, 3, 40.16, List.of(), List.of());
     }
 
     @Test
@@ -53,7 +53,7 @@ class StatsControllerTest extends AbstractControllerTest {
     @Test
     @WithMockUser(roles = "ADMINISTRADOR")
     void daily_comoAdmin_devuelve200() throws Exception {
-        when(statsService.daily(any())).thenReturn(sample());
+        when(statsService.daily(any(), any(), any())).thenReturn(sample());
 
         mockMvc.perform(get("/admin/stats/daily"))
             .andExpect(status().isOk())
@@ -63,7 +63,7 @@ class StatsControllerTest extends AbstractControllerTest {
     @Test
     @WithMockUser(roles = "ADMINISTRADOR")
     void weekly_comoAdmin_devuelve200() throws Exception {
-        when(statsService.weekly(any())).thenReturn(sample());
+        when(statsService.weekly(any(), any(), any())).thenReturn(sample());
 
         mockMvc.perform(get("/admin/stats/weekly").param("fecha", "2026-07-08"))
             .andExpect(status().isOk())
@@ -73,7 +73,7 @@ class StatsControllerTest extends AbstractControllerTest {
     @Test
     @WithMockUser(roles = "ADMINISTRADOR")
     void monthly_comoAdmin_devuelve200() throws Exception {
-        when(statsService.monthly(any())).thenReturn(sample());
+        when(statsService.monthly(any(), any(), any())).thenReturn(sample());
 
         mockMvc.perform(get("/admin/stats/monthly"))
             .andExpect(status().isOk())

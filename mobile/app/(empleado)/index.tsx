@@ -25,13 +25,6 @@ const estadoStyle: Record<Estado, { bg: string; color: string }> = {
   EN_MANTENIMIENTO: { bg: colors.dangerBg, color: colors.danger },
 };
 
-// Opciones de filtro. key null = "Todos" (sin filtrar por esa dimensión).
-const ESTADO_FILTERS: { key: Estado | null; label: string }[] = [
-  { key: null, label: 'Todos' },
-  { key: 'DISPONIBLE', label: estadoLabel.DISPONIBLE },
-  { key: 'EN_USO', label: estadoLabel.EN_USO },
-  { key: 'EN_MANTENIMIENTO', label: estadoLabel.EN_MANTENIMIENTO },
-];
 const TIPO_FILTERS: { key: TipoVehiculo | null; label: string }[] = [
   { key: null, label: 'Todos' },
   { key: 'MAQUINA', label: tipoVehiculoLabel.MAQUINA },
@@ -186,9 +179,16 @@ export default function FlotaScreen() {
         </View>
         <Text style={styles.h1}>FLOTA</Text>
       </View>
-      <Pressable style={styles.helpBtn} onPress={open}>
-        <Text style={styles.helpText}>?</Text>
-      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        {user?.rol === 'ADMINISTRADOR' && (
+          <Pressable style={styles.backAdminBtn} onPress={() => router.replace('/(administrador)')}>
+            <Text style={styles.backAdminText}>‹ Admin</Text>
+          </Pressable>
+        )}
+        <Pressable style={styles.helpBtn} onPress={open}>
+          <Text style={styles.helpText}>?</Text>
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -234,7 +234,7 @@ export default function FlotaScreen() {
           autoCapitalize="characters"
           autoCorrect={false}
         />
-        <FilterRow options={ESTADO_FILTERS} value={estadoF} onChange={setEstadoF} />
+        
         <FilterRow options={TIPO_FILTERS} value={tipoF} onChange={setTipoF} />
         <FilterRow options={COMBUSTIBLE_FILTERS} value={combF} onChange={setCombF} />
 
@@ -269,6 +269,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   helpText: { color: colors.primary, fontSize: 16, fontFamily: fonts.sansSemi },
+  backAdminBtn: {
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#1F2226',
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backAdminText: { color: colors.primary, fontSize: 12, fontFamily: fonts.sansSemi },
   statsRow: { flexDirection: 'row', gap: 9, marginBottom: 16 },
   statCard: {
     flex: 1,

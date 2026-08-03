@@ -9,7 +9,7 @@ public record TicketResponse(
     Integer idPrecio,
     Integer idProveedor,
     Integer idVehiculo,
-    String empleadoEmail,
+    String empleadoUsername,
     // Lo persistido: la key del objeto en MinIO.
     String ticketFotoKey,
     // Lo derivado en cada lectura: URL presignada temporal.

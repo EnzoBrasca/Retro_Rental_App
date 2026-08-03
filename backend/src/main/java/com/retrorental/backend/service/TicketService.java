@@ -5,7 +5,6 @@ import com.retrorental.backend.dto.response.TicketAnalysisResponse;
 import com.retrorental.backend.dto.response.TicketResponse;
 import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
-import com.retrorental.backend.exception.ForbiddenException;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.exception.TicketAnalysisException;
 import com.retrorental.backend.model.Empleado;
@@ -53,8 +52,8 @@ public class TicketService {
     private final ObjectProvider<TicketAnalysisService> analysisProvider;
 
     @Transactional
-    public TicketResponse create(CreateTicketRequest request, String empleadoEmail) {
-        Empleado empleado = resolveEmpleado(empleadoEmail);
+    public TicketResponse create(CreateTicketRequest request, String empleadoUsername) {
+        Persona persona = resolvePersona(empleadoUsername);
 
         // Validamos las FK baratas ANTES de subir archivos, para no dejar
         // objetos huerfanos en MinIO si el request es invalido.
@@ -81,13 +80,22 @@ public class TicketService {
         // Pool compartido: el operario "actual" del vehiculo se actualiza en cada
         // carga al empleado que la registra. Así la card de la flota muestra quién
         // lo usó por última vez, pisándose cada vez que otro operario le carga.
-        vehiculo.setOperario(empleado);
-        vehiculoRepository.save(vehiculo);
+        // Vehiculo.operario es de tipo Empleado, así que solo se actualiza cuando
+        // quien carga es un empleado; un administrador puede cargar tickets pero
+        // no "toma" el vehiculo como operario del pool.
+        if (persona instanceof Empleado emp) {
+            vehiculo.setOperario(emp);
+            vehiculoRepository.save(vehiculo);
+        }
 
         // Subimos a MinIO y guardamos SOLO la key (la URL presignada expira).
-        String ticketFotoKey = storageService.upload(request.getTicketFoto(), "tickets");
-        // La foto del tablero es opcional (ver CreateTicketRequest): solo se sube
-        // si el cliente la envió. Sin ella, la key queda null.
+        // La foto del ticket es OPCIONAL (ver CreateTicketRequest): muchos empleados
+        // en campo, con teléfonos de gama baja o baja alfabetización digital, cargan
+        // sin comprobante. Solo se sube si el cliente la envió; sin ella, key null.
+        String ticketFotoKey = request.getTicketFoto() != null && !request.getTicketFoto().isEmpty()
+            ? storageService.upload(request.getTicketFoto(), "tickets")
+            : null;
+        // La foto del tablero también es opcional: solo se sube si vino.
         String tableroFotoKey = request.getTableroFoto() != null && !request.getTableroFoto().isEmpty()
             ? storageService.upload(request.getTableroFoto(), "tableros")
             : null;
@@ -97,7 +105,7 @@ public class TicketService {
         ticket.setFechaCarga(request.getFechaCarga() != null ? request.getFechaCarga() : LocalDateTime.now());
         ticket.setPrecio(precio);
         ticket.setProveedor(proveedor);
-        ticket.setEmpleado(empleado);
+        ticket.setPersona(persona);
         ticket.setVehiculo(vehiculo);
         ticket.setTicketFotoUrl(ticketFotoKey);
         ticket.setTableroFotoUrl(tableroFotoKey);
@@ -258,7 +266,7 @@ public class TicketService {
             // que el fetch join es seguro con paginación.
             if (query != null && query.getResultType() != Long.class
                     && query.getResultType() != long.class) {
-                root.fetch("empleado");
+                root.fetch("persona");
                 root.fetch("proveedor");
                 root.fetch("precio");
                 root.fetch("vehiculo");
@@ -266,7 +274,7 @@ public class TicketService {
 
             List<Predicate> predicates = new ArrayList<>();
             if (empleadoId != null) {
-                predicates.add(cb.equal(root.get("empleado").get("id"), empleadoId));
+                predicates.add(cb.equal(root.get("persona").get("id"), empleadoId));
             }
             if (proveedorId != null) {
                 predicates.add(cb.equal(root.get("proveedor").get("id"), proveedorId));
@@ -302,21 +310,16 @@ public class TicketService {
      * de un parámetro, para que solo pueda ver los suyos.
      */
     @Transactional(readOnly = true)
-    public List<TicketResponse> listMine(String empleadoEmail) {
-        Empleado empleado = resolveEmpleado(empleadoEmail);
-        return ticketRepository.findByEmpleadoIdOrderByFechaCargaDesc(empleado.getId())
+    public List<TicketResponse> listMine(String empleadoUsername) {
+        Persona persona = resolvePersona(empleadoUsername);
+        return ticketRepository.findByPersonaIdOrderByFechaCargaDesc(persona.getId())
             .stream().map(this::toResponse).toList();
     }
 
-    private Empleado resolveEmpleado(String email) {
-        Persona persona = personaRepository.findByEmail(email)
+    private Persona resolvePersona(String username) {
+        return personaRepository.findByUsername(username)
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.USER_NOT_FOUND, "Usuario no encontrado"));
-        if (!(persona instanceof Empleado empleado)) {
-            throw new ForbiddenException(
-                ErrorCode.NOT_EMPLOYEE, "Solo un empleado puede cargar tickets");
-        }
-        return empleado;
     }
 
     // Valida que el vehiculo se pueda cargar: que exista (404), que no esté dado
@@ -348,8 +351,10 @@ public class TicketService {
     // Construye la respuesta generando URLs presignadas frescas a partir de las
     // keys almacenadas. La URL NUNCA se persiste: se calcula en cada lectura.
     private TicketResponse toResponse(Ticket ticket) {
-        // La foto del tablero es opcional: si no hay key, no se genera URL (evita
-        // pedirle a MinIO una presignada para un objeto inexistente).
+        // Tanto la foto del ticket como la del tablero son opcionales: si no hay key,
+        // no se genera URL (evita pedirle a MinIO una presignada para un objeto
+        // inexistente, que además rompería con una key null).
+        String ticketKey = ticket.getTicketFotoUrl();
         String tableroKey = ticket.getTableroFotoUrl();
         return new TicketResponse(
             ticket.getId(),
@@ -358,9 +363,9 @@ public class TicketService {
             ticket.getPrecio().getId(),
             ticket.getProveedor().getId(),
             ticket.getVehiculo().getId(),
-            ticket.getEmpleado().getEmail(),
-            ticket.getTicketFotoUrl(),
-            storageService.getUrl(ticket.getTicketFotoUrl()),
+            ticket.getPersona().getUsername(),
+            ticketKey,
+            ticketKey != null ? storageService.getUrl(ticketKey) : null,
             tableroKey,
             tableroKey != null ? storageService.getUrl(tableroKey) : null
         );

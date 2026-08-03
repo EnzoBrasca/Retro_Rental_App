@@ -47,8 +47,13 @@ function RootLayoutNav() {
     } else if (user?.rol === 'EMPLEADO' && segments[0] !== '(empleado)') {
       // Empleado logueado → su sección.
       router.replace('/(empleado)');
-    } else if (user?.rol === 'ADMINISTRADOR' && segments[0] !== '(administrador)') {
-      // Administrador logueado → su sección.
+    } else if (
+      user?.rol === 'ADMINISTRADOR' &&
+      segments[0] !== '(administrador)' &&
+      segments[0] !== '(empleado)'
+    ) {
+      // Administrador logueado → su sección (pero puede entrar a "modo operario"
+      // en (empleado) sin ser expulsado).
       router.replace('/(administrador)');
     }
   }, [user, segments, isLoading]);

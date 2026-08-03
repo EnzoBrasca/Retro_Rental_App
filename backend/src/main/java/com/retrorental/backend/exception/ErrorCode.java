@@ -14,7 +14,6 @@ import org.springframework.http.HttpStatus;
 public enum ErrorCode {
 
     // --- Autenticacion / registro ---
-    EMAIL_ALREADY_EXISTS(HttpStatus.CONFLICT),
     DOCUMENTO_ALREADY_EXISTS(HttpStatus.CONFLICT),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
 
@@ -29,6 +28,10 @@ public enum ErrorCode {
     VEHICULO_NOT_ASSIGNED(HttpStatus.FORBIDDEN),
     VEHICULO_ALREADY_ASSIGNED(HttpStatus.CONFLICT),
     VEHICULO_NOT_AVAILABLE(HttpStatus.CONFLICT),
+
+    // --- Empleados ---
+    EMPLEADO_NOT_FOUND(HttpStatus.NOT_FOUND),
+    EMPLEADO_ALREADY_INACTIVE(HttpStatus.CONFLICT),
 
     // --- Tickets ---
     TICKET_NOT_FOUND(HttpStatus.NOT_FOUND),

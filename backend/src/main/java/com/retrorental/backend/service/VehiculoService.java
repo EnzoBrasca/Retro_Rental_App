@@ -118,8 +118,8 @@ public class VehiculoService {
      * ticket (solo puede cargar sobre vehiculos que tiene asignados).
      */
     @Transactional(readOnly = true)
-    public List<VehiculoResponse> listAsignados(String empleadoEmail) {
-        Persona persona = personaRepository.findByEmail(empleadoEmail)
+    public List<VehiculoResponse> listAsignados(String empleadoUsername) {
+        Persona persona = personaRepository.findByUsername(empleadoUsername)
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.USER_NOT_FOUND, "Usuario no encontrado"));
         if (!(persona instanceof Empleado empleado)) {
@@ -140,8 +140,8 @@ public class VehiculoService {
      * ya lo tiene el mismo empleado, no falla. Al tomarlo pasa a EN_USO.
      */
     @Transactional
-    public VehiculoResponse tomar(String empleadoEmail, Integer vehiculoId) {
-        Empleado empleado = resolveEmpleado(empleadoEmail);
+    public VehiculoResponse tomar(String empleadoUsername, Integer vehiculoId) {
+        Empleado empleado = resolveEmpleado(empleadoUsername);
         Vehiculo vehiculo = vehiculoRepository.findById(vehiculoId)
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.VEHICULO_NOT_FOUND, "Vehiculo no encontrado"));
@@ -175,8 +175,8 @@ public class VehiculoService {
      * liberarlo el empleado que lo tiene asignado.
      */
     @Transactional
-    public void liberar(String empleadoEmail, Integer vehiculoId) {
-        Empleado empleado = resolveEmpleado(empleadoEmail);
+    public void liberar(String empleadoUsername, Integer vehiculoId) {
+        Empleado empleado = resolveEmpleado(empleadoUsername);
         Vehiculo vehiculo = vehiculoRepository.findById(vehiculoId)
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.VEHICULO_NOT_FOUND, "Vehiculo no encontrado"));
@@ -210,8 +210,8 @@ public class VehiculoService {
         );
     }
 
-    private Empleado resolveEmpleado(String email) {
-        Persona persona = personaRepository.findByEmail(email)
+    private Empleado resolveEmpleado(String username) {
+        Persona persona = personaRepository.findByUsername(username)
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.USER_NOT_FOUND, "Usuario no encontrado"));
         if (!(persona instanceof Empleado empleado)) {

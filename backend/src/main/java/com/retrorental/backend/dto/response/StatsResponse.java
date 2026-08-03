@@ -18,6 +18,7 @@ public record StatsResponse(
     long cantidadRegistros,
     int vehiculosActivos,
     double promedioLitrosPorVehiculo,
-    List<VehiculoConsumo> desglosePorVehiculo
+    List<ProveedorConsumo> desglosePorProveedor,
+    List<EmpleadoConsumo> desglosePorEmpleado
 ) {
 }

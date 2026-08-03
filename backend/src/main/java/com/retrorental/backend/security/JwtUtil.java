@@ -23,10 +23,10 @@ public class JwtUtil {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    // Genera un token JWT con el email y rol del usuario
-    public String generateToken(String email, String rol) {
+    // Genera un token JWT con el username y rol del usuario
+    public String generateToken(String username, String rol) {
         return Jwts.builder()
-                .subject(email)
+                .subject(username)
                 .claim("rol", rol)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
@@ -34,14 +34,21 @@ public class JwtUtil {
                 .compact();
     }
 
-    // Extrae el email del token
-    public String extractEmail(String token) {
+    // Extrae el username del token
+    public String extractUsername(String token) {
         return extractClaims(token).getSubject();
     }
 
     // Extrae el rol del token
     public String extractRol(String token) {
         return extractClaims(token).get("rol", String.class);
+    }
+
+    // Momento de expiracion del token, en epoch millis. Se lee del token ya
+    // firmado (no se recalcula) para que el cliente reciba exactamente el mismo
+    // instante que la API va a validar.
+    public long extractExpirationMillis(String token) {
+        return extractClaims(token).getExpiration().getTime();
     }
 
     // Verifica si el token es válido y no expiró

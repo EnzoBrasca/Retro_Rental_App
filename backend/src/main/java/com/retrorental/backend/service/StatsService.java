@@ -1,9 +1,11 @@
 package com.retrorental.backend.service;
 
+import com.retrorental.backend.dto.response.EmpleadoConsumo;
+import com.retrorental.backend.dto.response.ProveedorConsumo;
 import com.retrorental.backend.dto.response.StatsResponse;
-import com.retrorental.backend.dto.response.VehiculoConsumo;
+import com.retrorental.backend.model.Persona;
+import com.retrorental.backend.model.Proveedor;
 import com.retrorental.backend.model.Ticket;
-import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.repository.TicketRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,39 +37,54 @@ public class StatsService {
 
     /** Estadísticas de un día (default: hoy). */
     @Transactional(readOnly = true)
-    public StatsResponse daily(LocalDate fecha) {
+    public StatsResponse daily(LocalDate fecha, Integer vehiculoId, List<Integer> empleadoIds) {
         LocalDate dia = fecha != null ? fecha : LocalDate.now();
-        return statsForRange(dia, dia.plusDays(1));
+        return statsForRange(dia, dia.plusDays(1), vehiculoId, empleadoIds);
     }
 
     /** Estadísticas de la semana ISO (lunes a domingo) que contiene la fecha. */
     @Transactional(readOnly = true)
-    public StatsResponse weekly(LocalDate fecha) {
+    public StatsResponse weekly(LocalDate fecha, Integer vehiculoId, List<Integer> empleadoIds) {
         LocalDate base = fecha != null ? fecha : LocalDate.now();
         LocalDate lunes = base.with(DayOfWeek.MONDAY);
-        return statsForRange(lunes, lunes.plusWeeks(1));
+        return statsForRange(lunes, lunes.plusWeeks(1), vehiculoId, empleadoIds);
     }
 
     /** Estadísticas del mes calendario que contiene la fecha. */
     @Transactional(readOnly = true)
-    public StatsResponse monthly(LocalDate fecha) {
+    public StatsResponse monthly(LocalDate fecha, Integer vehiculoId, List<Integer> empleadoIds) {
         LocalDate base = fecha != null ? fecha : LocalDate.now();
         LocalDate primero = base.withDayOfMonth(1);
-        return statsForRange(primero, primero.plusMonths(1));
+        return statsForRange(primero, primero.plusMonths(1), vehiculoId, empleadoIds);
     }
 
     // Núcleo compartido. desdeInclusive/hastaExclusive son fechas; la consulta
-    // filtra por fechaCarga >= desde 00:00 y < hasta 00:00.
-    private StatsResponse statsForRange(LocalDate desdeInclusive, LocalDate hastaExclusive) {
+    // filtra por fechaCarga >= desde 00:00 y < hasta 00:00. vehiculoId y
+    // empleadoIds son filtros opcionales adicionales aplicados en memoria
+    // antes de agregar (null/vacío = sin filtrar).
+    private StatsResponse statsForRange(LocalDate desdeInclusive, LocalDate hastaExclusive,
+                                         Integer vehiculoId, List<Integer> empleadoIds) {
         LocalDateTime desde = desdeInclusive.atStartOfDay();
         LocalDateTime hasta = hastaExclusive.atStartOfDay();
         List<Ticket> tickets = ticketRepository.findForStats(desde, hasta);
 
+        if (vehiculoId != null) {
+            tickets = tickets.stream()
+                .filter(t -> t.getVehiculo().getId().equals(vehiculoId))
+                .toList();
+        }
+        if (empleadoIds != null && !empleadoIds.isEmpty()) {
+            tickets = tickets.stream()
+                .filter(t -> empleadoIds.contains(t.getPersona().getId()))
+                .toList();
+        }
+
         double totalLitros = 0d;
         BigDecimal gastoTotal = BigDecimal.ZERO;
-        // LinkedHashMap: acumula por vehiculo preservando orden de aparición
-        // (el orden final lo define el sort por litros, esto es solo estable).
-        Map<Integer, Acumulador> porVehiculo = new LinkedHashMap<>();
+        // LinkedHashMap: acumula preservando orden de aparición (el orden
+        // final lo define el sort por gasto, esto es solo estable).
+        Map<Integer, Acumulador> porProveedor = new LinkedHashMap<>();
+        Map<Integer, Acumulador> porEmpleado = new LinkedHashMap<>();
 
         for (Ticket t : tickets) {
             double litros = t.getLitros();
@@ -77,19 +94,35 @@ public class StatsService {
             totalLitros += litros;
             gastoTotal = gastoTotal.add(gasto);
 
-            Vehiculo v = t.getVehiculo();
-            porVehiculo
-                .computeIfAbsent(v.getId(), id -> new Acumulador(v.getPatente()))
+            Proveedor p = t.getProveedor();
+            porProveedor
+                .computeIfAbsent(p.getId(), id -> new Acumulador(p.getNombre()))
+                .add(litros, gasto);
+
+            Persona persona = t.getPersona();
+            porEmpleado
+                .computeIfAbsent(persona.getId(), id -> new Acumulador(persona.getNombre() + " " + persona.getApellido()))
                 .add(litros, gasto);
         }
 
-        List<VehiculoConsumo> desglose = new ArrayList<>();
-        porVehiculo.forEach((id, acc) -> desglose.add(new VehiculoConsumo(
-            id, acc.patente, redondearLitros(acc.litros), redondear(acc.gasto))));
-        // Top consumidores: mayor consumo primero.
-        desglose.sort(Comparator.comparingDouble(VehiculoConsumo::litros).reversed());
+        List<ProveedorConsumo> desglosePorProveedor = new ArrayList<>();
+        porProveedor.forEach((id, acc) -> desglosePorProveedor.add(new ProveedorConsumo(
+            id, acc.etiqueta, redondearLitros(acc.litros), redondear(acc.gasto))));
+        // Top proveedores: mayor gasto primero.
+        desglosePorProveedor.sort(Comparator.comparing(ProveedorConsumo::gasto, Comparator.reverseOrder()));
 
-        int vehiculosActivos = porVehiculo.size();
+        List<EmpleadoConsumo> desglosePorEmpleado = new ArrayList<>();
+        porEmpleado.forEach((id, acc) -> desglosePorEmpleado.add(new EmpleadoConsumo(
+            id, acc.etiqueta, redondearLitros(acc.litros), redondear(acc.gasto))));
+        // Top consumidores: mayor gasto primero.
+        desglosePorEmpleado.sort(Comparator.comparing(EmpleadoConsumo::gasto, Comparator.reverseOrder()));
+
+        // vehiculosActivos ya no se calcula por acumulacion: se cuentan los
+        // vehiculos distintos que aparecen en los tickets del período.
+        int vehiculosActivos = (int) tickets.stream()
+            .map(t -> t.getVehiculo().getId())
+            .distinct()
+            .count();
         double promedio = vehiculosActivos == 0 ? 0d : totalLitros / vehiculosActivos;
 
         return new StatsResponse(
@@ -100,7 +133,8 @@ public class StatsService {
             tickets.size(),
             vehiculosActivos,
             redondearLitros(promedio),
-            desglose
+            desglosePorProveedor,
+            desglosePorEmpleado
         );
     }
 
@@ -112,14 +146,14 @@ public class StatsService {
         return BigDecimal.valueOf(litros).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
-    // Acumulador mutable por vehiculo (solo dentro del cálculo).
+    // Acumulador mutable por proveedor/empleado (solo dentro del cálculo).
     private static final class Acumulador {
-        private final String patente;
+        private final String etiqueta;
         private double litros = 0d;
         private BigDecimal gasto = BigDecimal.ZERO;
 
-        private Acumulador(String patente) {
-            this.patente = patente;
+        private Acumulador(String etiqueta) {
+            this.etiqueta = etiqueta;
         }
 
         private void add(double litros, BigDecimal gasto) {

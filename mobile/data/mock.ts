@@ -53,7 +53,7 @@ export const HISTORY: Load[] = [
 
 export const PROFILE_FIELDS = [
   { label: 'Nombre completo', value: 'Juan Pérez' },
-  { label: 'Correo', value: 'juan.perez@vialsur.com' },
+  { label: 'Usuario', value: 'juan.perez' },
   { label: 'Teléfono', value: '+54 9 342 555-1234' },
 ];
 

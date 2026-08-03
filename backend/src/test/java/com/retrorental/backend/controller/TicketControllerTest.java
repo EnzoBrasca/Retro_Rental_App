@@ -37,12 +37,12 @@ class TicketControllerTest extends AbstractControllerTest {
 
     private TicketResponse sampleTicket() {
         return new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1,
-            "emp@example.com", "tickets/k1.jpg", "http://url/1",
+            "juanperez", "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2");
     }
 
     @Test
-    @WithMockUser(username = "emp@example.com", roles = "EMPLEADO")
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
     void crear_conDatosValidos_devuelve200() throws Exception {
         when(ticketService.create(any(), anyString())).thenReturn(sampleTicket());
 
@@ -61,6 +61,22 @@ class TicketControllerTest extends AbstractControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(1))
             .andExpect(jsonPath("$.litros").value(42.5));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_sinFoto_devuelve200() throws Exception {
+        // La foto del ticket es OPCIONAL: se puede registrar una carga sin
+        // comprobante (empleados en campo / equipos de gama baja).
+        when(ticketService.create(any(), anyString())).thenReturn(sampleTicket());
+
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "42.5")
+                .param("idPrecio", "1")
+                .param("idProveedor", "1")
+                .param("idVehiculo", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1));
     }
 
     @Test
@@ -113,7 +129,7 @@ class TicketControllerTest extends AbstractControllerTest {
 
         mockMvc.perform(get("/tickets/1"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.empleadoEmail").value("emp@example.com"));
+            .andExpect(jsonPath("$.empleadoUsername").value("juanperez"));
     }
 
     @Test
