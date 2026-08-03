@@ -26,13 +26,13 @@ export function ProfileView({ onBack }: { onBack?: () => void }) {
 
   // Edición local (mock): sin persistencia todavía. Se enchufará a un PUT del
   // backend en la fase de cableado.
-  // Índices de PROFILE_FIELDS: 0 = Nombre completo, 1 = Correo, 2 = Teléfono.
+  // Índices de PROFILE_FIELDS: 0 = Nombre completo, 1 = Usuario, 2 = Teléfono.
   // Los tres se pisan con los datos reales del usuario logueado.
   const [fields, setFields] = useState(() =>
     PROFILE_FIELDS.map((f, i) => {
       if (!user) return f;
       if (i === 0) return { ...f, value: fullName };
-      if (i === 1) return { ...f, value: user.email };
+      if (i === 1) return { ...f, value: user.username };
       if (i === 2) return { ...f, value: user.telefono ?? 'No cargado' };
       return f;
     }),

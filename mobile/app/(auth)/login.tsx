@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { loginRequest } from '../../services/auth';
+import { getLastUsername } from '../../services/session';
 import { colors, fonts, radius } from '../../constants/theme';
 import { Logo, Wordmark } from '../../components/ui';
 
@@ -21,32 +22,44 @@ import { Logo, Wordmark } from '../../components/ui';
  * Pantalla de Login (look FuelTrack sobre la autenticación JWT real).
  *
  * Flujo:
- *  1) El usuario escribe email + password.
+ *  1) El usuario escribe username + password.
  *  2) `loginRequest` pega a POST /auth/login.
  *  3) Si responde OK, `auth.login(res)` persiste la sesión.
  *  4) NO navegamos a mano: al cambiar `user`, el guardia del _layout raíz
  *     redirige automáticamente al grupo de rol que corresponda.
+ *
+ * El campo de usuario arranca con el del último que inició sesión en este
+ * dispositivo (venga de una sesión expirada o de un logout manual), así el
+ * reingreso es evidente y no se confunde una cuenta con otra.
  */
 export default function LoginScreen() {
   const { login } = useAuth();
   const router = useRouter();
 
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    // Solo prellenamos si el usuario todavía no escribió nada: la lectura del
+    // storage es asíncrona y no debe pisar lo que ya tipeó.
+    getLastUsername().then((last) => {
+      if (last) setUsername((current) => (current === '' ? last : current));
+    });
+  }, []);
+
   const handleLogin = async () => {
     setError(null);
 
-    if (!email.trim() || !password) {
-      setError('Completá email y contraseña.');
+    if (!username.trim() || !password) {
+      setError('Completá usuario y contraseña.');
       return;
     }
 
     try {
       setLoading(true);
-      const res = await loginRequest({ email: email.trim(), password });
+      const res = await loginRequest({ username: username.trim(), password });
       await login(res); // dispara la redirección por rol vía el _layout
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo iniciar sesión.');
@@ -77,14 +90,13 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Correo / Usuario</Text>
+            <Text style={styles.fieldLabel}>Usuario</Text>
             <TextInput
               style={styles.input}
-              value={email}
-              onChangeText={setEmail}
+              value={username}
+              onChangeText={setUsername}
               autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="tu@correo.com"
+              placeholder="Usuario"
               placeholderTextColor={colors.textDim}
               editable={!loading}
             />

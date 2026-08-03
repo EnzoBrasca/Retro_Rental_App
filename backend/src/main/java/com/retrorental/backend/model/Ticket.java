@@ -38,8 +38,8 @@ public class Ticket {
     private Proveedor proveedor;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_empleado", nullable = false)
-    private Empleado empleado;
+    @JoinColumn(name = "id_persona", nullable = false)
+    private Persona persona;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_vehiculo", nullable = false)

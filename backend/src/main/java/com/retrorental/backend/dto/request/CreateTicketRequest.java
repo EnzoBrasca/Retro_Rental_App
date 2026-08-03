@@ -33,9 +33,10 @@ public class CreateTicketRequest {
     @Positive(message = "El id de vehiculo debe ser válido")
     private Integer idVehiculo;
 
-    // Foto del ticket de carga (parte multipart "ticketFoto"). El contenido no
-    // vacío se valida en el StorageService al subirla.
-    @NotNull(message = "La foto del ticket es obligatoria")
+    // Foto del ticket de carga (parte multipart "ticketFoto"). OPCIONAL: el
+    // empleado puede registrar la carga sin comprobante (equipos de gama baja /
+    // baja alfabetización digital). Si viene, el StorageService valida que no
+    // esté vacía al subirla.
     private MultipartFile ticketFoto;
 
     // Foto del tablero del vehiculo (parte multipart "tableroFoto"). OPCIONAL:

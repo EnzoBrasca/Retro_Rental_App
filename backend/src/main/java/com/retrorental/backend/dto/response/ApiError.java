@@ -6,7 +6,7 @@ import java.util.List;
  * Cuerpo estandar de una respuesta de error de la API.
  *
  * @param status  HTTP status numerico (ej. 400, 404, 409)
- * @param code    codigo estable legible por maquina (ej. "EMAIL_ALREADY_EXISTS").
+ * @param code    codigo estable legible por maquina (ej. "DOCUMENTO_ALREADY_EXISTS").
  *                El mobile switchea sobre este valor, NO sobre el texto.
  * @param message mensaje legible para mostrar al usuario (ver services/api.ts)
  * @param field   campo culpable cuando aplica; null si el error es global

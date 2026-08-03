@@ -44,13 +44,13 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
-        String email = jwtUtil.extractEmail(token);
+        String username = jwtUtil.extractUsername(token);
         String rol = jwtUtil.extractRol(token);
 
         // Carga el usuario en el contexto de seguridad de Spring
         UsernamePasswordAuthenticationToken auth =
             new UsernamePasswordAuthenticationToken(
-                email,
+                username,
                 null,
                 List.of(new SimpleGrantedAuthority("ROLE_" + rol))
             );

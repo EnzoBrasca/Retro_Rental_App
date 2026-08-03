@@ -2,14 +2,21 @@ import { api } from './api';
 
 /**
  * Estadísticas de consumo para el panel del administrador. Espejo de
- * StatsResponse. El backend agrega SOLO por vehiculo (desglosePorVehiculo);
- * los desgloses por proveedor/operario no existen todavía en el backend.
+ * StatsResponse. El backend agrega por proveedor (desglosePorProveedor) y por
+ * empleado (desglosePorEmpleado).
  */
 export type StatsRange = 'daily' | 'weekly' | 'monthly';
 
-export interface VehiculoConsumo {
-  vehiculoId: number;
-  patente: string;
+export interface ProveedorConsumo {
+  proveedorId: number;
+  nombre: string;
+  litros: number;
+  gasto: number;
+}
+
+export interface EmpleadoConsumo {
+  empleadoId: number;
+  nombreCompleto: string;
   litros: number;
   gasto: number;
 }
@@ -22,9 +29,23 @@ export interface Stats {
   cantidadRegistros: number;
   vehiculosActivos: number;
   promedioLitrosPorVehiculo: number;
-  desglosePorVehiculo: VehiculoConsumo[];
+  desglosePorProveedor: ProveedorConsumo[];
+  desglosePorEmpleado: EmpleadoConsumo[];
 }
 
-export function getStats(range: StatsRange): Promise<Stats> {
-  return api.get<Stats>(`/admin/stats/${range}`);
+export interface StatsFilters {
+  fecha?: string;
+  vehiculoId?: number | null;
+  empleadoIds?: number[];
+}
+
+export function getStats(range: StatsRange, opts?: StatsFilters): Promise<Stats> {
+  const params = new URLSearchParams();
+  if (opts?.fecha) params.set('fecha', opts.fecha);
+  if (opts?.vehiculoId != null) params.set('vehiculoId', String(opts.vehiculoId));
+  if (opts?.empleadoIds && opts.empleadoIds.length > 0) {
+    params.set('empleadoIds', opts.empleadoIds.join(','));
+  }
+  const qs = params.toString();
+  return api.get<Stats>(`/admin/stats/${range}${qs ? `?${qs}` : ''}`);
 }

@@ -12,9 +12,9 @@ import java.util.List;
 @Repository
 public interface TicketRepository
         extends JpaRepository<Ticket, Integer>, JpaSpecificationExecutor<Ticket> {
-    List<Ticket> findByEmpleadoId(Integer empleadoId);
-    // Historial del empleado: sus tickets, más recientes primero.
-    List<Ticket> findByEmpleadoIdOrderByFechaCargaDesc(Integer empleadoId);
+    List<Ticket> findByPersonaId(Integer personaId);
+    // Historial de la persona: sus tickets, más recientes primero.
+    List<Ticket> findByPersonaIdOrderByFechaCargaDesc(Integer personaId);
     List<Ticket> findByProveedorId(Integer proveedorId);
     List<Ticket> findByFechaCargaBetween(LocalDateTime desde, LocalDateTime hasta);
     // El listado con filtros opcionales para el admin usa Specification
@@ -22,12 +22,15 @@ public interface TicketRepository
 
     /**
      * Tickets de un período [desde, hasta) para el cálculo de estadísticas.
-     * Límite superior EXCLUSIVO. Trae precio y vehiculo con JOIN FETCH para
-     * evitar el N+1 al agregar el gasto y el desglose por vehiculo en memoria.
+     * Límite superior EXCLUSIVO. Trae precio, vehiculo, persona y proveedor
+     * con JOIN FETCH para evitar el N+1 al agregar el gasto y los desgloses
+     * por vehiculo/empleado/proveedor en memoria.
      */
     @Query("SELECT t FROM Ticket t "
         + "JOIN FETCH t.precio "
         + "JOIN FETCH t.vehiculo "
+        + "JOIN FETCH t.persona "
+        + "JOIN FETCH t.proveedor "
         + "WHERE t.fechaCarga >= :desde AND t.fechaCarga < :hasta")
     List<Ticket> findForStats(@Param("desde") LocalDateTime desde,
                               @Param("hasta") LocalDateTime hasta);

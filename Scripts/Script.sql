@@ -1,1 +1,3 @@
-select * from precios
+select * from Personas
+
+delete from Personas

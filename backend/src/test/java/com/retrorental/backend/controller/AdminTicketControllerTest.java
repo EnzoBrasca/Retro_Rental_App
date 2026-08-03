@@ -75,6 +75,6 @@ class AdminTicketControllerTest extends AbstractControllerTest {
                 .param("page", "0")
                 .param("size", "20"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.content[0].empleadoEmail").value("emp@example.com"));
+            .andExpect(jsonPath("$.content[0].empleadoUsername").value("emp@example.com"));
     }
 }

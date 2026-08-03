@@ -20,6 +20,7 @@ import { useRef } from 'react';
 import { colors, fonts, radius } from '../../constants/theme';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { OptionChips } from '../../components/fuel/OptionChips';
+import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
 import { getVehiculos } from '../../services/vehiculos';
 import { getProveedores, getPrecios } from '../../services/catalogos';
@@ -30,6 +31,7 @@ type Stage = 'capture' | 'analyzing' | 'form';
 
 export default function EscanearScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   // El vehículo llega fijado desde la card de la flota (index.tsx). La pantalla
   // ya no elige vehículo: lo recibe por parámetro y lo muestra bloqueado.
   const params = useLocalSearchParams<{ idVehiculo?: string }>();
@@ -37,7 +39,9 @@ export default function EscanearScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
-  const [stage, setStage] = useState<Stage>('capture');
+  // Arranca en 'form': la carga es manual primero y la foto es OPCIONAL, se
+  // adjunta después con un botón ('capture' pasa a ser un overlay bajo demanda).
+  const [stage, setStage] = useState<Stage>('form');
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
 
@@ -66,12 +70,13 @@ export default function EscanearScreen() {
     return { vehiculos, proveedores, precios };
   });
 
-  // Al entrar a la pantalla, arrancamos siempre desde la cámara y limpiamos.
-  // El vehículo queda fijado al que llegó por parámetro; el resto del formulario
-  // se resetea para no arrastrar una carga previa entre entradas.
+  // Al entrar a la pantalla arrancamos en el FORMULARIO (carga manual) y limpiamos.
+  // La foto es opcional: se adjunta después. El vehículo queda fijado al que llegó
+  // por parámetro; el resto del formulario se resetea para no arrastrar una carga
+  // previa entre entradas.
   useFocusEffect(
     useCallback(() => {
-      setStage('capture');
+      setStage('form');
       setFotoUri(null);
       setError(null);
       setFechaCarga(null);
@@ -82,11 +87,10 @@ export default function EscanearScreen() {
     }, [paramVehiculoId]),
   );
 
-  // Al capturar/elegir la foto NO vamos directo al formulario: pasamos por la
-  // etapa 'analyzing', que corre el OCR con la pantalla de verificación aún sin
-  // montar. Así el formulario recién aparece con los datos ya resueltos y no
-  // existe ventana en la que el empleado pueda tocar campos mientras el OCR está
-  // en vuelo (elimina el problema de concurrencia de raíz).
+  // Al capturar/elegir la foto pasamos por la etapa 'analyzing' (overlay) mientras
+  // corre el OCR, y al terminar volvemos al formulario. Como ahora el empleado pudo
+  // haber tipeado datos ANTES de sacar la foto, el OCR solo autocompleta los campos
+  // que están vacíos: nunca pisa lo que el usuario ya cargó a mano (ver runAnalysis).
   const handlePhoto = (uri: string) => {
     setFotoUri(uri);
     setStage('analyzing');
@@ -109,8 +113,10 @@ export default function EscanearScreen() {
         await refetch();
       }
 
-      if (r.litros != null) setLitros(String(r.litros));
-      if (r.idProveedor != null) setIdProveedor(r.idProveedor);
+      // Solo autocompletamos lo que el empleado NO cargó a mano: si ya tipeó
+      // litros o eligió proveedor, respetamos su dato y no lo pisamos con el OCR.
+      if (r.litros != null && litros.trim() === '') setLitros(String(r.litros));
+      if (r.idProveedor != null && idProveedor == null) setIdProveedor(r.idProveedor);
       // El precio no se setea: se deriva del proveedor + el combustible del
       // vehículo (que ya viene fijado desde la card). El backend ya dejó cargado
       // el precio de esa combinación.
@@ -132,7 +138,7 @@ export default function EscanearScreen() {
       const prellenado = r.litros != null || r.idProveedor != null || r.idPrecio != null;
       setAnalysisNote(
         prellenado
-          ? 'Datos pre-cargados desde el ticket. Revisalos antes de confirmar.'
+          ? 'Completamos los campos vacíos con lo leído del ticket (no pisamos lo que ya cargaste). Revisá antes de confirmar.'
           : 'No se reconocieron datos del ticket. Completá el formulario a mano.',
       );
     } catch {
@@ -177,7 +183,7 @@ export default function EscanearScreen() {
 
   const submit = async () => {
     setError(null);
-    if (!fotoUri) return setError('Falta la foto del ticket.');
+    // La foto NO se valida: es opcional. Se puede confirmar sin comprobante.
     if (!idVehiculo) return setError('Elegí el vehículo.');
     if (!idProveedor) return setError('Elegí el proveedor.');
     if (!precioSel) return setError('No hay un precio cargado para ese proveedor y combustible.');
@@ -190,7 +196,11 @@ export default function EscanearScreen() {
         fotoUri,
       );
       Alert.alert('Carga registrada', 'El ticket se guardó correctamente.');
-      router.navigate('/(empleado)/historial');
+      if (user?.rol === 'ADMINISTRADOR') {
+        router.replace('/(administrador)');
+      } else {
+        router.navigate('/(empleado)/historial');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo registrar la carga.');
     } finally {
@@ -219,6 +229,9 @@ export default function EscanearScreen() {
           <Pressable style={[styles.permBtn, styles.permBtnAlt]} onPress={pickImage}>
             <Text style={styles.permBtnAltText}>Elegir de la galería</Text>
           </Pressable>
+          <Pressable onPress={() => setStage('form')} hitSlop={10} style={{ marginTop: 6 }}>
+            <Text style={styles.permSkip}>Seguir sin foto</Text>
+          </Pressable>
         </SafeAreaView>
       );
     }
@@ -226,6 +239,9 @@ export default function EscanearScreen() {
       <View style={styles.cameraWrap}>
         <SafeAreaView style={styles.cameraHeader} edges={['top']}>
           <Text style={styles.cameraTitle}>FOTOGRAFIAR TICKET</Text>
+          <Pressable onPress={() => setStage('form')} hitSlop={10}>
+            <Text style={styles.cameraClose}>✕</Text>
+          </Pressable>
         </SafeAreaView>
         <View style={styles.viewport}>
           <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" enableTorch={flash} />
@@ -265,15 +281,6 @@ export default function EscanearScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} keyboardShouldPersistTaps="handled">
           <Text style={styles.h1}>REGISTRAR CARGA</Text>
-
-          {fotoUri && (
-            <View style={styles.photoRow}>
-              <Image source={{ uri: fotoUri }} style={styles.thumb} />
-              <Pressable onPress={() => setStage('capture')}>
-                <Text style={styles.changePhoto}>Cambiar foto</Text>
-              </Pressable>
-            </View>
-          )}
 
           {analysisNote && (
             <View style={styles.ocrBox}>
@@ -340,6 +347,29 @@ export default function EscanearScreen() {
                 <Text style={styles.totalValue}>{formatMoney(total)}</Text>
               </View>
 
+              <Text style={styles.label}>Foto del ticket</Text>
+              {fotoUri ? (
+                <View style={styles.photoRow}>
+                  <Image source={{ uri: fotoUri }} style={styles.thumb} />
+                  <View style={{ gap: 8 }}>
+                    <Pressable onPress={() => setStage('capture')} hitSlop={6}>
+                      <Text style={styles.changePhoto}>Cambiar foto</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setFotoUri(null)} hitSlop={6}>
+                      <Text style={styles.removePhoto}>Quitar foto</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <Pressable style={styles.attachBtn} onPress={() => setStage('capture')}>
+                  <Text style={styles.attachIcon}>📷</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.attachTitle}>Adjuntar foto del ticket</Text>
+                    <Text style={styles.attachSub}>Opcional · podés registrar la carga sin foto</Text>
+                  </View>
+                </Pressable>
+              )}
+
               {error && <Text style={styles.error}>{error}</Text>}
 
               <Pressable style={[styles.confirm, submitting && styles.confirmDisabled]} onPress={submit} disabled={submitting}>
@@ -366,10 +396,12 @@ const styles = StyleSheet.create({
   permBtnText: { color: colors.bgDeep, fontFamily: fonts.display, fontSize: 15, letterSpacing: 1, textTransform: 'uppercase' },
   permBtnAlt: { backgroundColor: colors.surfaceInput, borderWidth: 1, borderColor: colors.borderInput },
   permBtnAltText: { color: colors.text, fontFamily: fonts.sansSemi, fontSize: 14, textAlign: 'center' },
+  permSkip: { color: colors.textFaint, fontFamily: fonts.sans, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
 
   cameraWrap: { flex: 1, backgroundColor: colors.bgBlack },
   cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   cameraTitle: { fontFamily: fonts.display, fontSize: 16, letterSpacing: 1, color: colors.text },
+  cameraClose: { color: colors.text, fontSize: 20, paddingHorizontal: 4 },
   viewport: {
     flex: 1,
     marginHorizontal: 16,
@@ -397,6 +429,22 @@ const styles = StyleSheet.create({
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
   thumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: colors.surfaceInput },
   changePhoto: { color: colors.primary, fontFamily: fonts.sansSemi, fontSize: 13 },
+  removePhoto: { color: colors.danger, fontFamily: fonts.sansSemi, fontSize: 13 },
+  attachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.surfaceInput,
+    borderWidth: 1,
+    borderColor: colors.borderInput,
+    borderStyle: 'dashed',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  attachIcon: { fontSize: 22 },
+  attachTitle: { color: colors.text, fontFamily: fonts.sansSemi, fontSize: 14 },
+  attachSub: { color: colors.textFaint, fontFamily: fonts.sans, fontSize: 11.5, marginTop: 2 },
   ocrBox: {
     flexDirection: 'row',
     alignItems: 'center',

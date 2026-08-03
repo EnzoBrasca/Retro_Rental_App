@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { emitUnauthorized } from './session';
 
 // El backend (Spring Boot) corre en el puerto 8080 por defecto.
 // En el celular físico no podés usar localhost: necesitás la IP de tu máquina
@@ -26,6 +27,13 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
+    // 401 en una ruta autenticada = el token venció o dejó de ser válido → hay
+    // que cerrar la sesión. Ojo: /auth/login también responde 401 cuando las
+    // credenciales son incorrectas, y ESO no es una sesión expirada; por eso
+    // las rutas de auth quedan fuera.
+    if (response.status === 401 && !path.startsWith('/auth/')) {
+      emitUnauthorized();
+    }
     const error = await response.json().catch(() => ({}));
     throw new Error(error.message ?? `Error ${response.status}`);
   }

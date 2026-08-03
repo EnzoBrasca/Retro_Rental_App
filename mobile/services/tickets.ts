@@ -15,7 +15,7 @@ export interface Ticket {
   idPrecio: number;
   idProveedor: number;
   idVehiculo: number;
-  empleadoEmail: string;
+  empleadoUsername: string;
   ticketFotoKey: string | null;
   ticketFotoUrl: string | null;
   tableroFotoKey: string | null;
@@ -78,22 +78,26 @@ export interface CreateTicketPayload {
 }
 
 /**
- * Crea un ticket con su foto (multipart). El empleado sale del JWT en el
- * backend. La foto de tablero es opcional y por ahora no se envía (versión
- * futura). `fotoUri` es el uri local de la imagen (cámara o galería).
+ * Crea un ticket (multipart). El empleado sale del JWT en el backend. La foto
+ * de tablero es opcional y por ahora no se envía (versión futura). `fotoUri` es
+ * el uri local de la imagen (cámara o galería) y es OPCIONAL: si no viene, el
+ * ticket se crea sin comprobante (el backend acepta ticketFoto null).
  */
-export function createTicket(payload: CreateTicketPayload, fotoUri: string): Promise<Ticket> {
+export function createTicket(payload: CreateTicketPayload, fotoUri?: string | null): Promise<Ticket> {
   const form = new FormData();
   form.append('litros', String(payload.litros));
   form.append('idPrecio', String(payload.idPrecio));
   form.append('idProveedor', String(payload.idProveedor));
   form.append('idVehiculo', String(payload.idVehiculo));
   if (payload.fechaCarga) form.append('fechaCarga', payload.fechaCarga);
-  // En React Native un archivo se adjunta como { uri, name, type }.
-  form.append('ticketFoto', {
-    uri: fotoUri,
-    name: 'ticket.jpg',
-    type: 'image/jpeg',
-  } as unknown as Blob);
+  // La foto solo se adjunta si el empleado la sacó. En React Native un archivo
+  // se adjunta como { uri, name, type }.
+  if (fotoUri) {
+    form.append('ticketFoto', {
+      uri: fotoUri,
+      name: 'ticket.jpg',
+      type: 'image/jpeg',
+    } as unknown as Blob);
+  }
   return api.postForm<Ticket>('/tickets', form);
 }
