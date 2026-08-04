@@ -1,0 +1,39 @@
+# Perfil `test`: solo lo que necesita el contexto para levantar en los tests.
+#
+# El resto de la config sale de application.yml, que se sigue leyendo: los
+# archivos application-{perfil}.yml se SUMAN al base, no lo reemplazan. Por eso
+# este archivo se llama application-test.yml y no application.yml — con ese
+# nombre, al estar en el classpath de test, taparia al de main y perderiamos
+# Flyway, el datasource y todo lo demas.
+#
+# Las credenciales de la base NO van aca: las inyecta Testcontainers via
+# @ServiceConnection (ver TestcontainersConfiguration).
+
+spring:
+  jpa:
+    # Igual que dev y prod. Es el punto del test: Flyway construye el schema y
+    # Hibernate verifica que las entidades coincidan. Si no coinciden, el
+    # contexto no levanta y el test falla, que es exactamente lo que queremos.
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+app:
+  jwt:
+    # Valor de juguete, solo para que el contexto resuelva la propiedad. Tiene
+    # que superar los 32 bytes: jjwt exige esa longitud minima para HS256 y, si
+    # no, falla al construir la clave.
+    secret: secret-de-test-que-no-se-usa-en-ningun-entorno-real
+    expiration: 3600000
+
+minio:
+  # No hay MinIO levantado en los tests. Estos valores solo existen para que las
+  # propiedades resuelvan; el cliente que los usaria esta mockeado en el test.
+  endpoint: http://localhost:9000
+  access-key: test-access-key
+  secret-key: test-secret-key
+
+logging:
+  level:
+    root: WARN
+    com.retrorental.backend: WARN
