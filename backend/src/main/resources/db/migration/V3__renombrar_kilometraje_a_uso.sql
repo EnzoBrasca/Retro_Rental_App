@@ -1,0 +1,21 @@
+-- ---------------------------------------------------------------------------
+-- El contador de uso de un vehiculo no siempre se mide en kilometros.
+--
+-- Las maquinas viales (tipo_vehiculo = 'MAQUINA') no acumulan kilometros: miden
+-- HORAS de uso, que es lo que marca su horometro y lo que define sus ciclos de
+-- mantenimiento. Camiones y camionetas si usan el odometro en kilometros.
+--
+-- La columna se llamaba `kilometraje`, asi que guardar horas ahi habria dejado
+-- el modelo mintiendo: cualquier consulta futura del estilo "kilometros
+-- recorridos por la flota" sumaria horas de retroexcavadora con kilometros de
+-- camioneta y devolveria un numero con toda la cara de ser correcto.
+--
+-- Se renombra a un nombre neutro. La UNIDAD no se guarda: se deriva de
+-- tipo_vehiculo, que ya distingue MAQUINA de CAMION/CAMIONETA. Un dato derivable
+-- no se persiste; si se guardara, podria contradecir al tipo.
+--
+-- RENAME COLUMN preserva los datos, el tipo y las constraints: no hay copia ni
+-- backfill. Al momento de escribir esto produccion tiene 1 vehiculo.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE vehiculos RENAME COLUMN kilometraje TO uso_acumulado;

@@ -43,9 +43,11 @@ public class UpdateVehiculoRequest {
     @PastOrPresent(message = "La fecha de último mantenimiento no puede ser futura")
     private LocalDate fechaUltimoMantenimiento;
 
-    @NotNull(message = "El kilometraje es obligatorio")
-    @PositiveOrZero(message = "El kilometraje no puede ser negativo")
-    private Integer kilometraje;
+    // Uso acumulado: horas para una MAQUINA, kilometros para el resto. La
+    // unidad la define tipoVehiculo, asi que el mensaje se mantiene neutro.
+    @NotNull(message = "El uso acumulado es obligatorio")
+    @PositiveOrZero(message = "El uso acumulado no puede ser negativo")
+    private Integer usoAcumulado;
 
     @NotNull(message = "El consumo promedio es obligatorio")
     @Positive(message = "El consumo promedio debe ser mayor a cero")

@@ -3,6 +3,7 @@ package com.retrorental.backend.dto.response;
 import com.retrorental.backend.model.enums.Estado;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
+import com.retrorental.backend.model.enums.UnidadUso;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -11,8 +12,12 @@ import java.time.LocalDate;
  * Vista de un vehiculo para lectura (selector del empleado y listado/ABM del
  * admin). fechaBaja null indica que el vehiculo está activo.
  *
- * Incluye capacidad, kilometraje y consumo promedio para que las tarjetas del
- * front muestren datos reales (antes eran mock).
+ * Incluye capacidad, uso acumulado y consumo promedio para que las tarjetas
+ * del front muestren datos reales.
+ *
+ * unidadUso viaja junto a usoAcumulado para que el cliente sepa que esta
+ * mostrando (HORAS en una maquina vial, KM en un camion) sin tener que
+ * reimplementar la regla. Se deriva de tipoVehiculo, no se persiste.
  */
 public record VehiculoResponse(
     Integer id,
@@ -21,7 +26,8 @@ public record VehiculoResponse(
     TipoCombustible tipoCombustible,
     Estado estado,
     Integer capacidadTanque,
-    Integer kilometraje,
+    Integer usoAcumulado,
+    UnidadUso unidadUso,
     BigDecimal consumoPromedio,
     LocalDate fechaBaja,
     // Operario que usó el vehiculo por última vez (se actualiza en cada carga de

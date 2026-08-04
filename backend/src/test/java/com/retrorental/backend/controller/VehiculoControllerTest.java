@@ -11,6 +11,7 @@ import com.retrorental.backend.dto.response.VehiculoResponse;
 import com.retrorental.backend.model.enums.Estado;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
+import com.retrorental.backend.model.enums.UnidadUso;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.service.VehiculoService;
 import java.math.BigDecimal;
@@ -34,7 +35,8 @@ class VehiculoControllerTest extends AbstractControllerTest {
 
     private VehiculoResponse sample() {
         return new VehiculoResponse(1, "ABC123", TipoVehiculo.CAMION,
-            TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, new BigDecimal("8.5"), null, null, null, null);
+            TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, UnidadUso.KM,
+            new BigDecimal("8.5"), null, null, null, null);
     }
 
     @Test

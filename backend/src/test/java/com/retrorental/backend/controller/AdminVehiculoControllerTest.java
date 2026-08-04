@@ -21,6 +21,7 @@ import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.model.enums.Estado;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
+import com.retrorental.backend.model.enums.UnidadUso;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.service.VehiculoService;
 import java.math.BigDecimal;
@@ -53,14 +54,15 @@ class AdminVehiculoControllerTest extends AbstractControllerTest {
         req.setCapacidadTanque(60);
         req.setEstado(Estado.DISPONIBLE);
         req.setFechaUltimoMantenimiento(LocalDate.now().minusMonths(1));
-        req.setKilometraje(15000);
+        req.setUsoAcumulado(15000);
         req.setConsumoPromedio(new BigDecimal("8.5"));
         return req;
     }
 
     private VehiculoResponse sampleResponse() {
         return new VehiculoResponse(1, "ABC123", TipoVehiculo.CAMIONETA,
-            TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, new BigDecimal("8.5"), null, null, null, null);
+            TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, UnidadUso.KM,
+            new BigDecimal("8.5"), null, null, null, null);
     }
 
     @Test

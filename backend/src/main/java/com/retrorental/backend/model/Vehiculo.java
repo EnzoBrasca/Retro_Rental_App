@@ -39,8 +39,11 @@ public class Vehiculo {
     @Column(name = "fecha_ultimo_mantenimiento", nullable = false)
     private LocalDate fechaUltimoMantenimiento;
 
-    @Column(name = "kilometraje", nullable = false)
-    private Integer kilometraje;
+    // Contador de uso acumulado. La UNIDAD depende del tipo: HORAS para las
+    // maquinas viales (horometro), KM para camiones y camionetas (odometro).
+    // No se guarda la unidad porque se deriva de tipoVehiculo.unidadUso().
+    @Column(name = "uso_acumulado", nullable = false)
+    private Integer usoAcumulado;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_vehiculo", nullable = false)
