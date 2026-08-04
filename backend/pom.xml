@@ -119,6 +119,31 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Postgres efimero en Docker para el test de contexto.
+		     BackendApplicationTests levanta el contexto COMPLETO: corre las
+		     migraciones Flyway de verdad y deja que Hibernate valide las
+		     entidades contra el schema resultante (ddl-auto: validate). Es lo
+		     que avisa si alguien agrega un campo a una entidad y se olvida la
+		     migracion; sin esto, eso recien se descubre cuando la app no
+		     arranca en produccion. Requiere Docker corriendo. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- Testcontainers 2.x renombro los modulos: el de Postgres es
+		     testcontainers-postgresql, no postgresql. La version la gestiona el
+		     parent de Spring Boot (testcontainers.version). -->
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-postgresql</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
