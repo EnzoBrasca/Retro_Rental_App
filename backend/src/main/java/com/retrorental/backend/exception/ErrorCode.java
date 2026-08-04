@@ -56,6 +56,8 @@ public enum ErrorCode {
     // --- Seguridad ---
     UNAUTHENTICATED(HttpStatus.UNAUTHORIZED),
     ACCESS_DENIED(HttpStatus.FORBIDDEN),
+    // Demasiados intentos de login desde la misma IP (ver LoginRateLimitFilter).
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS),
 
     // --- Generico ---
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
