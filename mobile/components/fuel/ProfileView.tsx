@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
 import { colors, fonts } from '../../constants/theme';
 import { PROFILE_FIELDS } from '../../data/mock';
 import { useAuth } from '../../context/AuthContext';
@@ -113,7 +114,13 @@ export function ProfileView({ onBack }: { onBack?: () => void }) {
         <Pressable style={styles.logout} onPress={logout}>
           <Text style={styles.logoutText}>Cerrar sesión</Text>
         </Pressable>
-        <Text style={styles.version}>FuelTrack v1.0 · Vial Sur S.A.</Text>
+        {/* La versión sale de app.json y no de una constante escrita a mano:
+            un número de versión desactualizado en el pie es peor que no
+            mostrarlo, porque hace perder tiempo diagnosticando la app
+            equivocada. */}
+        <Text style={styles.version}>
+          RetroRental v{Constants.expoConfig?.version ?? '—'}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
