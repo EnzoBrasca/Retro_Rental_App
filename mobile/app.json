@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "RetroRental",
+    "slug": "retrorental",
     "version": "1.0.0",
     "scheme": "fleettracker",
     "orientation": "portrait",
@@ -11,13 +11,18 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "ar.com.retrorental.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -28,15 +33,24 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "La app usa la cámara para escanear los tickets de carga de combustible."
+          "cameraPermission": "La app usa la cámara para escanear los tickets de carga de combustible.",
+          "recordAudioAndroid": false
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "La app accede a tus fotos para adjuntar el ticket de carga desde la galería."
+          "photosPermission": "La app accede a tus fotos para adjuntar el ticket de carga desde la galería.",
+          "microphonePermission": false
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "8d71118e-8f55-443d-925b-952c761d0bad"
+      }
+    },
+    "owner": "retro-rental"
   }
 }
