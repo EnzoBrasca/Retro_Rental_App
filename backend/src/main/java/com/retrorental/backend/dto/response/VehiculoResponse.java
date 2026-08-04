@@ -29,6 +29,8 @@ public record VehiculoResponse(
     Integer usoAcumulado,
     UnidadUso unidadUso,
     BigDecimal consumoPromedio,
+    // Consumo de las ultimas cargas. Null hasta que haya dos con lectura.
+    BigDecimal consumoReciente,
     LocalDate fechaBaja,
     // Operario que usó el vehiculo por última vez (se actualiza en cada carga de
     // ticket). Null = sin uso registrado todavía. El nombre/apellido viajan para
