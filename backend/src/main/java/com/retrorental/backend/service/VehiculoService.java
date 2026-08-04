@@ -55,7 +55,7 @@ public class VehiculoService {
         vehiculo.setCapacidadTanque(request.getCapacidadTanque());
         vehiculo.setEstado(request.getEstado() != null ? request.getEstado() : Estado.DISPONIBLE);
         vehiculo.setFechaUltimoMantenimiento(request.getFechaUltimoMantenimiento());
-        vehiculo.setKilometraje(request.getKilometraje());
+        vehiculo.setUsoAcumulado(request.getUsoAcumulado());
         vehiculo.setConsumoPromedio(request.getConsumoPromedio());
 
         return toResponse(vehiculoRepository.save(vehiculo));
@@ -84,7 +84,7 @@ public class VehiculoService {
         vehiculo.setCapacidadTanque(request.getCapacidadTanque());
         vehiculo.setEstado(request.getEstado());
         vehiculo.setFechaUltimoMantenimiento(request.getFechaUltimoMantenimiento());
-        vehiculo.setKilometraje(request.getKilometraje());
+        vehiculo.setUsoAcumulado(request.getUsoAcumulado());
         vehiculo.setConsumoPromedio(request.getConsumoPromedio());
 
         return toResponse(vehiculoRepository.save(vehiculo));
@@ -201,7 +201,8 @@ public class VehiculoService {
             vehiculo.getTipoCombustible(),
             vehiculo.getEstado(),
             vehiculo.getCapacidadTanque(),
-            vehiculo.getKilometraje(),
+            vehiculo.getUsoAcumulado(),
+            vehiculo.getTipoVehiculo().unidadUso(),
             vehiculo.getConsumoPromedio(),
             vehiculo.getFechaBaja(),
             operario != null ? operario.getId() : null,

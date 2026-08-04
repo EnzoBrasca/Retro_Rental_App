@@ -20,6 +20,8 @@ import {
   Estado,
   TipoVehiculo,
   TipoCombustible,
+  etiquetaUso,
+  etiquetaConsumo,
 } from '../../services/vehiculos';
 import {
   getAdminEmpleados,
@@ -316,7 +318,7 @@ type FormState = {
   capacidadTanque: string;
   estado: Estado;
   fechaUltimoMantenimiento: string;
-  kilometraje: string;
+  usoAcumulado: string;
   consumoPromedio: string;
 };
 
@@ -327,7 +329,7 @@ const emptyForm = (): FormState => ({
   capacidadTanque: '',
   estado: 'DISPONIBLE',
   fechaUltimoMantenimiento: todayISO(),
-  kilometraje: '',
+  usoAcumulado: '',
   consumoPromedio: '',
 });
 
@@ -338,7 +340,7 @@ const formFrom = (v: Vehiculo): FormState => ({
   capacidadTanque: String(v.capacidadTanque),
   estado: v.estado,
   fechaUltimoMantenimiento: todayISO(),
-  kilometraje: String(v.kilometraje),
+  usoAcumulado: String(v.usoAcumulado),
   consumoPromedio: String(v.consumoPromedio),
 });
 
@@ -368,10 +370,10 @@ function VehiclesABM() {
     if (!form.tipoVehiculo) return setFormError('Elegí el tipo de vehículo.');
     if (!form.tipoCombustible) return setFormError('Elegí el combustible.');
     const capacidad = parseInt(form.capacidadTanque, 10);
-    const km = parseInt(form.kilometraje, 10);
+    const uso = parseInt(form.usoAcumulado, 10);
     const consumo = parseFloat(form.consumoPromedio.replace(',', '.'));
     if (!(capacidad > 0)) return setFormError('Capacidad de tanque inválida.');
-    if (!(km >= 0)) return setFormError('Kilometraje inválido.');
+    if (!(uso >= 0)) return setFormError(`${etiquetaUso(form.tipoVehiculo)} inválido.`);
     if (!(consumo > 0)) return setFormError('Consumo promedio inválido.');
 
     const payload = {
@@ -381,7 +383,7 @@ function VehiclesABM() {
       capacidadTanque: capacidad,
       estado: form.estado,
       fechaUltimoMantenimiento: form.fechaUltimoMantenimiento,
-      kilometraje: km,
+      usoAcumulado: uso,
       consumoPromedio: consumo,
     };
 
@@ -436,10 +438,12 @@ function VehiclesABM() {
         <Text style={[styles.fieldHint, { marginTop: 12 }]}>Capacidad de tanque (L)</Text>
         <TextInput style={styles.abmInput} value={form.capacidadTanque} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, capacidadTanque: t })} />
 
-        <Text style={styles.fieldHint}>Kilometraje</Text>
-        <TextInput style={styles.abmInput} value={form.kilometraje} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, kilometraje: t })} />
+        {/* La etiqueta sigue al tipo elegido: una máquina vial mide horas de
+            horómetro, no kilómetros. */}
+        <Text style={styles.fieldHint}>{etiquetaUso(form.tipoVehiculo)}</Text>
+        <TextInput style={styles.abmInput} value={form.usoAcumulado} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, usoAcumulado: t })} />
 
-        <Text style={styles.fieldHint}>Consumo promedio (L/100km)</Text>
+        <Text style={styles.fieldHint}>{etiquetaConsumo(form.tipoVehiculo)}</Text>
         <TextInput style={styles.abmInput} value={form.consumoPromedio} keyboardType="numeric" onChangeText={(t) => setForm({ ...form, consumoPromedio: t })} />
 
         <Text style={styles.fieldHint}>Último mantenimiento (AAAA-MM-DD)</Text>

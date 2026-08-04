@@ -6,6 +6,29 @@ import { api } from './api';
  */
 export type Estado = 'DISPONIBLE' | 'EN_USO' | 'EN_MANTENIMIENTO';
 export type TipoVehiculo = 'MAQUINA' | 'CAMIONETA' | 'CAMION';
+
+// Unidad del contador de uso. La define el backend a partir del tipo de
+// vehículo: las máquinas viales miden horas de horómetro, el resto kilómetros.
+export type UnidadUso = 'KM' | 'HORAS';
+
+// Misma regla que TipoVehiculo.unidadUso() en el backend. Se duplica acá SOLO
+// para el formulario de alta: ahí el vehículo todavía no existe, así que no hay
+// respuesta del servidor de la cual leer la unidad. Para un vehículo ya
+// guardado se usa siempre el `unidadUso` que viene en la respuesta.
+export function unidadDeTipo(tipo: TipoVehiculo | null): UnidadUso {
+  return tipo === 'MAQUINA' ? 'HORAS' : 'KM';
+}
+
+// Etiquetas de UI derivadas de la unidad.
+export function etiquetaUso(tipo: TipoVehiculo | null): string {
+  return unidadDeTipo(tipo) === 'HORAS' ? 'Horas de uso' : 'Kilometraje';
+}
+
+export function etiquetaConsumo(tipo: TipoVehiculo | null): string {
+  return unidadDeTipo(tipo) === 'HORAS'
+    ? 'Consumo promedio (L/h)'
+    : 'Consumo promedio (L/100km)';
+}
 export type TipoCombustible =
   | 'NAFTA_SUPER'
   | 'NAFTA_PREMIUM'
@@ -20,7 +43,10 @@ export interface Vehiculo {
   tipoCombustible: TipoCombustible;
   estado: Estado;
   capacidadTanque: number;
-  kilometraje: number;
+  // Contador de uso acumulado. `unidadUso` dice en qué se mide: HORAS en una
+  // máquina vial, KM en un camión o camioneta.
+  usoAcumulado: number;
+  unidadUso: UnidadUso;
   consumoPromedio: number;
   fechaBaja: string | null;
   // Operario que usó el vehículo por última vez (se actualiza en cada carga).
@@ -64,7 +90,7 @@ export interface CreateVehiculoPayload {
   capacidadTanque: number;
   estado?: Estado;
   fechaUltimoMantenimiento: string; // yyyy-mm-dd
-  kilometraje: number;
+  usoAcumulado: number;
   consumoPromedio: number;
 }
 
