@@ -3,6 +3,7 @@ package com.retrorental.backend.config;
 import com.retrorental.backend.dto.response.ApiError;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.LoginRateLimitFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -30,6 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
+    private final LoginRateLimitFilter loginRateLimitFilter;
     private final ObjectMapper objectMapper;
 
     @Bean
@@ -44,7 +46,16 @@ public class SecurityConfig {
                 // público: cuando un controller lanza una excepción, Spring hace
                 // un forward interno a /error; si no estuviera permitido, la
                 // seguridad lo bloquearía con 403 y enmascararía el error real.
-                .requestMatchers("/auth/**", "/health", "/error").permitAll()
+                //
+                // Se listan uno por uno y NO como /auth/**: con el comodín,
+                // cualquier endpoint que se agregue bajo /auth nace público sin
+                // que nadie lo decida. Que /auth/register sea público es una
+                // decisión explícita (los empleados se dan de alta solos desde
+                // la app), no un efecto secundario de un comodín.
+                //
+                // Ambos endpoints estan sujetos a LoginRateLimitFilter: son la
+                // unica superficie sin autenticar de la API.
+                .requestMatchers("/auth/login", "/auth/register", "/health", "/error").permitAll()
                 // Endpoints solo para administradores
                 .requestMatchers("/admin/**").hasRole("ADMINISTRADOR")
                 // Cualquier otro endpoint requiere estar autenticado
@@ -56,6 +67,9 @@ public class SecurityConfig {
                 .authenticationEntryPoint(authenticationEntryPoint())
                 .accessDeniedHandler(accessDeniedHandler())
             )
+            // El limitador va ANTES que el JwtFilter: un intento de login que ya
+            // supero el limite se corta sin gastar nada del resto de la cadena.
+            .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

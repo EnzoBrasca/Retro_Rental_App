@@ -16,11 +16,13 @@ import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.InvalidCredentialsException;
 import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
@@ -28,7 +30,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * seguridad, pero sujetos a validacion @Valid.
  */
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, LoginRateLimitFilter.class})
+// El limite de intentos se sube bien alto para que no interfiera: aca se
+// ejerce el contrato de /auth, y el rate limit tiene su propio test.
+@TestPropertySource(properties = "app.rate-limit.login.max-attempts=1000")
 class AuthControllerTest extends AbstractControllerTest {
 
     @MockitoBean

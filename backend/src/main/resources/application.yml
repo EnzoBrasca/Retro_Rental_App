@@ -30,8 +30,17 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET}       
+    secret: ${JWT_SECRET}
     expiration: ${JWT_EXPIRATION:3600000}
+  rate-limit:
+    # Freno de fuerza bruta sobre POST /auth/login (ver LoginRateLimitFilter).
+    # Ventana fija por IP: pasados max-attempts intentos dentro de
+    # window-seconds, se responde 429 hasta que la ventana vence.
+    # El default deja margen para que alguien se equivoque varias veces sin
+    # quedar afuera, pero corta cualquier intento de probar contrasenas en masa.
+    login:
+      max-attempts: ${LOGIN_MAX_ATTEMPTS:10}
+      window-seconds: ${LOGIN_WINDOW_SECONDS:60}
 
 mistral:
   # API key de Mistral (console.mistral.ai). Sin ella, el cliente no se crea y el
@@ -58,3 +67,12 @@ minio:
 
 server:
   port: ${SERVER_PORT:8080}
+  # Detras de nginx, request.getRemoteAddr() devolveria siempre la IP del
+  # contenedor del proxy. Con esto Spring lee X-Forwarded-For / X-Forwarded-Proto
+  # (nginx los envia) y el rate limit de login cuenta por IP REAL del cliente;
+  # sin esto todos los usuarios compartirian un unico contador y el primer
+  # atacante bloquearia a todo el mundo.
+  #
+  # Confiar en esos headers es seguro aca porque el backend no publica puertos
+  # en produccion: el unico camino hacia el es nginx, que los reescribe.
+  forward-headers-strategy: framework
