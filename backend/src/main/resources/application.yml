@@ -32,6 +32,14 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     expiration: ${JWT_EXPIRATION:3600000}
+  precio:
+    # Cuanto puede alejarse del precio vigente un precio corregido a mano por el
+    # empleado, o leido por OCR, antes de considerarse un error de carga.
+    # Freno contra el cero de mas y contra el OCR que lee 2.086 como 20.860.
+    #
+    # En la carga manual, pasarse corta la operacion con 409. En el OCR se
+    # descarta el valor y se conserva el vigente, sin trabar al empleado.
+    margen-maximo: ${PRECIO_MARGEN_MAXIMO:30}
   rate-limit:
     # Freno de fuerza bruta sobre POST /auth/login (ver LoginRateLimitFilter).
     # Ventana fija por IP: pasados max-attempts intentos dentro de

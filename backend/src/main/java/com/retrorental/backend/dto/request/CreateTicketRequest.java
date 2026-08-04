@@ -3,9 +3,11 @@ package com.retrorental.backend.dto.request;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -22,6 +24,18 @@ public class CreateTicketRequest {
     @NotNull(message = "El precio es obligatorio")
     @Positive(message = "El id de precio debe ser válido")
     private Integer idPrecio;
+
+    // Precio por litro REALMENTE pagado. Opcional: si no viene, vale el del
+    // catalogo (idPrecio). Si viene y difiere, el service valida que no se aleje
+    // mas de app.precio.margen-maximo del vigente y actualiza el catalogo.
+    @Positive(message = "El precio por litro debe ser mayor a cero")
+    private BigDecimal precioUnitario;
+
+    // Lectura del odometro/horometro del vehiculo al momento de la carga.
+    // Obligatoria: es lo que permite calcular el consumo real entre cargas.
+    @NotNull(message = "La lectura del contador es obligatoria")
+    @PositiveOrZero(message = "La lectura del contador no puede ser negativa")
+    private Integer usoAcumulado;
 
     @NotNull(message = "El proveedor es obligatorio")
     @Positive(message = "El id de proveedor debe ser válido")

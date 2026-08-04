@@ -24,6 +24,7 @@ import com.retrorental.backend.repository.VehiculoRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.web.PagedModel;
@@ -51,6 +52,13 @@ public class TicketService {
     // tickets NO debe depender de eso, por eso se inyecta con ObjectProvider.
     private final ObjectProvider<TicketAnalysisService> analysisProvider;
 
+    // Cuanto puede alejarse del vigente un precio corregido a mano (o leido por
+    // OCR) antes de considerarse un error de carga. Se inyecta por campo y no
+    // por constructor para no reescribir el @RequiredArgsConstructor entero por
+    // un solo escalar de configuracion.
+    @Value("${app.precio.margen-maximo:30}")
+    private BigDecimal margenMaximo;
+
     @Transactional
     public TicketResponse create(CreateTicketRequest request, String empleadoUsername) {
         Persona persona = resolvePersona(empleadoUsername);
@@ -75,7 +83,33 @@ public class TicketService {
                 "El precio indicado corresponde a otra estación de servicio", "idPrecio");
         }
 
+        // Precio realmente pagado. Si el empleado lo corrigio (el del catalogo
+        // estaba desactualizado), se valida el margen y el catalogo se actualiza:
+        // el proximo que cargue ve el precio corregido. Sin esto el catalogo
+        // envejeceria y el propio margen terminaria bloqueando cargas legitimas.
+        Precio precioAplicado = precio;
+        if (request.getPrecioUnitario() != null
+            && precio.getPrecioUnitario().compareTo(request.getPrecioUnitario()) != 0) {
+            validarMargen(request.getPrecioUnitario(), precio.getPrecioUnitario(), "precioUnitario");
+            precioAplicado = reemplazarVigente(
+                proveedor, precio.getTipoCombustible(), request.getPrecioUnitario());
+        }
+
         Vehiculo vehiculo = resolveVehiculoCargable(request.getIdVehiculo());
+
+        // Un odometro/horometro no retrocede. Si la lectura es menor que la
+        // ultima registrada, casi siempre es un error de tipeo: se rechaza con el
+        // valor anterior a la vista para que el empleado pueda corregirlo.
+        Integer usoPrevio = vehiculo.getUsoAcumulado();
+        if (usoPrevio != null && request.getUsoAcumulado() < usoPrevio) {
+            throw new ConflictException(
+                ErrorCode.USO_ACUMULADO_RETROCEDE,
+                "La lectura (" + request.getUsoAcumulado() + ") es menor que la ultima registrada ("
+                    + usoPrevio + ") para este vehiculo",
+                "usoAcumulado");
+        }
+        // La ficha del vehiculo queda con la ultima lectura conocida.
+        vehiculo.setUsoAcumulado(request.getUsoAcumulado());
 
         // Pool compartido: el operario "actual" del vehiculo se actualiza en cada
         // carga al empleado que la registra. Así la card de la flota muestra quién
@@ -85,8 +119,10 @@ public class TicketService {
         // no "toma" el vehiculo como operario del pool.
         if (persona instanceof Empleado emp) {
             vehiculo.setOperario(emp);
-            vehiculoRepository.save(vehiculo);
         }
+        // Se guarda siempre: aunque quien cargue sea un administrador (y por lo
+        // tanto no se toque el operario), la lectura del contador ya cambio.
+        vehiculoRepository.save(vehiculo);
 
         // Subimos a MinIO y guardamos SOLO la key (la URL presignada expira).
         // La foto del ticket es OPCIONAL (ver CreateTicketRequest): muchos empleados
@@ -103,7 +139,8 @@ public class TicketService {
         Ticket ticket = new Ticket();
         ticket.setLitros(request.getLitros());
         ticket.setFechaCarga(request.getFechaCarga() != null ? request.getFechaCarga() : LocalDateTime.now());
-        ticket.setPrecio(precio);
+        ticket.setPrecio(precioAplicado);
+        ticket.setUsoAcumulado(request.getUsoAcumulado());
         ticket.setProveedor(proveedor);
         ticket.setPersona(persona);
         ticket.setVehiculo(vehiculo);
@@ -214,18 +251,60 @@ public class TicketService {
             return vigente;
         }
 
-        LocalDate hoy = LocalDate.now();
-        if (vigente != null) {
-            vigente.setFechaHasta(hoy);
+        // El OCR puede alucinar: leer 2.086 como 20.860 es un error de una coma.
+        // Antes, ese valor entraba al catalogo sin control y quedaba como precio
+        // vigente para TODOS los empleados. Si se aleja demasiado del vigente se
+        // descarta y se devuelve el vigente: aca NO se lanza excepcion, porque
+        // esto alimenta una sugerencia de formulario y trabar el analisis por un
+        // precio dudoso dejaria al empleado sin poder cargar.
+        if (vigente != null && fueraDeMargen(objetivo, vigente.getPrecioUnitario())) {
+            return vigente;
         }
+
+        return reemplazarVigente(proveedor, tipoCombustible, objetivo);
+    }
+
+    /**
+     * Retira el precio vigente de (proveedor, combustible) y deja uno nuevo.
+     *
+     * Conserva la historia: el anterior queda con fechaHasta = hoy en vez de
+     * borrarse, asi los tickets viejos siguen apuntando al precio que realmente
+     * se pago. Lo comparten la correccion manual del empleado y la ruta del OCR.
+     */
+    private Precio reemplazarVigente(Proveedor proveedor, TipoCombustible tipoCombustible,
+                                     BigDecimal valor) {
+        LocalDate hoy = LocalDate.now();
+        precioRepository
+            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, tipoCombustible)
+            .ifPresent(vigente -> vigente.setFechaHasta(hoy));
+
         Precio nuevo = new Precio();
-        nuevo.setPrecioUnitario(objetivo);
+        nuevo.setPrecioUnitario(valor);
         nuevo.setServicio(Servicio.COMBUSTIBLE);
         nuevo.setTipoCombustible(tipoCombustible);
         nuevo.setProveedor(proveedor);
         nuevo.setFechaDesde(hoy);
         nuevo.setFechaHasta(null);
         return precioRepository.save(nuevo);
+    }
+
+    /** Si el precio propuesto se aleja del vigente mas de lo tolerado. */
+    private boolean fueraDeMargen(BigDecimal propuesto, BigDecimal vigente) {
+        if (propuesto == null || vigente == null) {
+            return false;
+        }
+        return propuesto.subtract(vigente).abs().compareTo(margenMaximo) > 0;
+    }
+
+    /** Igual que fueraDeMargen pero cortando la operacion: la usa la carga manual. */
+    private void validarMargen(BigDecimal propuesto, BigDecimal vigente, String campo) {
+        if (fueraDeMargen(propuesto, vigente)) {
+            throw new ConflictException(
+                ErrorCode.PRECIO_FUERA_DE_RANGO,
+                "El precio ingresado (" + propuesto + ") se aleja mas de " + margenMaximo
+                    + " del precio vigente (" + vigente + "). Verificá el importe.",
+                campo);
+        }
     }
 
     // Busca un proveedor de COMBUSTIBLE cuyo nombre coincida (contención, sin
@@ -364,6 +443,9 @@ public class TicketService {
             ticket.getProveedor().getId(),
             ticket.getVehiculo().getId(),
             ticket.getPersona().getUsername(),
+            ticket.getUsoAcumulado(),
+            ticket.getVehiculo().getTipoVehiculo().unidadUso(),
+            ticket.getPrecio().getPrecioUnitario(),
             ticketKey,
             ticketKey != null ? storageService.getUrl(ticketKey) : null,
             tableroKey,

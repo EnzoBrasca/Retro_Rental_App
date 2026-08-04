@@ -23,6 +23,12 @@ public class Ticket {
     @Column(name = "fecha_carga", nullable = false)
     private LocalDateTime fechaCarga;
 
+    // Lectura del contador del vehiculo al momento de la carga. La unidad la
+    // define el vehiculo (horas en una maquina, km en el resto). Nullable solo
+    // por los tickets anteriores a la feature: los nuevos siempre la traen.
+    @Column(name = "uso_acumulado")
+    private Integer usoAcumulado;
+
     @Column(name = "ticket_foto_url")
     private String ticketFotoUrl;
 

@@ -24,6 +24,13 @@ export function etiquetaUso(tipo: TipoVehiculo | null): string {
   return unidadDeTipo(tipo) === 'HORAS' ? 'Horas de uso' : 'Kilometraje';
 }
 
+// Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
+// Nombra el instrumento a propósito: en el campo se lee un horómetro o un
+// odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
+export function etiquetaLectura(tipo: TipoVehiculo | null): string {
+  return unidadDeTipo(tipo) === 'HORAS' ? 'Horas del horómetro' : 'Kilómetros del odómetro';
+}
+
 export function etiquetaConsumo(tipo: TipoVehiculo | null): string {
   return unidadDeTipo(tipo) === 'HORAS'
     ? 'Consumo promedio (L/h)'

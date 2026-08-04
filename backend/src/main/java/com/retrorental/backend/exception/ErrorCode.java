@@ -39,6 +39,12 @@ public enum ErrorCode {
     PROVEEDOR_NOT_FOUND(HttpStatus.NOT_FOUND),
     // El precio elegido pertenece a otra estación que la del ticket.
     PRECIO_PROVEEDOR_MISMATCH(HttpStatus.CONFLICT),
+    // La lectura del contador es menor que la ultima registrada del vehiculo.
+    // Un odometro/horometro no retrocede: casi siempre es un error de tipeo.
+    USO_ACUMULADO_RETROCEDE(HttpStatus.CONFLICT),
+    // El precio corregido a mano se aleja demasiado del vigente (ver
+    // app.precio.margen-maximo). Freno contra ceros de mas y OCR alucinado.
+    PRECIO_FUERA_DE_RANGO(HttpStatus.CONFLICT),
     ANALYSIS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
     ANALYSIS_FAILED(HttpStatus.SERVICE_UNAVAILABLE),
 

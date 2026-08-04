@@ -17,6 +17,8 @@ import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.service.TicketService;
 import java.time.LocalDateTime;
+import com.retrorental.backend.model.enums.UnidadUso;
+import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -37,7 +39,8 @@ class TicketControllerTest extends AbstractControllerTest {
 
     private TicketResponse sampleTicket() {
         return new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1,
-            "juanperez", "tickets/k1.jpg", "http://url/1",
+            "juanperez", 1250, UnidadUso.HORAS, new BigDecimal("2086.00"),
+            "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2");
     }
 
@@ -57,10 +60,13 @@ class TicketControllerTest extends AbstractControllerTest {
                 .param("litros", "42.5")
                 .param("idPrecio", "1")
                 .param("idProveedor", "1")
-                .param("idVehiculo", "1"))
+                .param("idVehiculo", "1")
+                .param("usoAcumulado", "1250"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(1))
-            .andExpect(jsonPath("$.litros").value(42.5));
+            .andExpect(jsonPath("$.litros").value(42.5))
+            .andExpect(jsonPath("$.usoAcumulado").value(1250))
+            .andExpect(jsonPath("$.unidadUso").value("HORAS"));
     }
 
     @Test
@@ -74,9 +80,23 @@ class TicketControllerTest extends AbstractControllerTest {
                 .param("litros", "42.5")
                 .param("idPrecio", "1")
                 .param("idProveedor", "1")
-                .param("idVehiculo", "1"))
+                .param("idVehiculo", "1")
+                .param("usoAcumulado", "1250"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_sinLecturaDelContador_devuelve400() throws Exception {
+        // usoAcumulado es obligatorio: sin el no se puede calcular consumo.
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "42.5")
+                .param("idPrecio", "1")
+                .param("idProveedor", "1")
+                .param("idVehiculo", "1"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
     @Test

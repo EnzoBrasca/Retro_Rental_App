@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,7 @@ import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenSta
 import { OptionChips } from '../../components/fuel/OptionChips';
 import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
-import { getVehiculos } from '../../services/vehiculos';
+import { getVehiculos, etiquetaLectura } from '../../services/vehiculos';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
 import { combustibleLabel, formatMoney } from '../../constants/labels';
@@ -50,6 +50,13 @@ export default function EscanearScreen() {
   const [idProveedor, setIdProveedor] = useState<number | null>(null);
   // idPrecio NO es estado: se deriva de (proveedor + combustible del vehículo).
   const [litros, setLitros] = useState('');
+  // Lectura del odómetro/horómetro del vehículo. Obligatoria.
+  const [usoAcumulado, setUsoAcumulado] = useState('');
+  // Precio por litro editable. Arranca vacío y se prellena con el vigente en
+  // cuanto se puede resolver; el empleado puede pisarlo si el surtidor cobró
+  // otra cosa. Se guarda como texto para no pelear con comas y decimales
+  // mientras se tipea.
+  const [precioEditado, setPrecioEditado] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -179,7 +186,29 @@ export default function EscanearScreen() {
         )
       : undefined;
   const litrosNum = parseFloat(litros.replace(',', '.')) || 0;
-  const total = precioSel ? litrosNum * precioSel.precioUnitario : 0;
+
+  // El precio vigente prellena el campo apenas se resuelve, y se vuelve a
+  // prellenar si cambia el proveedor. No se pisa lo que el empleado ya tipeó
+  // dentro de la misma selección: para eso se compara contra el último vigente
+  // aplicado, no contra el valor actual del input.
+  const ultimoPrecioAplicado = useRef<number | null>(null);
+  useEffect(() => {
+    if (precioSel && ultimoPrecioAplicado.current !== precioSel.precioUnitario) {
+      ultimoPrecioAplicado.current = precioSel.precioUnitario;
+      setPrecioEditado(String(precioSel.precioUnitario));
+    }
+    if (!precioSel) {
+      ultimoPrecioAplicado.current = null;
+      setPrecioEditado('');
+    }
+  }, [precioSel]);
+
+  const precioNum = parseFloat(precioEditado.replace(',', '.')) || 0;
+  // El total sigue al precio que el empleado ve, no al del catálogo.
+  const total = precioNum > 0 ? litrosNum * precioNum : 0;
+  // Solo se manda si difiere del vigente: si es igual, que resuelva el backend.
+  const precioFueCorregido = precioSel != null && precioNum > 0
+    && Math.abs(precioNum - precioSel.precioUnitario) > 0.001;
 
   const submit = async () => {
     setError(null);
@@ -188,11 +217,24 @@ export default function EscanearScreen() {
     if (!idProveedor) return setError('Elegí el proveedor.');
     if (!precioSel) return setError('No hay un precio cargado para ese proveedor y combustible.');
     if (litrosNum <= 0) return setError('Ingresá los litros cargados.');
+    if (precioNum <= 0) return setError('Ingresá el precio por litro.');
+    const usoNum = parseInt(usoAcumulado, 10);
+    if (!(usoNum >= 0)) {
+      return setError(`Ingresá ${etiquetaLectura(vehiculoSel?.tipoVehiculo ?? null)}.`);
+    }
 
     try {
       setSubmitting(true);
       await createTicket(
-        { litros: litrosNum, idPrecio: precioSel.id, idProveedor, idVehiculo, fechaCarga: fechaCarga ?? undefined },
+        {
+          litros: litrosNum,
+          idPrecio: precioSel.id,
+          idProveedor,
+          idVehiculo,
+          usoAcumulado: usoNum,
+          precioUnitario: precioFueCorregido ? precioNum : undefined,
+          fechaCarga: fechaCarga ?? undefined,
+        },
         fotoUri,
       );
       Alert.alert('Carga registrada', 'El ticket se guardó correctamente.');
@@ -315,16 +357,33 @@ export default function EscanearScreen() {
                 onChange={setIdProveedor}
               />
 
-              <Text style={styles.label}>Precio</Text>
+              <Text style={styles.label}>Precio por litro</Text>
               {!idProveedor ? (
                 <Text style={styles.precioHint}>Elegí el proveedor para ver el precio.</Text>
               ) : precioSel ? (
-                <View style={styles.precioBox}>
-                  <Text style={styles.precioProduct}>
-                    {vehiculoSel ? combustibleLabel[vehiculoSel.tipoCombustible] : ''}
-                  </Text>
-                  <Text style={styles.precioValue}>{formatMoney(precioSel.precioUnitario)} / L</Text>
-                </View>
+                <>
+                  <TextInput
+                    style={styles.input}
+                    value={precioEditado}
+                    onChangeText={setPrecioEditado}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={colors.textDim}
+                  />
+                  {/* Se avisa cuando el valor difiere del catálogo, para que una
+                      corrección sea siempre deliberada y no un error de tipeo. */}
+                  {precioFueCorregido ? (
+                    <Text style={styles.precioHint}>
+                      Corregís el precio de {combustibleLabel[vehiculoSel.tipoCombustible]}:{' '}
+                      {formatMoney(precioSel.precioUnitario)} → {formatMoney(precioNum)} / L
+                    </Text>
+                  ) : (
+                    <Text style={styles.precioHint}>
+                      Precio actual de {combustibleLabel[vehiculoSel.tipoCombustible]}. Cambialo si el
+                      surtidor cobró otro valor.
+                    </Text>
+                  )}
+                </>
               ) : (
                 <Text style={styles.precioWarn}>
                   No hay un precio cargado para ese proveedor y combustible. Escaneá un ticket de esa
@@ -341,6 +400,22 @@ export default function EscanearScreen() {
                 placeholder="0"
                 placeholderTextColor={colors.textDim}
               />
+
+              {/* La etiqueta sigue al vehículo: una máquina vial marca horas de
+                  horómetro, un camión kilómetros de odómetro. */}
+              <Text style={styles.label}>{etiquetaLectura(vehiculoSel.tipoVehiculo)}</Text>
+              <TextInput
+                style={styles.input}
+                value={usoAcumulado}
+                onChangeText={setUsoAcumulado}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={colors.textDim}
+              />
+              <Text style={styles.precioHint}>
+                Última lectura registrada: {vehiculoSel.usoAcumulado}
+                {vehiculoSel.unidadUso === 'HORAS' ? ' h' : ' km'}
+              </Text>
 
               <View style={styles.totalBox}>
                 <Text style={styles.totalLabel}>TOTAL ESTIMADO</Text>
