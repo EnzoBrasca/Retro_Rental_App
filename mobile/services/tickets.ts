@@ -74,6 +74,12 @@ export interface CreateTicketPayload {
   idPrecio: number;
   idProveedor: number;
   idVehiculo: number;
+  // Lectura del odómetro/horómetro al momento de la carga. Obligatoria: sin
+  // ella no se puede calcular el consumo real entre cargas.
+  usoAcumulado: number;
+  // Precio por litro realmente pagado. Solo se manda si el empleado corrigió el
+  // del catálogo; si va vacío, el backend usa el vigente (idPrecio).
+  precioUnitario?: number;
   fechaCarga?: string; // ISO opcional; el backend usa "ahora" si falta
 }
 
@@ -89,6 +95,10 @@ export function createTicket(payload: CreateTicketPayload, fotoUri?: string | nu
   form.append('idPrecio', String(payload.idPrecio));
   form.append('idProveedor', String(payload.idProveedor));
   form.append('idVehiculo', String(payload.idVehiculo));
+  form.append('usoAcumulado', String(payload.usoAcumulado));
+  if (payload.precioUnitario != null) {
+    form.append('precioUnitario', String(payload.precioUnitario));
+  }
   if (payload.fechaCarga) form.append('fechaCarga', payload.fechaCarga);
   // La foto solo se adjunta si el empleado la sacó. En React Native un archivo
   // se adjunta como { uri, name, type }.
