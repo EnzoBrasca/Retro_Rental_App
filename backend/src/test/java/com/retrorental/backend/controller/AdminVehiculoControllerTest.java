@@ -62,7 +62,7 @@ class AdminVehiculoControllerTest extends AbstractControllerTest {
     private VehiculoResponse sampleResponse() {
         return new VehiculoResponse(1, "ABC123", TipoVehiculo.CAMIONETA,
             TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, UnidadUso.KM,
-            new BigDecimal("8.5"), null, null, null, null);
+            new BigDecimal("8.5"), new BigDecimal("9.1"), null, null, null, null);
     }
 
     @Test

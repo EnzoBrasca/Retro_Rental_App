@@ -49,8 +49,17 @@ public class Vehiculo {
     @Column(name = "tipo_vehiculo", nullable = false)
     private TipoVehiculo tipoVehiculo;
 
+    // Consumo sobre TODA la historia de cargas del vehiculo. Lo carga el admin
+    // en el alta como estimacion inicial y a partir de la segunda carga lo pisa
+    // el calculo real (ver ConsumoCalculator).
     @Column(name = "consumo_promedio", nullable = false, precision = 10, scale = 2)
     private BigDecimal consumoPromedio;
+
+    // Mismo calculo pero solo sobre las ultimas N cargas. Sirve para ver cuando
+    // una maquina se desvia de su propio promedio, que suele anticipar una
+    // falla. Null mientras no haya dos cargas con lectura.
+    @Column(name = "consumo_reciente", precision = 10, scale = 2)
+    private BigDecimal consumoReciente;
 
     // Ciclo de vida (baja lógica), mismo patrón que Empleado.fechaBaja. Null =
     // vehiculo activo. No se borra físicamente porque los tickets lo referencian

@@ -32,6 +32,11 @@ app:
   jwt:
     secret: ${JWT_SECRET}
     expiration: ${JWT_EXPIRATION:3600000}
+  consumo:
+    # Cuantas cargas mira el consumo "reciente" del vehiculo, ademas del
+    # historico completo. Comparar uno contra otro deja ver cuando una maquina
+    # se desvia de su propio promedio, que suele anticipar una falla.
+    ventana-cargas: ${CONSUMO_VENTANA_CARGAS:10}
   precio:
     # Cuanto puede alejarse del precio vigente un precio corregido a mano por el
     # empleado, o leido por OCR, antes de considerarse un error de carga.

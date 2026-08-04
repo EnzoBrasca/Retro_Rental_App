@@ -27,6 +27,11 @@ export function etiquetaUso(tipo: TipoVehiculo | null): string {
 // Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
 // Nombra el instrumento a propósito: en el campo se lee un horómetro o un
 // odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
+// Sufijo con el que se muestra un consumo ya calculado.
+export function unidadConsumo(tipo: TipoVehiculo | null): string {
+  return unidadDeTipo(tipo) === 'HORAS' ? 'L/h' : 'L/100km';
+}
+
 export function etiquetaLectura(tipo: TipoVehiculo | null): string {
   return unidadDeTipo(tipo) === 'HORAS' ? 'Horas del horómetro' : 'Kilómetros del odómetro';
 }
@@ -54,7 +59,11 @@ export interface Vehiculo {
   // máquina vial, KM en un camión o camioneta.
   usoAcumulado: number;
   unidadUso: UnidadUso;
+  // Consumo sobre toda la historia de cargas. Lo carga el admin en el alta y a
+  // partir de la segunda carga lo reemplaza el cálculo real.
   consumoPromedio: number;
+  // Consumo de las últimas cargas. null hasta que haya dos con lectura.
+  consumoReciente: number | null;
   fechaBaja: string | null;
   // Operario que usó el vehículo por última vez (se actualiza en cada carga).
   // null = sin uso registrado. El nombre/apellido vienen del backend para pintar

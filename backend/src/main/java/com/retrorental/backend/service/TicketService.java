@@ -59,6 +59,10 @@ public class TicketService {
     @Value("${app.precio.margen-maximo:30}")
     private BigDecimal margenMaximo;
 
+    // Cuantos intervalos mira el consumo "reciente" del vehiculo.
+    @Value("${app.consumo.ventana-cargas:10}")
+    private int ventanaConsumo;
+
     @Transactional
     public TicketResponse create(CreateTicketRequest request, String empleadoUsername) {
         Persona persona = resolvePersona(empleadoUsername);
@@ -120,9 +124,6 @@ public class TicketService {
         if (persona instanceof Empleado emp) {
             vehiculo.setOperario(emp);
         }
-        // Se guarda siempre: aunque quien cargue sea un administrador (y por lo
-        // tanto no se toque el operario), la lectura del contador ya cambio.
-        vehiculoRepository.save(vehiculo);
 
         // Subimos a MinIO y guardamos SOLO la key (la URL presignada expira).
         // La foto del ticket es OPCIONAL (ver CreateTicketRequest): muchos empleados
@@ -147,7 +148,42 @@ public class TicketService {
         ticket.setTicketFotoUrl(ticketFotoKey);
         ticket.setTableroFotoUrl(tableroFotoKey);
 
-        return toResponse(ticketRepository.save(ticket));
+        Ticket guardado = ticketRepository.save(ticket);
+
+        // Recien ahora, con el ticket ya persistido, el consumo se recalcula
+        // incluyendolo. El vehiculo se guarda una sola vez con todo junto: la
+        // lectura nueva, el operario y el consumo.
+        recalcularConsumo(vehiculo);
+        vehiculoRepository.save(vehiculo);
+
+        return toResponse(guardado);
+    }
+
+    /**
+     * Recalcula el consumo del vehiculo a partir de sus cargas.
+     *
+     * Se hace en cada alta de ticket y no al leer para que el listado de la
+     * flota no dispare una consulta por vehiculo. El costo es una consulta por
+     * carga, que es la operacion poco frecuente de las dos.
+     *
+     * Si todavia no hay datos suficientes (hace falta una segunda carga con
+     * lectura), NO se toca consumoPromedio: queda el valor que cargo el admin en
+     * el alta como estimacion inicial.
+     */
+    private void recalcularConsumo(Vehiculo vehiculo) {
+        List<ConsumoCalculator.Carga> cargas = ticketRepository
+            .findByVehiculoIdAndUsoAcumuladoIsNotNullOrderByUsoAcumuladoAsc(vehiculo.getId())
+            .stream()
+            .map(t -> new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()))
+            .toList();
+
+        ConsumoCalculator.Consumo consumo = ConsumoCalculator.calcular(
+            cargas, vehiculo.getTipoVehiculo().unidadUso(), ventanaConsumo);
+
+        if (consumo.historico() != null) {
+            vehiculo.setConsumoPromedio(consumo.historico());
+        }
+        vehiculo.setConsumoReciente(consumo.reciente());
     }
 
     /**

@@ -12,6 +12,11 @@ import java.util.List;
 @Repository
 public interface TicketRepository
         extends JpaRepository<Ticket, Integer>, JpaSpecificationExecutor<Ticket> {
+    // Cargas de un vehiculo que sirven para calcular consumo: las que tienen
+    // lectura del contador, en orden de lectura. Las anteriores a esa feature
+    // quedan afuera porque no aportan intervalo.
+    List<Ticket> findByVehiculoIdAndUsoAcumuladoIsNotNullOrderByUsoAcumuladoAsc(Integer vehiculoId);
+
     List<Ticket> findByPersonaId(Integer personaId);
     // Historial de la persona: sus tickets, más recientes primero.
     List<Ticket> findByPersonaIdOrderByFechaCargaDesc(Integer personaId);

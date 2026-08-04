@@ -22,6 +22,7 @@ import {
   TipoCombustible,
   etiquetaUso,
   etiquetaConsumo,
+  unidadConsumo,
 } from '../../services/vehiculos';
 import {
   getAdminEmpleados,
@@ -445,6 +446,10 @@ function VehiclesABM() {
 
         <Text style={styles.fieldHint}>{etiquetaConsumo(form.tipoVehiculo)}</Text>
         <TextInput style={styles.abmInput} value={form.consumoPromedio} keyboardType="numeric" onChangeText={(t) => setForm({ ...form, consumoPromedio: t })} />
+        <Text style={styles.abmHint}>
+          Estimación inicial. A partir de la segunda carga se reemplaza por el consumo real
+          calculado con las cargas del vehículo.
+        </Text>
 
         <Text style={styles.fieldHint}>Último mantenimiento (AAAA-MM-DD)</Text>
         <TextInput style={styles.abmInput} value={form.fechaUltimoMantenimiento} onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })} />
@@ -494,8 +499,17 @@ function VehiclesABM() {
                       {v.patente}
                     </Text>
                     <Text style={styles.abmSub}>
-                      {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]} · {v.consumoPromedio} L
+                      {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]} ·{' '}
+                      {v.consumoPromedio} {unidadConsumo(v.tipoVehiculo)}
                     </Text>
+                    {/* El reciente solo se muestra cuando difiere del histórico:
+                        si son iguales no aporta nada, y cuando se despega es
+                        justamente la señal que interesa ver. */}
+                    {v.consumoReciente != null && v.consumoReciente !== v.consumoPromedio && (
+                      <Text style={styles.abmSub}>
+                        Últimas cargas: {v.consumoReciente} {unidadConsumo(v.tipoVehiculo)}
+                      </Text>
+                    )}
                     <Text style={[styles.abmEstado, { color: est.color }]}>
                       {baja ? 'DADO DE BAJA' : estadoLabel[v.estado]}
                     </Text>
@@ -776,6 +790,7 @@ const styles = StyleSheet.create({
   panel: { backgroundColor: '#1F2226', borderWidth: 1, borderColor: colors.border, borderRadius: 13, padding: 14, marginBottom: 16 },
   panelLabel: { fontSize: 10, letterSpacing: 1.5, color: colors.primary, marginBottom: 10, fontFamily: fonts.sansSemi },
   fieldHint: { fontSize: 11, color: colors.textFaint, marginBottom: 6, marginTop: 8, fontFamily: fonts.sans },
+  abmHint: { fontSize: 11, color: colors.textDim, marginTop: 4, lineHeight: 15, fontFamily: fonts.sans },
   segment: { flexDirection: 'row', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: 9, padding: 3, gap: 2, marginBottom: 12 },
   seg: { flex: 1, paddingVertical: 6, borderRadius: 7, alignItems: 'center' },
   segActive: { backgroundColor: colors.primary },
