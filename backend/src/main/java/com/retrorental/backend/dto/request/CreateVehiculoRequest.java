@@ -6,26 +6,35 @@ import com.retrorental.backend.model.enums.TipoVehiculo;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
+
+import com.retrorental.backend.validation.IdentificadorCoherente;
+import com.retrorental.backend.validation.VehiculoIdentificable;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Alta de un vehiculo. La patente debe ser única (se valida en el service).
- * "estado" es opcional: un vehiculo nuevo se da de alta DISPONIBLE salvo que se
- * indique otro.
+ * Alta de un vehiculo. El identificador debe ser único (se valida en el
+ * service). "estado" es opcional: un vehiculo nuevo se da de alta DISPONIBLE
+ * salvo que se indique otro.
  */
 @Data
-public class CreateVehiculoRequest {
+@IdentificadorCoherente
+public class CreateVehiculoRequest implements VehiculoIdentificable {
 
-    @NotBlank(message = "La patente es obligatoria")
-    @Pattern(regexp = "^[A-Za-z0-9-]{5,10}$",
-        message = "La patente debe tener entre 5 y 10 caracteres alfanuméricos")
-    private String patente;
+    // Patente en un CAMION/CAMIONETA, numero interno en una MAQUINA. El formato
+    // no se declara aca porque depende de tipoVehiculo: lo resuelve
+    // @IdentificadorCoherente.
+    @NotBlank(message = "El identificador es obligatorio")
+    private String identificador;
+
+    // Obligatorio solo para MAQUINA (ver @IdentificadorCoherente).
+    @Size(max = 60, message = "El modelo no puede superar los 60 caracteres")
+    private String modelo;
 
     @NotNull(message = "El tipo de vehiculo es obligatorio")
     private TipoVehiculo tipoVehiculo;

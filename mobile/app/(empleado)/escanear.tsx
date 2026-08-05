@@ -22,7 +22,7 @@ import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenSta
 import { OptionChips } from '../../components/fuel/OptionChips';
 import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
-import { getVehiculos, etiquetaLectura } from '../../services/vehiculos';
+import { getVehiculos, etiquetaLectura, tituloVehiculo } from '../../services/vehiculos';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
 import { combustibleLabel, formatMoney } from '../../constants/labels';
@@ -346,7 +346,7 @@ export default function EscanearScreen() {
             <>
               <Text style={styles.label}>Vehículo</Text>
               <View style={styles.vehiculoFijo}>
-                <Text style={styles.vehiculoFijoName}>{vehiculoSel.patente}</Text>
+                <Text style={styles.vehiculoFijoName}>{tituloVehiculo(vehiculoSel)}</Text>
                 <Text style={styles.vehiculoFijoSub}>{combustibleLabel[vehiculoSel.tipoCombustible]}</Text>
               </View>
 

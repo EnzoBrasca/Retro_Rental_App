@@ -1,6 +1,6 @@
 package com.retrorental.backend.exception;
 
-// Un recurso ya existe (documento/patente duplicado, baja repetida).
+// Un recurso ya existe (documento/identificador duplicado, baja repetida).
 // El HTTP status (409) lo define el ErrorCode que reciba.
 public class ConflictException extends AppException {
 

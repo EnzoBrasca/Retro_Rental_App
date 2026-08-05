@@ -9,8 +9,8 @@ import java.util.Optional;
 
 @Repository
 public interface VehiculoRepository extends JpaRepository<Vehiculo, Integer> {
-    Optional<Vehiculo> findByPatente(String patente);
-    boolean existsByPatente(String patente);
+    Optional<Vehiculo> findByIdentificador(String identificador);
+    boolean existsByIdentificador(String identificador);
 
     // El listado completo trae el operario en la MISMA query (LEFT JOIN): la card
     // del empleado muestra "en uso por X", y sin el fetch cada vehiculo dispararia

@@ -22,8 +22,18 @@ public class Vehiculo {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    // Identificador unico y visible: patente en CAMION/CAMIONETA, numero
+    // interno en MAQUINA (una maquina vial no esta patentada). El FORMATO se
+    // deriva de tipoVehiculo.formatoIdentificador(), no se persiste.
     @Column(nullable = false, unique = true)
-    private String patente;
+    private String identificador;
+
+    // Modelo (ej. "CAT 320D"). Descriptivo, NO unico: la empresa tiene dos
+    // maquinas del mismo modelo, y por eso el modelo no sirve como
+    // identificador. Nullable en el schema por los vehiculos anteriores a V6;
+    // para las maquinas nuevas lo exige la validacion del request.
+    @Column(name = "modelo", length = 60)
+    private String modelo;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_combustible", nullable = false)
