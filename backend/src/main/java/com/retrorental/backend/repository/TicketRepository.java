@@ -12,31 +12,50 @@ import java.util.List;
 @Repository
 public interface TicketRepository
         extends JpaRepository<Ticket, Integer>, JpaSpecificationExecutor<Ticket> {
+    // -----------------------------------------------------------------------
+    // TODAS las consultas de lectura filtran fechaAnulacion IS NULL.
+    //
+    // Un ticket anulado sigue existiendo como fila (es un registro contable),
+    // pero no debe participar de NINGUN calculo ni listado: si se colara,
+    // seguiria sumando gasto en la analitica y sosteniendo el consumo de un
+    // vehiculo con una carga que el admin dio de baja.
+    //
+    // La unica consulta que ve anulados es el listado del admin, y solo cuando
+    // los pide explicitamente (ver TicketService.listForAdmin).
+    // -----------------------------------------------------------------------
+
     // Cargas de un vehiculo que sirven para calcular consumo: las que tienen
     // lectura del contador, en orden de lectura. Las anteriores a esa feature
     // quedan afuera porque no aportan intervalo.
-    List<Ticket> findByVehiculoIdAndUsoAcumuladoIsNotNullOrderByUsoAcumuladoAsc(Integer vehiculoId);
+    List<Ticket> findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(
+        Integer vehiculoId);
 
-    List<Ticket> findByPersonaId(Integer personaId);
-    // Historial de la persona: sus tickets, más recientes primero.
-    List<Ticket> findByPersonaIdOrderByFechaCargaDesc(Integer personaId);
-    List<Ticket> findByProveedorId(Integer proveedorId);
-    List<Ticket> findByFechaCargaBetween(LocalDateTime desde, LocalDateTime hasta);
+    List<Ticket> findByPersonaIdAndFechaAnulacionIsNull(Integer personaId);
+    // Historial de la persona: sus tickets vigentes, más recientes primero.
+    List<Ticket> findByPersonaIdAndFechaAnulacionIsNullOrderByFechaCargaDesc(Integer personaId);
+    List<Ticket> findByProveedorIdAndFechaAnulacionIsNull(Integer proveedorId);
+    List<Ticket> findByFechaCargaBetweenAndFechaAnulacionIsNull(
+        LocalDateTime desde, LocalDateTime hasta);
     // El listado con filtros opcionales para el admin usa Specification
     // (JpaSpecificationExecutor.findAll) — ver TicketService.listForAdmin.
 
     /**
-     * Tickets de un período [desde, hasta) para el cálculo de estadísticas.
-     * Límite superior EXCLUSIVO. Trae precio, vehiculo, persona y proveedor
-     * con JOIN FETCH para evitar el N+1 al agregar el gasto y los desgloses
-     * por vehiculo/empleado/proveedor en memoria.
+     * Tickets VIGENTES de un período [desde, hasta) para el cálculo de
+     * estadísticas. Límite superior EXCLUSIVO. Trae precio, vehiculo, persona y
+     * proveedor con JOIN FETCH para evitar el N+1 al agregar el gasto y los
+     * desgloses por vehiculo/empleado/proveedor en memoria.
+     *
+     * El filtro de anulados es lo que hace que anular un ticket corrija SOLO el
+     * gasto de la analítica: no hay ningún total guardado, todo se agrega al
+     * vuelo desde acá.
      */
     @Query("SELECT t FROM Ticket t "
         + "JOIN FETCH t.precio "
         + "JOIN FETCH t.vehiculo "
         + "JOIN FETCH t.persona "
         + "JOIN FETCH t.proveedor "
-        + "WHERE t.fechaCarga >= :desde AND t.fechaCarga < :hasta")
+        + "WHERE t.fechaCarga >= :desde AND t.fechaCarga < :hasta "
+        + "AND t.fechaAnulacion IS NULL")
     List<Ticket> findForStats(@Param("desde") LocalDateTime desde,
                               @Param("hasta") LocalDateTime hasta);
 }

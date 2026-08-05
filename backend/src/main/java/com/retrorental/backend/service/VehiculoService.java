@@ -62,6 +62,12 @@ public class VehiculoService {
         vehiculo.setFechaUltimoMantenimiento(request.getFechaUltimoMantenimiento());
         vehiculo.setUsoAcumulado(request.getUsoAcumulado());
         vehiculo.setConsumoPromedio(request.getConsumoPromedio());
+        // La misma estimacion queda guardada aparte y no se pisa NUNCA mas: es
+        // el valor al que vuelve el consumo si se anulan cargas y el calculo
+        // real se queda sin datos. En la edicion no se toca, porque ahi el
+        // formulario viene precargado con el consumo CALCULADO y guardarlo aca
+        // convertiria un numero derivado en la supuesta estimacion del alta.
+        vehiculo.setConsumoInicial(request.getConsumoPromedio());
 
         return toResponse(vehiculoRepository.save(vehiculo));
     }

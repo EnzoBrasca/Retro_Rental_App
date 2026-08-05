@@ -65,6 +65,14 @@ public class Vehiculo {
     @Column(name = "consumo_promedio", nullable = false, precision = 10, scale = 2)
     private BigDecimal consumoPromedio;
 
+    // Estimacion que cargo el admin en el alta. NUNCA se pisa: es el valor al
+    // que vuelve consumoPromedio si se anulan cargas y quedan menos de dos, o
+    // sea cuando ya no hay con que calcular el consumo real. Sin esto, el
+    // consumo sobreviviria a las cargas que lo justificaban. Null en los
+    // vehiculos anteriores a V7 (su estimacion original ya se habia perdido).
+    @Column(name = "consumo_inicial", precision = 10, scale = 2)
+    private BigDecimal consumoInicial;
+
     // Mismo calculo pero solo sobre las ultimas N cargas. Sirve para ver cuando
     // una maquina se desvia de su propio promedio, que suele anticipar una
     // falla. Null mientras no haya dos cargas con lectura.
