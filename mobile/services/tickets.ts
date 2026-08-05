@@ -16,15 +16,76 @@ export interface Ticket {
   idProveedor: number;
   idVehiculo: number;
   empleadoUsername: string;
+  // Precio por litro efectivamente aplicado a esta carga. El monto total no
+  // viaja: es litros × este precio.
+  precioUnitario: number;
   ticketFotoKey: string | null;
   ticketFotoUrl: string | null;
   tableroFotoKey: string | null;
   tableroFotoUrl: string | null;
+  // Anulación. null = ticket vigente. Solo llegan con valor al panel del admin
+  // cuando pide ver los anulados: el resto de los endpoints los filtra.
+  fechaAnulacion: string | null;
+  anuladoPorUsername: string | null;
 }
 
-// Historial del empleado autenticado (sus tickets, más recientes primero).
+// Historial del empleado autenticado (sus tickets vigentes, más recientes primero).
 export function getMisTickets(): Promise<Ticket[]> {
   return api.get<Ticket[]>('/tickets/me');
+}
+
+// ---------------------------------------------------------------- admin
+
+/** Filtros del listado del admin. Todos opcionales, se combinan con AND. */
+export interface AdminTicketFilters {
+  empleadoId?: number | null;
+  proveedorId?: number | null;
+  vehiculoId?: number | null;
+  // ISO 8601 sin zona (yyyy-MM-ddTHH:mm:ss), como los espera el backend.
+  desde?: string | null;
+  hasta?: string | null;
+  // Monto TOTAL de la carga (litros × precio), no el precio por litro.
+  montoMin?: number | null;
+  montoMax?: number | null;
+  incluirAnulados?: boolean;
+  page?: number;
+  size?: number;
+}
+
+// Espejo de PagedModel del backend.
+export interface Paged<T> {
+  content: T[];
+  page: { size: number; number: number; totalElements: number; totalPages: number };
+}
+
+/** Listado paginado de tickets para el panel del admin. */
+export function getAdminTickets(filters: AdminTicketFilters = {}): Promise<Paged<Ticket>> {
+  const qs = new URLSearchParams();
+  // Solo viajan los filtros con valor: el backend omite el predicado cuando el
+  // parámetro no llega, y mandar vacíos rompería el parseo de fechas y montos.
+  const put = (k: string, v: unknown) => {
+    if (v !== null && v !== undefined && v !== '') qs.append(k, String(v));
+  };
+  put('empleadoId', filters.empleadoId);
+  put('proveedorId', filters.proveedorId);
+  put('vehiculoId', filters.vehiculoId);
+  put('desde', filters.desde);
+  put('hasta', filters.hasta);
+  put('montoMin', filters.montoMin);
+  put('montoMax', filters.montoMax);
+  if (filters.incluirAnulados) qs.append('incluirAnulados', 'true');
+  put('page', filters.page ?? 0);
+  put('size', filters.size ?? 20);
+  return api.get<Paged<Ticket>>(`/admin/tickets?${qs.toString()}`);
+}
+
+/**
+ * Anula un ticket. Es un DELETE, pero baja lógica: la fila queda (un ticket es
+ * un registro contable) y el backend revierte en el vehículo la lectura del
+ * contador y el consumo que esta carga había dejado. Devuelve 204 sin body.
+ */
+export function anularTicket(id: number): Promise<void> {
+  return api.delete<void>(`/admin/tickets/${id}`);
 }
 
 /**

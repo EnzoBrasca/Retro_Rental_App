@@ -6,6 +6,7 @@ import { colors, fonts } from '../../constants/theme';
 import { BarChart } from '../../components/fuel/BarChart';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { OptionChips } from '../../components/fuel/OptionChips';
+import { TicketsABM } from '../../components/admin/TicketsABM';
 import { FilterDropdown } from '../../components/fuel/FilterDropdown';
 import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
@@ -63,10 +64,21 @@ const TIPO_VEHICULO_OPTS = (Object.keys(tipoVehiculoLabel) as TipoVehiculo[]).ma
 const COMBUSTIBLE_OPTS = (Object.keys(combustibleLabel) as TipoCombustible[]).map((k) => ({ key: k, label: combustibleLabel[k] }));
 const ESTADO_OPTS = (Object.keys(estadoLabel) as Estado[]).map((k) => ({ key: k, label: estadoLabel[k] }));
 
+// Vistas del panel. El orden es el del uso: se entra a mirar cómo viene el
+// gasto, y recién después a tocar flota, tickets o personal.
+type ViewMode = 'analytics' | 'vehicles' | 'tickets' | 'personal';
+
+const TABS: { key: ViewMode; label: string }[] = [
+  { key: 'analytics', label: 'Analítica' },
+  { key: 'vehicles', label: 'Flota' },
+  { key: 'tickets', label: 'Tickets' },
+  { key: 'personal', label: 'Personal' },
+];
+
 export default function AdministradorScreen() {
   const { user } = useAuth();
   const router = useRouter();
-  const [viewMode, setViewMode] = useState<'analytics' | 'vehicles' | 'personal'>('analytics');
+  const [viewMode, setViewMode] = useState<ViewMode>('analytics');
 
   const initials = user
     ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase()
@@ -90,19 +102,35 @@ export default function AdministradorScreen() {
           </View>
         </View>
 
+        {/* Las pestañas se recorren desde TABS en vez de escribirse una por una:
+            con cuatro, el bloque repetido era la mitad del render y agregar la
+            quinta significaba copiar y pegar tres líneas más. */}
         <View style={styles.topTabs}>
-          <Pressable style={[styles.topTab, viewMode === 'analytics' && styles.topTabActive]} onPress={() => setViewMode('analytics')}>
-            <Text style={[styles.topTabText, viewMode === 'analytics' && styles.topTabTextActive]}>Analítica</Text>
-          </Pressable>
-          <Pressable style={[styles.topTab, viewMode === 'vehicles' && styles.topTabActive]} onPress={() => setViewMode('vehicles')}>
-            <Text style={[styles.topTabText, viewMode === 'vehicles' && styles.topTabTextActive]}>Flota</Text>
-          </Pressable>
-          <Pressable style={[styles.topTab, viewMode === 'personal' && styles.topTabActive]} onPress={() => setViewMode('personal')}>
-            <Text style={[styles.topTabText, viewMode === 'personal' && styles.topTabTextActive]}>Personal</Text>
-          </Pressable>
+          {TABS.map((tab) => {
+            const activa = viewMode === tab.key;
+            return (
+              <Pressable
+                key={tab.key}
+                style={[styles.topTab, activa && styles.topTabActive]}
+                onPress={() => setViewMode(tab.key)}
+              >
+                <Text style={[styles.topTabText, activa && styles.topTabTextActive]}>
+                  {tab.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
-        {viewMode === 'analytics' ? <Analytics /> : viewMode === 'vehicles' ? <VehiclesABM /> : <PersonalABM />}
+        {viewMode === 'analytics' ? (
+          <Analytics />
+        ) : viewMode === 'vehicles' ? (
+          <VehiclesABM />
+        ) : viewMode === 'tickets' ? (
+          <TicketsABM />
+        ) : (
+          <PersonalABM />
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -875,7 +903,9 @@ const styles = StyleSheet.create({
   topTabs: { flexDirection: 'row', backgroundColor: '#1b1d20', borderRadius: 9, padding: 4, marginBottom: 20 },
   topTab: { flex: 1, paddingVertical: 10, borderRadius: 7, alignItems: 'center' },
   topTabActive: { backgroundColor: colors.primary },
-  topTabText: { fontSize: 13, color: colors.textMuted, fontFamily: fonts.sansSemi },
+  // 12px y no 13: con cuatro pestañas, "Analítica" se cortaba en pantallas de
+  // 360dp de ancho, que son las que tienen los teléfonos de la obra.
+  topTabText: { fontSize: 12, color: colors.textMuted, fontFamily: fonts.sansSemi },
   topTabTextActive: { color: colors.bgDeep },
 
   formTitle: { fontFamily: fonts.display, fontSize: 18, color: colors.text, marginBottom: 6 },
