@@ -24,6 +24,49 @@ export function etiquetaUso(tipo: TipoVehiculo | null): string {
   return unidadDeTipo(tipo) === 'HORAS' ? 'Horas de uso' : 'Kilometraje';
 }
 
+// Una máquina vial no está patentada: se identifica por un número interno que
+// asigna la empresa. Misma idea que `etiquetaUso`: el backend manda el valor y
+// el cliente decide cómo rotularlo, porque la etiqueta es presentación.
+export function etiquetaIdentificador(tipo: TipoVehiculo | null): string {
+  return tipo === 'MAQUINA' ? 'Número interno' : 'Patente';
+}
+
+export function placeholderIdentificador(tipo: TipoVehiculo | null): string {
+  return tipo === 'MAQUINA' ? 'M-01' : 'AB123CD';
+}
+
+// Solo una máquina exige modelo: su interno dice CUÁL es, no QUÉ es. Un camión
+// ya queda identificado por su patente. Espeja TipoVehiculo.requiereModelo().
+export function requiereModelo(tipo: TipoVehiculo | null): boolean {
+  return tipo === 'MAQUINA';
+}
+
+/**
+ * Cómo se nombra un vehículo delante de una persona.
+ *
+ * En una máquina manda el MODELO: "CAT 320D (M-01)". El número interno es una
+ * numeración inventada por la empresa, así que como título no le dice nada a
+ * nadie; va entre paréntesis, que es lo único que separa dos máquinas del mismo
+ * modelo. En un camión o camioneta manda la patente, que es lo que está
+ * pintado en el vehículo.
+ *
+ * El fallback importa: una máquina cargada antes de que existiera el campo
+ * modelo no tiene ninguno, y sin esto el título quedaría en "(M-01)".
+ */
+export function tituloVehiculo(v: Vehiculo): string {
+  if (v.tipoVehiculo === 'MAQUINA' && v.modelo) {
+    return `${v.modelo} (${v.identificador})`;
+  }
+  return v.identificador;
+}
+
+// Texto sobre el que buscar un vehículo. Incluye el modelo porque es lo que el
+// operario ve como título de la card: si buscara solo por identificador,
+// tipear "CAT" no encontraría la máquina que tiene delante en pantalla.
+export function textoBusquedaVehiculo(v: Vehiculo): string {
+  return `${v.identificador} ${v.modelo ?? ''}`.toLowerCase();
+}
+
 // Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
 // Nombra el instrumento a propósito: en el campo se lee un horómetro o un
 // odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
@@ -50,7 +93,12 @@ export type TipoCombustible =
 
 export interface Vehiculo {
   id: number;
-  patente: string;
+  // Identificador único y visible: patente en CAMION/CAMIONETA, número interno
+  // en MAQUINA. Usar `etiquetaIdentificador(tipoVehiculo)` para rotularlo.
+  identificador: string;
+  // Modelo descriptivo (ej. "CAT 320D"). No es único: puede haber dos máquinas
+  // del mismo modelo. null en vehículos cargados antes del cambio.
+  modelo: string | null;
   tipoVehiculo: TipoVehiculo;
   tipoCombustible: TipoCombustible;
   estado: Estado;
@@ -100,7 +148,9 @@ export function getAdminVehiculos(): Promise<Vehiculo[]> {
 
 // Cuerpo del alta. Espejo de CreateVehiculoRequest (estado opcional → DISPONIBLE).
 export interface CreateVehiculoPayload {
-  patente: string;
+  identificador: string;
+  // Obligatorio si tipoVehiculo es MAQUINA (lo valida el backend).
+  modelo?: string | null;
   tipoVehiculo: TipoVehiculo;
   tipoCombustible: TipoCombustible;
   capacidadTanque: number;

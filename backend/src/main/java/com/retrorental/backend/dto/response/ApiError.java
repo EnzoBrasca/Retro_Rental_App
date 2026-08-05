@@ -26,7 +26,7 @@ public record ApiError(
         this(status, code, message, null, null);
     }
 
-    // Error de dominio apuntando a un campo puntual (ej. patente duplicada).
+    // Error de dominio apuntando a un campo puntual (ej. identificador duplicado).
     public ApiError(int status, String code, String message, String field) {
         this(status, code, message, field, null);
     }

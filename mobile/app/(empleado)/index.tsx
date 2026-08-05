@@ -10,6 +10,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
 import {
   getVehiculos,
+  tituloVehiculo,
+  textoBusquedaVehiculo,
   Vehiculo,
   Estado,
   TipoVehiculo,
@@ -90,7 +92,7 @@ const VehiculoCard = memo(({ item, onOpen }: { item: Vehiculo; onOpen: (id: numb
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.cardName} numberOfLines={1}>
-            {item.patente}
+            {tituloVehiculo(item)}
           </Text>
           <Text style={styles.cardSub}>
             {tipoVehiculoLabel[item.tipoVehiculo]} · {combustibleLabel[item.tipoCombustible]}
@@ -160,7 +162,7 @@ export default function FlotaScreen() {
     const needle = search.trim().toLowerCase();
     return activos.filter(
       (v) =>
-        (needle === '' || v.patente.toLowerCase().includes(needle)) &&
+        (needle === '' || textoBusquedaVehiculo(v).includes(needle)) &&
         (estadoF === null || v.estado === estadoF) &&
         (tipoF === null || v.tipoVehiculo === tipoF) &&
         (combF === null || v.tipoCombustible === combF),
@@ -229,7 +231,7 @@ export default function FlotaScreen() {
           style={styles.searchInput}
           value={search}
           onChangeText={setSearch}
-          placeholder="Buscar por patente…"
+          placeholder="Buscar por patente, modelo o interno…"
           placeholderTextColor={colors.textDim}
           autoCapitalize="characters"
           autoCorrect={false}

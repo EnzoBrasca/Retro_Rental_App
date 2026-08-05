@@ -6,10 +6,13 @@ import com.retrorental.backend.model.enums.TipoVehiculo;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
-import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
+
+import com.retrorental.backend.validation.IdentificadorCoherente;
+import com.retrorental.backend.validation.VehiculoIdentificable;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,12 +22,20 @@ import java.time.LocalDate;
  * No incluye la baja lógica: eso se hace con DELETE /admin/vehiculos/{id}.
  */
 @Data
-public class UpdateVehiculoRequest {
+@IdentificadorCoherente
+public class UpdateVehiculoRequest implements VehiculoIdentificable {
 
-    @NotBlank(message = "La patente es obligatoria")
-    @Pattern(regexp = "^[A-Za-z0-9-]{5,10}$",
-        message = "La patente debe tener entre 5 y 10 caracteres alfanuméricos")
-    private String patente;
+    // Patente en un CAMION/CAMIONETA, numero interno en una MAQUINA. El formato
+    // no se declara aca porque depende de tipoVehiculo: lo resuelve
+    // @IdentificadorCoherente.
+    @NotBlank(message = "El identificador es obligatorio")
+    private String identificador;
+
+    // Obligatorio solo para MAQUINA (ver @IdentificadorCoherente). Los
+    // vehiculos dados de alta antes de V6 lo tienen vacio: la primera edicion
+    // de una maquina vieja va a exigir completarlo.
+    @Size(max = 60, message = "El modelo no puede superar los 60 caracteres")
+    private String modelo;
 
     @NotNull(message = "El tipo de vehiculo es obligatorio")
     private TipoVehiculo tipoVehiculo;

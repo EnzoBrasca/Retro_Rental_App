@@ -48,7 +48,7 @@ class AdminVehiculoControllerTest extends AbstractControllerTest {
 
     private CreateVehiculoRequest validCreate() {
         CreateVehiculoRequest req = new CreateVehiculoRequest();
-        req.setPatente("ABC123");
+        req.setIdentificador("ABC123");
         req.setTipoVehiculo(TipoVehiculo.CAMIONETA);
         req.setTipoCombustible(TipoCombustible.GASOIL_GRADO_2);
         req.setCapacidadTanque(60);
@@ -60,7 +60,7 @@ class AdminVehiculoControllerTest extends AbstractControllerTest {
     }
 
     private VehiculoResponse sampleResponse() {
-        return new VehiculoResponse(1, "ABC123", TipoVehiculo.CAMIONETA,
+        return new VehiculoResponse(1, "ABC123", null, TipoVehiculo.CAMIONETA,
             TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, UnidadUso.KM,
             new BigDecimal("8.5"), new BigDecimal("9.1"), null, null, null, null);
     }
@@ -87,7 +87,7 @@ class AdminVehiculoControllerTest extends AbstractControllerTest {
 
         mockMvc.perform(get("/admin/vehiculos"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].patente").value("ABC123"));
+            .andExpect(jsonPath("$[0].identificador").value("ABC123"));
     }
 
     @Test
@@ -106,28 +106,101 @@ class AdminVehiculoControllerTest extends AbstractControllerTest {
     @WithMockUser(roles = "ADMINISTRADOR")
     void crear_conPatenteInvalida_devuelve400() throws Exception {
         CreateVehiculoRequest req = validCreate();
-        req.setPatente("!!");
+        req.setIdentificador("!!");
 
         mockMvc.perform(post("/admin/vehiculos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(req)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-            .andExpect(jsonPath("$.errors[0].field").value("patente"));
+            .andExpect(jsonPath("$.errors[0].field").value("identificador"));
     }
 
     @Test
     @WithMockUser(roles = "ADMINISTRADOR")
     void crear_conPatenteDuplicada_devuelve409() throws Exception {
         when(vehiculoService.create(any())).thenThrow(new ConflictException(
-            ErrorCode.PATENTE_ALREADY_EXISTS, "Ya existe un vehiculo con esa patente", "patente"));
+            ErrorCode.IDENTIFICADOR_ALREADY_EXISTS,
+            "Ya existe un vehiculo con esa patente", "identificador"));
 
         mockMvc.perform(post("/admin/vehiculos")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(validCreate())))
             .andExpect(status().isConflict())
-            .andExpect(jsonPath("$.code").value("PATENTE_ALREADY_EXISTS"))
-            .andExpect(jsonPath("$.field").value("patente"));
+            .andExpect(jsonPath("$.code").value("IDENTIFICADOR_ALREADY_EXISTS"))
+            .andExpect(jsonPath("$.field").value("identificador"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Identificador segun el tipo (V6): una maquina vial no tiene patente, se
+    // identifica por un numero interno corto y se describe por su modelo.
+    // -----------------------------------------------------------------------
+
+    private CreateVehiculoRequest validCreateMaquina() {
+        CreateVehiculoRequest req = validCreate();
+        req.setTipoVehiculo(TipoVehiculo.MAQUINA);
+        req.setIdentificador("M-01");
+        req.setModelo("CAT 320D");
+        return req;
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRADOR")
+    void crearMaquina_conInternoCorto_devuelve200() throws Exception {
+        // "M-01" tiene 4 caracteres: el formato de patente (minimo 5) lo habria
+        // rechazado. Es el caso que justifica derivar el formato del tipo.
+        when(vehiculoService.create(any())).thenReturn(sampleResponse());
+
+        mockMvc.perform(post("/admin/vehiculos")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validCreateMaquina())))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRADOR")
+    void crearCamioneta_conIdentificadorDeMaquina_devuelve400() throws Exception {
+        // La contracara: lo que vale como interno NO vale como patente. Sin
+        // esto, el formato laxo de la maquina se colaria en toda la flota.
+        CreateVehiculoRequest req = validCreate();
+        req.setIdentificador("M-01");
+
+        mockMvc.perform(post("/admin/vehiculos")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("identificador"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRADOR")
+    void crearMaquina_sinModelo_devuelve400() throws Exception {
+        // Un interno inventado ("M-01") no le dice a nadie QUE maquina es.
+        CreateVehiculoRequest req = validCreateMaquina();
+        req.setModelo(null);
+
+        mockMvc.perform(post("/admin/vehiculos")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("modelo"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMINISTRADOR")
+    void crearCamioneta_sinModelo_devuelve200() throws Exception {
+        // Un camion ya se identifica por su patente: el modelo es opcional.
+        when(vehiculoService.create(any())).thenReturn(sampleResponse());
+
+        CreateVehiculoRequest req = validCreate();
+        req.setModelo(null);
+
+        mockMvc.perform(post("/admin/vehiculos")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isOk());
     }
 
     @Test

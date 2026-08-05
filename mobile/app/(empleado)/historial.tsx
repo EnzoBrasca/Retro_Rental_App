@@ -7,28 +7,17 @@ import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenSta
 import { LoadDetailModal } from '../../components/fuel/LoadDetailModal';
 import { useFetch } from '../../hooks/useFetch';
 import { getMisTickets, Ticket } from '../../services/tickets';
-import { getVehiculos, Vehiculo, TipoCombustible } from '../../services/vehiculos';
+import { getVehiculos, tituloVehiculo, Vehiculo, TipoCombustible } from '../../services/vehiculos';
 import { getProveedores, getPrecios, Proveedor, Precio } from '../../services/catalogos';
 import { formatFecha, formatMoney } from '../../constants/labels';
 
 type Filtro = 'Todos' | 'Esta semana' | 'Este mes';
 const FILTERS: Filtro[] = ['Todos', 'Esta semana', 'Este mes'];
 
-// Fila del historial: ya resuelta contra los catálogos (proveedor, monto, patente).
-// Lleva más de lo que muestra la card colapsada: el resto alimenta el detalle.
-export type Row = {
-  id: number;
-  patente: string;
-  tipoVehiculo: Vehiculo['tipoVehiculo'];
-  tipoCombustible: TipoCombustible | null;
-  fecha: string;
-  fechaCarga: string;
-  proveedor: string;
-  litros: number;
-  precioUnitario: number;
-  costo: number;
-  ticketFotoUrl: string | null;
-};
+// El tipo de la fila vive en LoadDetailModal, que es quien la consume. Se
+// reexporta para no romper a quien la importe desde acá.
+import type { Row } from '../../components/fuel/LoadDetailModal';
+export type { Row };
 
 // Card colapsada: solo litros e importe total. El detalle (proveedor, fecha,
 // combustible, precio/L y la foto del ticket) se abre al tocarla.
@@ -89,7 +78,7 @@ export default function HistorialScreen() {
       const unitario = precio ? precio.precioUnitario : 0;
       return {
         id: t.id,
-        patente: v ? v.patente : `Vehículo #${t.idVehiculo}`,
+        identificador: v ? tituloVehiculo(v) : `Vehículo #${t.idVehiculo}`,
         tipoVehiculo: v ? v.tipoVehiculo : 'MAQUINA',
         tipoCombustible: v ? v.tipoCombustible : null,
         fecha: formatFecha(t.fechaCarga),

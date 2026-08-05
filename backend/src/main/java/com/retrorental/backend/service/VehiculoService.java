@@ -38,18 +38,23 @@ public class VehiculoService {
     }
 
     /**
-     * Alta de un vehiculo (solo admin). La patente es única; si ya existe se
-     * rechaza con 409. Sin "estado" en el request, se crea DISPONIBLE.
+     * Alta de un vehiculo (solo admin). El identificador (patente o numero
+     * interno segun el tipo) es único; si ya existe se rechaza con 409. Sin
+     * "estado" en el request, se crea DISPONIBLE.
      */
     @Transactional
     public VehiculoResponse create(CreateVehiculoRequest request) {
-        if (vehiculoRepository.existsByPatente(request.getPatente())) {
+        String identificador = normalizar(request.getIdentificador());
+        if (vehiculoRepository.existsByIdentificador(identificador)) {
             throw new ConflictException(
-                ErrorCode.PATENTE_ALREADY_EXISTS, "Ya existe un vehiculo con esa patente", "patente");
+                ErrorCode.IDENTIFICADOR_ALREADY_EXISTS,
+                "Ya existe un vehiculo con ese " + request.getTipoVehiculo().nombreIdentificador(),
+                "identificador");
         }
 
         Vehiculo vehiculo = new Vehiculo();
-        vehiculo.setPatente(request.getPatente());
+        vehiculo.setIdentificador(identificador);
+        vehiculo.setModelo(normalizar(request.getModelo()));
         vehiculo.setTipoVehiculo(request.getTipoVehiculo());
         vehiculo.setTipoCombustible(request.getTipoCombustible());
         vehiculo.setCapacidadTanque(request.getCapacidadTanque());
@@ -62,8 +67,8 @@ public class VehiculoService {
     }
 
     /**
-     * Edición completa de un vehiculo (solo admin). Si cambia la patente, se
-     * valida que no colisione con OTRO vehiculo.
+     * Edición completa de un vehiculo (solo admin). Si cambia el identificador,
+     * se valida que no colisione con OTRO vehiculo.
      */
     @Transactional
     public VehiculoResponse update(Integer id, UpdateVehiculoRequest request) {
@@ -71,14 +76,18 @@ public class VehiculoService {
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.VEHICULO_NOT_FOUND, "Vehiculo no encontrado"));
 
-        vehiculoRepository.findByPatente(request.getPatente())
+        String identificador = normalizar(request.getIdentificador());
+        vehiculoRepository.findByIdentificador(identificador)
             .filter(otro -> !otro.getId().equals(id))
             .ifPresent(otro -> {
                 throw new ConflictException(
-                    ErrorCode.PATENTE_ALREADY_EXISTS, "Ya existe otro vehiculo con esa patente", "patente");
+                    ErrorCode.IDENTIFICADOR_ALREADY_EXISTS,
+                    "Ya existe otro vehiculo con ese " + request.getTipoVehiculo().nombreIdentificador(),
+                    "identificador");
             });
 
-        vehiculo.setPatente(request.getPatente());
+        vehiculo.setIdentificador(identificador);
+        vehiculo.setModelo(normalizar(request.getModelo()));
         vehiculo.setTipoVehiculo(request.getTipoVehiculo());
         vehiculo.setTipoCombustible(request.getTipoCombustible());
         vehiculo.setCapacidadTanque(request.getCapacidadTanque());
@@ -192,11 +201,28 @@ public class VehiculoService {
         vehiculoRepository.save(vehiculo);
     }
 
+    /**
+     * Recorta los espacios de los bordes y trata "" como ausencia.
+     *
+     * El identificador entra en una constraint UNIQUE: sin esto, "M-01" y
+     * "M-01 " serian dos vehiculos distintos para la base y el mismo para
+     * cualquier persona. En el modelo evita guardar cadenas vacias, que a la
+     * hora de leer se comportan distinto que un null.
+     */
+    private String normalizar(String valor) {
+        if (valor == null) {
+            return null;
+        }
+        String limpio = valor.trim();
+        return limpio.isEmpty() ? null : limpio;
+    }
+
     private VehiculoResponse toResponse(Vehiculo vehiculo) {
         Empleado operario = vehiculo.getOperario();
         return new VehiculoResponse(
             vehiculo.getId(),
-            vehiculo.getPatente(),
+            vehiculo.getIdentificador(),
+            vehiculo.getModelo(),
             vehiculo.getTipoVehiculo(),
             vehiculo.getTipoCombustible(),
             vehiculo.getEstado(),

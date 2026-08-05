@@ -23,7 +23,8 @@ public enum ErrorCode {
 
     // --- Vehiculos ---
     VEHICULO_NOT_FOUND(HttpStatus.NOT_FOUND),
-    PATENTE_ALREADY_EXISTS(HttpStatus.CONFLICT),
+    // Ya hay otro vehiculo con ese identificador (patente o numero interno).
+    IDENTIFICADOR_ALREADY_EXISTS(HttpStatus.CONFLICT),
     VEHICULO_ALREADY_INACTIVE(HttpStatus.CONFLICT),
     VEHICULO_NOT_ASSIGNED(HttpStatus.FORBIDDEN),
     VEHICULO_ALREADY_ASSIGNED(HttpStatus.CONFLICT),

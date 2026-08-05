@@ -34,7 +34,7 @@ class VehiculoControllerTest extends AbstractControllerTest {
     private VehiculoService vehiculoService;
 
     private VehiculoResponse sample() {
-        return new VehiculoResponse(1, "ABC123", TipoVehiculo.CAMION,
+        return new VehiculoResponse(1, "ABC123", null, TipoVehiculo.CAMION,
             TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, UnidadUso.KM,
             new BigDecimal("8.5"), new BigDecimal("9.1"), null, null, null, null);
     }
@@ -53,7 +53,7 @@ class VehiculoControllerTest extends AbstractControllerTest {
 
         mockMvc.perform(get("/vehiculos"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].patente").value("ABC123"));
+            .andExpect(jsonPath("$[0].identificador").value("ABC123"));
     }
 
     @Test

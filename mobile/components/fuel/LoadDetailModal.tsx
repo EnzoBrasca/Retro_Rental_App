@@ -11,7 +11,34 @@ import {
 } from 'react-native';
 import { colors, fonts, radius } from '../../constants/theme';
 import { combustibleLabel, formatFecha, formatMoney, iconForTipoVehiculo } from '../../constants/labels';
-import type { Row } from '../../app/(empleado)/historial';
+import type { TipoCombustible, TipoVehiculo } from '../../services/vehiculos';
+
+/**
+ * Una carga ya resuelta contra los catálogos (proveedor, monto, identificador),
+ * lista para mostrarse. Lleva más de lo que muestra la card colapsada: el resto
+ * alimenta este detalle.
+ *
+ * El tipo vive ACÁ, con el componente que lo consume, y no en la pantalla del
+ * historial: el detalle lo usan tanto el operario como el panel del admin, y un
+ * componente compartido no puede depender de una pantalla puntual.
+ */
+export type Row = {
+  id: number;
+  identificador: string;
+  tipoVehiculo: TipoVehiculo;
+  tipoCombustible: TipoCombustible | null;
+  fecha: string;
+  fechaCarga: string;
+  proveedor: string;
+  litros: number;
+  precioUnitario: number;
+  costo: number;
+  ticketFotoUrl: string | null;
+  // Solo lo completa el panel del admin: en el historial del operario los
+  // tickets anulados no aparecen.
+  anuladoPor?: string | null;
+  fechaAnulacion?: string | null;
+};
 
 /**
  * Detalle de una carga del historial. Se abre al tocar una card (que colapsada
@@ -52,7 +79,7 @@ function DetailSheet({ row, onClose }: { row: Row; onClose: () => void }) {
                 <Icon width={20} height={20} color={colors.primary} />
               </View>
               <View>
-                <Text style={styles.patente}>{row.patente}</Text>
+                <Text style={styles.identificador}>{row.identificador}</Text>
                 <Text style={styles.fecha}>{formatFecha(row.fechaCarga)}</Text>
               </View>
             </View>
@@ -143,7 +170,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  patente: { fontFamily: fonts.displayBold, fontSize: 17, color: colors.text },
+  identificador: { fontFamily: fonts.displayBold, fontSize: 17, color: colors.text },
   fecha: { fontSize: 11.5, color: colors.textFaint, fontFamily: fonts.mono, marginTop: 2 },
   close: { fontSize: 18, color: colors.textMuted },
 

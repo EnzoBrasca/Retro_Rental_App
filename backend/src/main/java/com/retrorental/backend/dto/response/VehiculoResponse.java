@@ -18,10 +18,18 @@ import java.time.LocalDate;
  * unidadUso viaja junto a usoAcumulado para que el cliente sepa que esta
  * mostrando (HORAS en una maquina vial, KM en un camion) sin tener que
  * reimplementar la regla. Se deriva de tipoVehiculo, no se persiste.
+ *
+ * Lo mismo vale para el identificador: viaja el valor, y el cliente decide si
+ * lo rotula "Patente" o "Interno" segun tipoVehiculo. La etiqueta no se manda
+ * desde el backend porque es una decision de presentacion.
  */
 public record VehiculoResponse(
     Integer id,
-    String patente,
+    // Patente en CAMION/CAMIONETA, numero interno en MAQUINA.
+    String identificador,
+    // Modelo descriptivo (ej. "CAT 320D"). Null en los vehiculos anteriores a
+    // V6 y en los camiones/camionetas que no lo cargaron.
+    String modelo,
     TipoVehiculo tipoVehiculo,
     TipoCombustible tipoCombustible,
     Estado estado,

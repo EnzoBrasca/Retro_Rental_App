@@ -23,6 +23,10 @@ import {
   etiquetaUso,
   etiquetaConsumo,
   unidadConsumo,
+  etiquetaIdentificador,
+  placeholderIdentificador,
+  requiereModelo,
+  tituloVehiculo,
 } from '../../services/vehiculos';
 import {
   getAdminEmpleados,
@@ -177,7 +181,7 @@ function Analytics() {
 
   const vehiculoOpts = [
     { key: TODOS_VEHICULO, label: 'Todos' },
-    ...(filterData?.vehiculos.map((v) => ({ key: v.id, label: v.patente })) ?? []),
+    ...(filterData?.vehiculos.map((v) => ({ key: v.id, label: tituloVehiculo(v) })) ?? []),
   ];
 
   const personaOpts = (filterData?.personas ?? []).map((p: PersonaOpcion) => ({
@@ -313,7 +317,8 @@ function Analytics() {
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 type FormState = {
-  patente: string;
+  identificador: string;
+  modelo: string;
   tipoVehiculo: TipoVehiculo | null;
   tipoCombustible: TipoCombustible | null;
   capacidadTanque: string;
@@ -324,7 +329,8 @@ type FormState = {
 };
 
 const emptyForm = (): FormState => ({
-  patente: '',
+  identificador: '',
+  modelo: '',
   tipoVehiculo: null,
   tipoCombustible: null,
   capacidadTanque: '',
@@ -335,7 +341,10 @@ const emptyForm = (): FormState => ({
 });
 
 const formFrom = (v: Vehiculo): FormState => ({
-  patente: v.patente,
+  identificador: v.identificador,
+  // Los vehículos cargados antes del cambio no tienen modelo. El input no
+  // acepta null, y editar una máquina vieja va a exigir completarlo.
+  modelo: v.modelo ?? '',
   tipoVehiculo: v.tipoVehiculo,
   tipoCombustible: v.tipoCombustible,
   capacidadTanque: String(v.capacidadTanque),
@@ -367,8 +376,15 @@ function VehiclesABM() {
 
   const save = async () => {
     setFormError(null);
-    if (!form.patente.trim()) return setFormError('Ingresá la patente.');
+    // El tipo se valida primero: sin él no se sabe cómo llamar al identificador
+    // en el mensaje de error ni si hace falta el modelo.
     if (!form.tipoVehiculo) return setFormError('Elegí el tipo de vehículo.');
+    if (!form.identificador.trim()) {
+      return setFormError(`Ingresá ${etiquetaIdentificador(form.tipoVehiculo).toLowerCase()}.`);
+    }
+    if (requiereModelo(form.tipoVehiculo) && !form.modelo.trim()) {
+      return setFormError('Ingresá el modelo de la máquina.');
+    }
     if (!form.tipoCombustible) return setFormError('Elegí el combustible.');
     const capacidad = parseInt(form.capacidadTanque, 10);
     const uso = parseInt(form.usoAcumulado, 10);
@@ -378,7 +394,10 @@ function VehiclesABM() {
     if (!(consumo > 0)) return setFormError('Consumo promedio inválido.');
 
     const payload = {
-      patente: form.patente.trim(),
+      identificador: form.identificador.trim(),
+      // "" no es un modelo vacío: es la ausencia de modelo. Se manda null para
+      // que el backend no guarde una cadena vacía.
+      modelo: form.modelo.trim() || null,
       tipoVehiculo: form.tipoVehiculo,
       tipoCombustible: form.tipoCombustible,
       capacidadTanque: capacidad,
@@ -402,7 +421,7 @@ function VehiclesABM() {
   };
 
   const remove = (v: Vehiculo) => {
-    Alert.alert('Dar de baja', `¿Dar de baja el vehículo ${v.patente}?`, [
+    Alert.alert('Dar de baja', `¿Dar de baja el vehículo ${tituloVehiculo(v)}?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Dar de baja',
@@ -424,11 +443,25 @@ function VehiclesABM() {
       <View style={{ marginTop: 4 }}>
         <Text style={styles.formTitle}>{editing === 'new' ? 'Nuevo vehículo' : 'Editar vehículo'}</Text>
 
-        <Text style={styles.fieldHint}>Patente</Text>
-        <TextInput style={styles.abmInput} value={form.patente} autoCapitalize="characters" onChangeText={(t) => setForm({ ...form, patente: t })} placeholder="AB123CD" placeholderTextColor={colors.textDim} />
-
+        {/* El tipo va PRIMERO: de él dependen la etiqueta del identificador
+            ("Patente" o "Número interno"), su formato y si hace falta el
+            modelo. Pedirlo después dejaría al admin escribiendo en un campo
+            que todavía no sabe qué le está pidiendo. */}
         <Text style={styles.fieldHint}>Tipo de vehículo</Text>
         <OptionChips options={TIPO_VEHICULO_OPTS} value={form.tipoVehiculo} onChange={(k) => setForm({ ...form, tipoVehiculo: k })} />
+
+        <Text style={[styles.fieldHint, { marginTop: 12 }]}>{etiquetaIdentificador(form.tipoVehiculo)}</Text>
+        <TextInput style={styles.abmInput} value={form.identificador} autoCapitalize="characters" onChangeText={(t) => setForm({ ...form, identificador: t })} placeholder={placeholderIdentificador(form.tipoVehiculo)} placeholderTextColor={colors.textDim} />
+
+        {requiereModelo(form.tipoVehiculo) && (
+          <>
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Modelo</Text>
+            <TextInput style={styles.abmInput} value={form.modelo} onChangeText={(t) => setForm({ ...form, modelo: t })} placeholder="CAT 320D" placeholderTextColor={colors.textDim} />
+            <Text style={styles.fieldNote}>
+              Dos máquinas pueden compartir modelo: el número interno es el que las distingue.
+            </Text>
+          </>
+        )}
 
         <Text style={[styles.fieldHint, { marginTop: 12 }]}>Combustible</Text>
         <OptionChips options={COMBUSTIBLE_OPTS} value={form.tipoCombustible} onChange={(k) => setForm({ ...form, tipoCombustible: k })} />
@@ -495,8 +528,12 @@ function VehiclesABM() {
                     <Icon width={24} height={24} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
+                    {/* Mismo nombre que ve el operario: en una máquina manda el
+                        modelo con el interno entre paréntesis, en el resto la
+                        patente. Si el admin y el operario nombraran distinto al
+                        mismo vehículo, no podrían entenderse por teléfono. */}
                     <Text style={styles.abmName} numberOfLines={1}>
-                      {v.patente}
+                      {tituloVehiculo(v)}
                     </Text>
                     <Text style={styles.abmSub}>
                       {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]} ·{' '}
@@ -790,6 +827,8 @@ const styles = StyleSheet.create({
   panel: { backgroundColor: '#1F2226', borderWidth: 1, borderColor: colors.border, borderRadius: 13, padding: 14, marginBottom: 16 },
   panelLabel: { fontSize: 10, letterSpacing: 1.5, color: colors.primary, marginBottom: 10, fontFamily: fonts.sansSemi },
   fieldHint: { fontSize: 11, color: colors.textFaint, marginBottom: 6, marginTop: 8, fontFamily: fonts.sans },
+  // Aclaración bajo un input, para explicar por qué se pide el dato.
+  fieldNote: { fontSize: 11, color: colors.textDim, marginTop: 6, lineHeight: 15, fontFamily: fonts.sans },
   abmHint: { fontSize: 11, color: colors.textDim, marginTop: 4, lineHeight: 15, fontFamily: fonts.sans },
   segment: { flexDirection: 'row', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: 9, padding: 3, gap: 2, marginBottom: 12 },
   seg: { flex: 1, paddingVertical: 6, borderRadius: 7, alignItems: 'center' },
