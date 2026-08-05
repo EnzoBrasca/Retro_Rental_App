@@ -24,21 +24,23 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 -- 1. Proveedores
 --
--- OJO: el CUIT es NOT NULL y todavia no tenemos el real de cada razon social.
--- Queda un placeholder deliberadamente visible ('REEMPLAZAR-CUIT') para que
--- salte a la vista en cualquier listado en vez de parecer un dato valido.
--- Reemplazar antes de considerar cerrado el catalogo.
+-- CUIT real de cada razon social, dato del cliente (05/08/2026).
 -- ---------------------------------------------------------------------------
 INSERT INTO proveedores (nombre, cuit, servicio)
 SELECT v.nombre, v.cuit, v.servicio
 FROM (VALUES
-    ('YPF En Ruta',      'REEMPLAZAR-CUIT', 'COMBUSTIBLE'),
-    ('SHELL Castiñeira', 'REEMPLAZAR-CUIT', 'COMBUSTIBLE'),
-    ('Axion',            'REEMPLAZAR-CUIT', 'COMBUSTIBLE')
+    ('YPF En Ruta',      '33-71558362-9', 'COMBUSTIBLE'),
+    ('SHELL Castiñeira', '30-54724011-8', 'COMBUSTIBLE'),
+    ('Axion',            '30-50691900-9', 'COMBUSTIBLE')
 ) AS v (nombre, cuit, servicio)
 WHERE NOT EXISTS (
     SELECT 1 FROM proveedores p WHERE p.nombre = v.nombre
 );
+
+-- Si el script ya corrio antes con el placeholder, esto lo deja al dia.
+UPDATE proveedores SET cuit = '33-71558362-9' WHERE nombre = 'YPF En Ruta';
+UPDATE proveedores SET cuit = '30-54724011-8' WHERE nombre = 'SHELL Castiñeira';
+UPDATE proveedores SET cuit = '30-50691900-9' WHERE nombre = 'Axion';
 
 -- ---------------------------------------------------------------------------
 -- 2. Precios vigentes por (proveedor, combustible)
