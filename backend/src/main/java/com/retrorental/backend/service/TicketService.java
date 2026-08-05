@@ -21,6 +21,7 @@ import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
 import com.retrorental.backend.repository.TicketRepository;
 import com.retrorental.backend.repository.VehiculoRepository;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -166,13 +167,23 @@ public class TicketService {
      * flota no dispare una consulta por vehiculo. El costo es una consulta por
      * carga, que es la operacion poco frecuente de las dos.
      *
-     * Si todavia no hay datos suficientes (hace falta una segunda carga con
-     * lectura), NO se toca consumoPromedio: queda el valor que cargo el admin en
-     * el alta como estimacion inicial.
+     * Si no hay datos suficientes (hacen falta dos cargas con lectura), se
+     * vuelve a consumoInicial: la estimacion que cargo el admin en el alta.
+     *
+     * Ese fallback existe por la ANULACION. Mientras los tickets solo se
+     * agregaban, alcanzaba con no tocar consumoPromedio cuando el calculo no
+     * daba: el valor que habia era justamente la estimacion del alta. Al poder
+     * anular, el vehiculo puede RETROCEDER a menos de dos cargas, y entonces
+     * "no tocar" dejaria un consumo calculado a partir de cargas que ya no
+     * existen. Un numero que sobrevive a la evidencia que lo sustentaba.
+     *
+     * Si consumoInicial es null (vehiculos anteriores a V7, cuya estimacion
+     * original ya se habia perdido) no hay a que volver: se deja lo que hay,
+     * que es lo unico que se puede hacer sin inventar un dato.
      */
     private void recalcularConsumo(Vehiculo vehiculo) {
         List<ConsumoCalculator.Carga> cargas = ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullOrderByUsoAcumuladoAsc(vehiculo.getId())
+            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculo.getId())
             .stream()
             .map(t -> new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()))
             .toList();
@@ -182,8 +193,71 @@ public class TicketService {
 
         if (consumo.historico() != null) {
             vehiculo.setConsumoPromedio(consumo.historico());
+        } else if (vehiculo.getConsumoInicial() != null) {
+            vehiculo.setConsumoPromedio(vehiculo.getConsumoInicial());
         }
         vehiculo.setConsumoReciente(consumo.reciente());
+    }
+
+    /**
+     * Recalcula la lectura del contador del vehiculo desde sus cargas vigentes.
+     *
+     * Es lo que hace util a la anulacion. El motivo mas comun para anular un
+     * ticket es un error de tipeo en la lectura (99999 en vez de 9999), y esa
+     * lectura equivocada quedo copiada en vehiculo.usoAcumulado. Sin revertirla,
+     * toda carga futura del vehiculo se rechazaria con USO_ACUMULADO_RETROCEDE
+     * contra un numero que ya nadie puede justificar: la funcion que el admin
+     * usa para arreglar el error lo dejaria sin poder arreglarlo.
+     *
+     * Sin cargas vigentes no se toca: la lectura previa a todos los tickets no
+     * se guarda en ningun lado. El admin la corrige a mano desde el ABM.
+     */
+    private void recalcularUsoAcumulado(Vehiculo vehiculo) {
+        ticketRepository
+            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculo.getId())
+            .stream()
+            .map(Ticket::getUsoAcumulado)
+            .max(Integer::compareTo)
+            .ifPresent(vehiculo::setUsoAcumulado);
+    }
+
+    /**
+     * Anula un ticket (solo admin). Baja logica: la fila queda porque un ticket
+     * es un registro contable, y con ella queda quien lo anulo y cuando.
+     *
+     * Anular NO es solo marcar la fila. El alta del ticket habia adelantado la
+     * lectura del vehiculo y recalculado su consumo; las dos cosas se deshacen
+     * aca a partir de las cargas que siguen vigentes.
+     */
+    @Transactional
+    public void anular(Integer id, String adminUsername) {
+        Ticket ticket = ticketRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.TICKET_NOT_FOUND, "Ticket no encontrado"));
+
+        if (ticket.estaAnulado()) {
+            throw new ConflictException(
+                ErrorCode.TICKET_ALREADY_ANULADO, "El ticket ya está anulado");
+        }
+
+        Persona admin = personaRepository.findByUsername(adminUsername)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.USER_NOT_FOUND, "Usuario no encontrado"));
+
+        ticket.setFechaAnulacion(LocalDateTime.now());
+        ticket.setAnuladoPor(admin);
+        ticketRepository.save(ticket);
+
+        // Recien con el ticket ya marcado, las dos consultas de abajo lo ven
+        // como anulado y lo excluyen. Si se hiciera antes del save, el ticket
+        // seguiria contando y no se revertiria nada.
+        Vehiculo vehiculo = ticket.getVehiculo();
+        recalcularUsoAcumulado(vehiculo);
+        recalcularConsumo(vehiculo);
+        vehiculoRepository.save(vehiculo);
+
+        // Las fotos NO se borran del storage: son el respaldo del comprobante y
+        // la anulacion es reversible.
     }
 
     /**
@@ -369,7 +443,9 @@ public class TicketService {
     @Transactional(readOnly = true)
     public PagedModel<TicketResponse> listForAdmin(
             Integer empleadoId, Integer proveedorId, Integer vehiculoId,
-            LocalDateTime desde, LocalDateTime hasta, Pageable pageable) {
+            LocalDateTime desde, LocalDateTime hasta,
+            BigDecimal montoMin, BigDecimal montoMax, boolean incluirAnulados,
+            Pageable pageable) {
         // Se construye la Specification agregando SOLO los filtros presentes.
         // Con Criteria API se omite el predicado cuando el filtro es null, en
         // vez de un ":param IS NULL OR ..." (que en Postgres rompe con
@@ -403,6 +479,25 @@ public class TicketService {
             if (hasta != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("fechaCarga"), hasta));
             }
+            // Por defecto el listado muestra solo los VIGENTES. Los anulados se
+            // piden explicitamente: son la excepcion, no el caso normal.
+            if (!incluirAnulados) {
+                predicates.add(cb.isNull(root.get("fechaAnulacion")));
+            }
+            // El monto NO es una columna: es litros x precio unitario. Se
+            // compara como expresion para no tener que desnormalizar un total
+            // que quedaria desincronizado apenas se corrija un precio.
+            if (montoMin != null || montoMax != null) {
+                Expression<BigDecimal> monto = cb.prod(
+                    root.get("precio").<BigDecimal>get("precioUnitario"),
+                    root.get("litros").as(BigDecimal.class));
+                if (montoMin != null) {
+                    predicates.add(cb.greaterThanOrEqualTo(monto, montoMin));
+                }
+                if (montoMax != null) {
+                    predicates.add(cb.lessThanOrEqualTo(monto, montoMax));
+                }
+            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
@@ -427,7 +522,7 @@ public class TicketService {
     @Transactional(readOnly = true)
     public List<TicketResponse> listMine(String empleadoUsername) {
         Persona persona = resolvePersona(empleadoUsername);
-        return ticketRepository.findByPersonaIdOrderByFechaCargaDesc(persona.getId())
+        return ticketRepository.findByPersonaIdAndFechaAnulacionIsNullOrderByFechaCargaDesc(persona.getId())
             .stream().map(this::toResponse).toList();
     }
 
@@ -485,7 +580,9 @@ public class TicketService {
             ticketKey,
             ticketKey != null ? storageService.getUrl(ticketKey) : null,
             tableroKey,
-            tableroKey != null ? storageService.getUrl(tableroKey) : null
+            tableroKey != null ? storageService.getUrl(tableroKey) : null,
+            ticket.getFechaAnulacion(),
+            ticket.getAnuladoPor() != null ? ticket.getAnuladoPor().getUsername() : null
         );
     }
 }

@@ -2,6 +2,9 @@ package com.retrorental.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -9,7 +12,11 @@ import static org.mockito.Mockito.when;
 
 import com.retrorental.backend.dto.request.CreateTicketRequest;
 import com.retrorental.backend.exception.ConflictException;
+import com.retrorental.backend.exception.AppException;
 import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.model.Administrador;
+import java.time.LocalDateTime;
+import java.util.List;
 import com.retrorental.backend.model.Empleado;
 import com.retrorental.backend.model.Precio;
 import com.retrorental.backend.model.Proveedor;
@@ -202,5 +209,142 @@ class TicketServiceTest {
         ArgumentCaptor<Ticket> captor = ArgumentCaptor.forClass(Ticket.class);
         verify(ticketRepository).save(captor.capture());
         assertEquals(1300, captor.getValue().getUsoAcumulado());
+    }
+
+    // -----------------------------------------------------------------------
+    // Anulacion (V7).
+    //
+    // Anular no es marcar una fila: el alta del ticket habia adelantado la
+    // lectura del vehiculo y recalculado su consumo, y las dos cosas tienen que
+    // deshacerse. Estos tests cubren esa reversion, que es la razon de ser de
+    // la funcion.
+    // -----------------------------------------------------------------------
+
+    private Ticket ticketDe(int id, int uso, double litros) {
+        Ticket t = new Ticket();
+        t.setId(id);
+        t.setUsoAcumulado(uso);
+        t.setLitros(litros);
+        t.setVehiculo(vehiculo);
+        return t;
+    }
+
+    /** Deja al repo devolviendo `vigentes` como las cargas que sobreviven. */
+    private void cargasVigentes(Ticket... vigentes) {
+        when(ticketRepository
+            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(5))
+            .thenReturn(List.of(vigentes));
+    }
+
+    private Administrador admin() {
+        Administrador a = new Administrador();
+        a.setId(1);
+        a.setUsername("admin");
+        a.setRol(Rol.ADMINISTRADOR);
+        when(personaRepository.findByUsername("admin")).thenReturn(Optional.of(a));
+        return a;
+    }
+
+    @Test
+    void anular_marcaLaFilaYRegistraQuienLoHizo() {
+        Administrador quien = admin();
+        Ticket t = ticketDe(99, 1300, 50.0);
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(t));
+        cargasVigentes();
+
+        service.anular(99, "admin");
+
+        // La fila NO se borra: es un registro contable.
+        verify(ticketRepository, never()).delete(any(Ticket.class));
+        assertNotNull(t.getFechaAnulacion());
+        assertEquals(quien, t.getAnuladoPor());
+    }
+
+    @Test
+    void anular_devuelveLaLecturaDelVehiculoALaMayorVigente() {
+        admin();
+        // El vehiculo quedo en 9999 por un tipeo. Al anular ese ticket, la
+        // lectura tiene que volver a la carga real anterior (1200). Sin esto el
+        // vehiculo queda inutilizable: toda carga futura chocaria contra 9999.
+        vehiculo.setUsoAcumulado(9999);
+        Ticket tipeoMal = ticketDe(99, 9999, 50.0);
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(tipeoMal));
+        cargasVigentes(ticketDe(97, 1000, 40.0), ticketDe(98, 1200, 45.0));
+
+        service.anular(99, "admin");
+
+        assertEquals(1200, vehiculo.getUsoAcumulado());
+    }
+
+    @Test
+    void anular_sinCargasVigentes_dejaLaLecturaComoEstaba() {
+        admin();
+        // La lectura previa a todos los tickets no se guarda en ningun lado: no
+        // hay a que volver. Se deja lo que hay antes que inventar un numero.
+        vehiculo.setUsoAcumulado(9999);
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(ticketDe(99, 9999, 50.0)));
+        cargasVigentes();
+
+        service.anular(99, "admin");
+
+        assertEquals(9999, vehiculo.getUsoAcumulado());
+    }
+
+    @Test
+    void anular_hastaQuedarSinDatos_devuelveElConsumoAlDelAlta() {
+        admin();
+        // ESTE es el test que justifica la columna consumo_inicial. Con menos de
+        // dos cargas no hay consumo real que calcular; sin el respaldo, el
+        // vehiculo se quedaria con un consumo derivado de la carga anulada.
+        vehiculo.setConsumoInicial(new BigDecimal("8.50"));
+        vehiculo.setConsumoPromedio(new BigDecimal("14.20"));
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(ticketDe(99, 1300, 50.0)));
+        cargasVigentes(ticketDe(98, 1000, 40.0));
+
+        service.anular(99, "admin");
+
+        assertEquals(new BigDecimal("8.50"), vehiculo.getConsumoPromedio());
+        assertNull(vehiculo.getConsumoReciente());
+    }
+
+    @Test
+    void anular_sinConsumoInicial_noInventaUnValor() {
+        admin();
+        // Vehiculos anteriores a V7: su estimacion original ya se habia perdido.
+        // No hay a que volver, asi que se deja el ultimo calculado.
+        vehiculo.setConsumoInicial(null);
+        vehiculo.setConsumoPromedio(new BigDecimal("14.20"));
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(ticketDe(99, 1300, 50.0)));
+        cargasVigentes(ticketDe(98, 1000, 40.0));
+
+        service.anular(99, "admin");
+
+        assertEquals(new BigDecimal("14.20"), vehiculo.getConsumoPromedio());
+    }
+
+    @Test
+    void anular_conCargasSuficientes_recalculaElConsumoSinLaAnulada() {
+        admin();
+        vehiculo.setConsumoInicial(new BigDecimal("8.50"));
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(ticketDe(99, 1400, 90.0)));
+        // Quedan dos cargas: 200 horas de intervalo y 45 litros -> 0,225 L/h.
+        cargasVigentes(ticketDe(97, 1000, 40.0), ticketDe(98, 1200, 45.0));
+
+        service.anular(99, "admin");
+
+        // Se calcula, no se cae al respaldo del alta.
+        assertNotEquals(new BigDecimal("8.50"), vehiculo.getConsumoPromedio());
+        assertNotNull(vehiculo.getConsumoPromedio());
+    }
+
+    @Test
+    void anular_ticketYaAnulado_rechaza() {
+        Ticket t = ticketDe(99, 1300, 50.0);
+        t.setFechaAnulacion(LocalDateTime.now());
+        when(ticketRepository.findById(99)).thenReturn(Optional.of(t));
+
+        AppException ex = assertThrows(AppException.class, () -> service.anular(99, "admin"));
+        assertEquals(ErrorCode.TICKET_ALREADY_ANULADO, ex.getCode());
+        verify(vehiculoRepository, never()).save(any(Vehiculo.class));
     }
 }

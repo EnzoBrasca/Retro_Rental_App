@@ -36,6 +36,8 @@ public enum ErrorCode {
 
     // --- Tickets ---
     TICKET_NOT_FOUND(HttpStatus.NOT_FOUND),
+    // Se intento anular un ticket que ya estaba anulado.
+    TICKET_ALREADY_ANULADO(HttpStatus.CONFLICT),
     PRECIO_NOT_FOUND(HttpStatus.NOT_FOUND),
     PROVEEDOR_NOT_FOUND(HttpStatus.NOT_FOUND),
     // El precio elegido pertenece a otra estación que la del ticket.

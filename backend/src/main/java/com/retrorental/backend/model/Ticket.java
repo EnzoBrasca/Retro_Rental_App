@@ -50,4 +50,20 @@ public class Ticket {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_vehiculo", nullable = false)
     private Vehiculo vehiculo;
+
+    // Anulacion (baja logica). Null = ticket VIGENTE. Un ticket es un registro
+    // contable: no se borra, se anula. Las consultas de consumo, estadisticas e
+    // historial filtran por esto; ver TicketRepository.
+    @Column(name = "fecha_anulacion")
+    private LocalDateTime fechaAnulacion;
+
+    // Quien lo anulo. Se excluye del fetch por defecto porque solo lo mira el
+    // listado del admin cuando pide ver los anulados.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "anulado_por")
+    private Persona anuladoPor;
+
+    public boolean estaAnulado() {
+        return fechaAnulacion != null;
+    }
 }

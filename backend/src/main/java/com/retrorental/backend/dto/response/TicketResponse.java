@@ -24,6 +24,11 @@ public record TicketResponse(
     // Lo derivado en cada lectura: URL presignada temporal.
     String ticketFotoUrl,
     String tableroFotoKey,
-    String tableroFotoUrl
+    String tableroFotoUrl,
+    // Anulación. null = ticket VIGENTE. Solo aparecen con valor en el listado
+    // del admin cuando pide ver los anulados: el resto de las consultas los
+    // filtra antes de llegar acá.
+    LocalDateTime fechaAnulacion,
+    String anuladoPorUsername
 ) {
 }
