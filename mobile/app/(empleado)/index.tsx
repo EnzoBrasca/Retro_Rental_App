@@ -17,7 +17,14 @@ import {
   TipoVehiculo,
   TipoCombustible,
 } from '../../services/vehiculos';
-import { combustibleLabel, estadoLabel, iconForTipoVehiculo, tipoVehiculoLabel } from '../../constants/labels';
+import { getHerramientas, Herramienta } from '../../services/herramientas';
+import {
+  combustibleLabel,
+  estadoLabel,
+  iconForTipoVehiculo,
+  tipoVehiculoLabel,
+  TIPO_HERRAMIENTA,
+} from '../../constants/labels';
 
 import IconForeman from '../../assets/icons/008-capataz.svg';
 
@@ -27,11 +34,18 @@ const estadoStyle: Record<Estado, { bg: string; color: string }> = {
   EN_MANTENIMIENTO: { bg: colors.dangerBg, color: colors.danger },
 };
 
-const TIPO_FILTERS: { key: TipoVehiculo | null; label: string }[] = [
+// El filtro de tipo suma HERRAMIENTA (opción de UI, no del enum del backend):
+// al elegirlo se ve solo la lista de herramientas. Con "Todos" o un tipo de
+// vehículo se ven los vehículos; las herramientas no tienen tipoVehiculo ni
+// combustible fijo, así que solo aparecen bajo "Todos" o bajo su propio filtro.
+type TipoFiltro = TipoVehiculo | typeof TIPO_HERRAMIENTA;
+
+const TIPO_FILTERS: { key: TipoFiltro | null; label: string }[] = [
   { key: null, label: 'Todos' },
   { key: 'MAQUINA', label: tipoVehiculoLabel.MAQUINA },
   { key: 'CAMIONETA', label: tipoVehiculoLabel.CAMIONETA },
   { key: 'CAMION', label: tipoVehiculoLabel.CAMION },
+  { key: TIPO_HERRAMIENTA, label: 'Herramientas' },
 ];
 const COMBUSTIBLE_FILTERS: { key: TipoCombustible | null; label: string }[] = [
   { key: null, label: 'Todos' },
@@ -115,6 +129,32 @@ const VehiculoCard = memo(({ item, onOpen }: { item: Vehiculo; onOpen: (id: numb
   );
 });
 
+// Card de una herramienta. No tiene estado ni operario asignado (no hay
+// contador ni asignación como en un vehículo), así que solo muestra nombre y
+// capacidad, y siempre está disponible para cargarle combustible.
+const HerramientaCard = memo(({ item, onOpen }: { item: Herramienta; onOpen: (id: number) => void }) => (
+  <Pressable style={styles.card} onPress={() => onOpen(item.id)}>
+    <View style={styles.cardTop}>
+      <View style={styles.cardIcon}>
+        <Text style={{ fontSize: 22 }}>🔧</Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.cardName} numberOfLines={1}>
+          {item.nombre}
+        </Text>
+        <Text style={styles.cardSub}>Herramienta · Capacidad {item.capacidad} L</Text>
+      </View>
+    </View>
+
+    <View style={styles.cardFooter}>
+      <Text style={styles.operario} numberOfLines={1}>
+        Combustible a elección en la carga
+      </Text>
+      <Text style={styles.cardHint}>Registrar carga →</Text>
+    </View>
+  </Pressable>
+));
+
 function Stat({ value, label, color }: { value: string; label: string; color: string }) {
   return (
     <View style={styles.statCard}>
@@ -132,10 +172,13 @@ export default function FlotaScreen() {
 
   const [search, setSearch] = useState('');
   const [estadoF, setEstadoF] = useState<Estado | null>(null);
-  const [tipoF, setTipoF] = useState<TipoVehiculo | null>(null);
+  const [tipoF, setTipoF] = useState<TipoFiltro | null>(null);
   const [combF, setCombF] = useState<TipoCombustible | null>(null);
 
-  const { data, loading, error, refetch } = useFetch(() => getVehiculos());
+  const { data, loading, error, refetch } = useFetch(async () => {
+    const [vehiculos, herramientas] = await Promise.all([getVehiculos(), getHerramientas()]);
+    return { vehiculos, herramientas };
+  });
 
   // Al volver a la pestaña refrescamos: el operario "actual" cambia cuando otro
   // empleado carga, y un vehículo puede darse de baja o entrar a taller. Salteamos
@@ -154,11 +197,23 @@ export default function FlotaScreen() {
   const openScan = (id: number) => {
     router.push({ pathname: '/(empleado)/escanear', params: { idVehiculo: String(id) } });
   };
+  const openScanHerramienta = (id: number) => {
+    router.push({ pathname: '/(empleado)/escanear', params: { idHerramienta: String(id) } });
+  };
 
-  // Solo vehículos activos (los dados de baja no operan). Los filtros se aplican
-  // en cliente: ya tenemos todo el catálogo en memoria, es barato.
-  const activos = useMemo(() => (data ?? []).filter((v) => v.fechaBaja === null), [data]);
+  // Solo activos (los dados de baja no operan). Los filtros se aplican en
+  // cliente: ya tenemos todo el catálogo en memoria, es barato.
+  const activos = useMemo(() => (data?.vehiculos ?? []).filter((v) => v.fechaBaja === null), [data]);
+  const activasHerramientas = useMemo(
+    () => (data?.herramientas ?? []).filter((h) => (h.fechaBaja ?? null) === null),
+    [data],
+  );
+
+  // Un filtro de tipo de vehículo o de combustible no aplica a una herramienta
+  // (no tiene tipoVehiculo ni combustible fijo), así que con cualquiera de los
+  // dos activo se la deja fuera de la lista de vehículos filtrados.
   const filtrados = useMemo(() => {
+    if (tipoF === TIPO_HERRAMIENTA) return [];
     const needle = search.trim().toLowerCase();
     return activos.filter(
       (v) =>
@@ -168,6 +223,16 @@ export default function FlotaScreen() {
         (combF === null || v.tipoCombustible === combF),
     );
   }, [activos, search, estadoF, tipoF, combF]);
+
+  // Las herramientas solo se muestran con "Todos" o con el filtro de tipo
+  // "Herramientas": un filtro de tipo de vehículo o de combustible las excluye,
+  // porque ninguno de los dos las describe.
+  const filtradasHerramientas = useMemo(() => {
+    if (tipoF !== null && tipoF !== TIPO_HERRAMIENTA) return [];
+    if (combF !== null) return [];
+    const needle = search.trim().toLowerCase();
+    return activasHerramientas.filter((h) => needle === '' || h.nombre.toLowerCase().includes(needle));
+  }, [activasHerramientas, search, tipoF, combF]);
 
   const operativos = activos.filter((v) => v.estado !== 'EN_MANTENIMIENTO').length;
   const enTaller = activos.filter((v) => v.estado === 'EN_MANTENIMIENTO').length;
@@ -240,15 +305,38 @@ export default function FlotaScreen() {
         <FilterRow options={TIPO_FILTERS} value={tipoF} onChange={setTipoF} />
         <FilterRow options={COMBUSTIBLE_FILTERS} value={combF} onChange={setCombF} />
 
-        <View style={styles.listHead}>
-          <Text style={styles.sectionTitle}>VEHÍCULOS</Text>
-          <Text style={styles.count}>{filtrados.length}</Text>
-        </View>
+        {tipoF !== TIPO_HERRAMIENTA && (
+          <>
+            <View style={styles.listHead}>
+              <Text style={styles.sectionTitle}>VEHÍCULOS</Text>
+              <Text style={styles.count}>{filtrados.length}</Text>
+            </View>
 
-        {filtrados.length === 0 ? (
-          <EmptyState message="No hay vehículos que coincidan con los filtros." />
-        ) : (
-          filtrados.map((v) => <VehiculoCard key={v.id} item={v} onOpen={openScan} />)
+            {filtrados.length === 0 ? (
+              <EmptyState message="No hay vehículos que coincidan con los filtros." />
+            ) : (
+              filtrados.map((v) => <VehiculoCard key={v.id} item={v} onOpen={openScan} />)
+            )}
+          </>
+        )}
+
+        {/* Con un tipo de vehículo o un combustible puntual elegidos, se oculta
+            esta sección: ninguna herramienta la cumple. */}
+        {(tipoF === null || tipoF === TIPO_HERRAMIENTA) && combF === null && (
+          <>
+            <View style={styles.listHead}>
+              <Text style={styles.sectionTitle}>HERRAMIENTAS</Text>
+              <Text style={styles.count}>{filtradasHerramientas.length}</Text>
+            </View>
+
+            {filtradasHerramientas.length === 0 ? (
+              <EmptyState message="No hay herramientas que coincidan con los filtros." />
+            ) : (
+              filtradasHerramientas.map((h) => (
+                <HerramientaCard key={h.id} item={h} onOpen={openScanHerramienta} />
+              ))
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>

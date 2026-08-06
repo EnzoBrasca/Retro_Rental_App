@@ -30,6 +30,13 @@ import {
   tituloVehiculo,
 } from '../../services/vehiculos';
 import {
+  getAdminHerramientas,
+  createHerramienta,
+  updateHerramienta,
+  desactivarHerramienta,
+  Herramienta,
+} from '../../services/herramientas';
+import {
   getAdminEmpleados,
   createEmpleado,
   updateEmpleado,
@@ -44,6 +51,9 @@ import {
   combustibleLabel,
   estadoLabel,
   iconForTipoVehiculo,
+  TIPO_HERRAMIENTA,
+  TipoSeleccionVehiculo,
+  tipoSeleccionLabel,
 } from '../../constants/labels';
 
 const RANGES: { key: StatsRange; label: string }[] = [
@@ -60,7 +70,14 @@ const estadoStyle: Record<Estado, { bg: string; color: string }> = {
   EN_MANTENIMIENTO: { bg: colors.dangerBg, color: colors.danger },
 };
 
-const TIPO_VEHICULO_OPTS = (Object.keys(tipoVehiculoLabel) as TipoVehiculo[]).map((k) => ({ key: k, label: tipoVehiculoLabel[k] }));
+// Opciones del selector de tipo en el formulario de la flota. HERRAMIENTA es
+// SOLO de UI (ver TipoSeleccionVehiculo): al elegirla el formulario muestra
+// nombre + capacidad en vez de los campos de un vehículo, y el submit va a los
+// endpoints de herramientas.
+const TIPO_VEHICULO_OPTS = (Object.keys(tipoSeleccionLabel) as TipoSeleccionVehiculo[]).map((k) => ({
+  key: k,
+  label: tipoSeleccionLabel[k],
+}));
 const COMBUSTIBLE_OPTS = (Object.keys(combustibleLabel) as TipoCombustible[]).map((k) => ({ key: k, label: combustibleLabel[k] }));
 const ESTADO_OPTS = (Object.keys(estadoLabel) as Estado[]).map((k) => ({ key: k, label: estadoLabel[k] }));
 
@@ -344,16 +361,27 @@ function Analytics() {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+// Item de la lista unificada de la flota: un vehículo o una herramienta. Son
+// tablas distintas en el backend, así que se representan como una unión
+// discriminada en vez de forzarlas a un único shape.
+type FlotaItem = { kind: 'vehiculo'; v: Vehiculo } | { kind: 'herramienta'; h: Herramienta };
+
 type FormState = {
   identificador: string;
   modelo: string;
-  tipoVehiculo: TipoVehiculo | null;
+  // 'HERRAMIENTA' es la opción de UI que no existe en el backend (ver
+  // TipoSeleccionVehiculo). Cuando vale eso, el resto de los campos de
+  // vehículo se ignoran y se usan nombreHerramienta + capacidadTanque.
+  tipoVehiculo: TipoSeleccionVehiculo | null;
   tipoCombustible: TipoCombustible | null;
   capacidadTanque: string;
   estado: Estado;
   fechaUltimoMantenimiento: string;
   usoAcumulado: string;
   consumoPromedio: string;
+  // Solo para HERRAMIENTA: una herramienta no tiene identificador, se nombra
+  // directamente.
+  nombreHerramienta: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -366,6 +394,7 @@ const emptyForm = (): FormState => ({
   fechaUltimoMantenimiento: todayISO(),
   usoAcumulado: '',
   consumoPromedio: '',
+  nombreHerramienta: '',
 });
 
 const formFrom = (v: Vehiculo): FormState => ({
@@ -380,13 +409,35 @@ const formFrom = (v: Vehiculo): FormState => ({
   fechaUltimoMantenimiento: todayISO(),
   usoAcumulado: String(v.usoAcumulado),
   consumoPromedio: String(v.consumoPromedio),
+  nombreHerramienta: '',
+});
+
+const formFromHerramienta = (h: Herramienta): FormState => ({
+  identificador: '',
+  modelo: '',
+  tipoVehiculo: TIPO_HERRAMIENTA,
+  tipoCombustible: null,
+  capacidadTanque: String(h.capacidad),
+  estado: 'DISPONIBLE',
+  fechaUltimoMantenimiento: todayISO(),
+  usoAcumulado: '',
+  consumoPromedio: '',
+  nombreHerramienta: h.nombre,
 });
 
 function VehiclesABM() {
-  const { data, loading, error, refetch } = useFetch(getAdminVehiculos);
+  const { data, loading, error, refetch } = useFetch(async () => {
+    const [vehiculos, herramientas] = await Promise.all([getAdminVehiculos(), getAdminHerramientas()]);
+    return { vehiculos, herramientas };
+  });
 
-  // editing: null (lista) | 'new' | id del vehiculo en edición.
+  // editing: null (lista) | 'new' | id de la fila en edición.
   const [editing, setEditing] = useState<'new' | number | null>(null);
+  // De qué tabla es la fila que se está editando. null en 'new' (ahí el tipo
+  // es libre) y en la lista. Es la base del bloqueo del punto 6: una vez que
+  // se sabe que la fila es un vehículo o una herramienta, ya no se puede
+  // cruzar a la otra categoría porque son registros distintos en el backend.
+  const [editingKind, setEditingKind] = useState<'vehiculo' | 'herramienta' | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -394,19 +445,61 @@ function VehiclesABM() {
   const openNew = () => {
     setForm(emptyForm());
     setFormError(null);
+    setEditingKind(null);
     setEditing('new');
   };
-  const openEdit = (v: Vehiculo) => {
-    setForm(formFrom(v));
+  const openEdit = (item: FlotaItem) => {
     setFormError(null);
-    setEditing(v.id);
+    if (item.kind === 'vehiculo') {
+      setForm(formFrom(item.v));
+      setEditingKind('vehiculo');
+      setEditing(item.v.id);
+    } else {
+      setForm(formFromHerramienta(item.h));
+      setEditingKind('herramienta');
+      setEditing(item.h.id);
+    }
   };
+
+  // Al editar, el tipo no puede cruzar entre vehículo y herramienta: son
+  // tablas distintas y "convertir" uno en otro editando no tiene un endpoint
+  // que lo soporte. Se deshabilitan las opciones que no aplican en vez de
+  // dejar elegirlas y fallar recién al guardar.
+  const disabledTipoKeys: TipoSeleccionVehiculo[] =
+    editing === 'new'
+      ? []
+      : editingKind === 'herramienta'
+        ? ['MAQUINA', 'CAMIONETA', 'CAMION']
+        : [TIPO_HERRAMIENTA];
 
   const save = async () => {
     setFormError(null);
-    // El tipo se valida primero: sin él no se sabe cómo llamar al identificador
-    // en el mensaje de error ni si hace falta el modelo.
+    // El tipo se valida primero: sin él no se sabe qué formulario mostrar ni a
+    // qué endpoint mandar el alta/edición.
     if (!form.tipoVehiculo) return setFormError('Elegí el tipo de vehículo.');
+
+    if (form.tipoVehiculo === TIPO_HERRAMIENTA) {
+      if (!form.nombreHerramienta.trim()) return setFormError('Ingresá el nombre de la herramienta.');
+      const capacidad = parseInt(form.capacidadTanque, 10);
+      if (!(capacidad > 0)) return setFormError('Capacidad inválida.');
+
+      const payload = { nombre: form.nombreHerramienta.trim(), capacidad };
+      try {
+        setSaving(true);
+        if (editing === 'new') await createHerramienta(payload);
+        else if (typeof editing === 'number') await updateHerramienta(editing, payload);
+        setEditing(null);
+        await refetch();
+      } catch (e) {
+        setFormError(e instanceof Error ? e.message : 'No se pudo guardar.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // A partir de acá form.tipoVehiculo ya no puede ser HERRAMIENTA (return
+    // arriba), así que TypeScript lo angosta a TipoVehiculo.
     if (!form.identificador.trim()) {
       return setFormError(`Ingresá ${etiquetaIdentificador(form.tipoVehiculo).toLowerCase()}.`);
     }
@@ -448,7 +541,7 @@ function VehiclesABM() {
     }
   };
 
-  const remove = (v: Vehiculo) => {
+  const removeVehiculo = (v: Vehiculo) => {
     Alert.alert('Dar de baja', `¿Dar de baja el vehículo ${tituloVehiculo(v)}?`, [
       { text: 'Cancelar', style: 'cancel' },
       {
@@ -466,54 +559,112 @@ function VehiclesABM() {
     ]);
   };
 
+  const removeHerramienta = (h: Herramienta) => {
+    Alert.alert('Dar de baja', `¿Dar de baja la herramienta ${h.nombre}?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Dar de baja',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await desactivarHerramienta(h.id);
+            await refetch();
+          } catch (e) {
+            Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo dar de baja.');
+          }
+        },
+      },
+    ]);
+  };
+
   if (editing !== null) {
+    const esHerramienta = form.tipoVehiculo === TIPO_HERRAMIENTA;
+    // El JSX de abajo separa las dos ramas con un ternario sobre `esHerramienta`,
+    // pero TS no lo usa para angostar `form.tipoVehiculo` dentro del JSX (no es
+    // un narrowing directo sobre la unión). Esta variable evita repetir el cast
+    // en cada uso de la rama de vehículo.
+    const tipoVehiculoForm: TipoVehiculo | null = esHerramienta ? null : (form.tipoVehiculo as TipoVehiculo | null);
     return (
       <View style={{ marginTop: 4 }}>
-        <Text style={styles.formTitle}>{editing === 'new' ? 'Nuevo vehículo' : 'Editar vehículo'}</Text>
-
-        {/* El tipo va PRIMERO: de él dependen la etiqueta del identificador
-            ("Patente" o "Número interno"), su formato y si hace falta el
-            modelo. Pedirlo después dejaría al admin escribiendo en un campo
-            que todavía no sabe qué le está pidiendo. */}
-        <Text style={styles.fieldHint}>Tipo de vehículo</Text>
-        <OptionChips options={TIPO_VEHICULO_OPTS} value={form.tipoVehiculo} onChange={(k) => setForm({ ...form, tipoVehiculo: k })} />
-
-        <Text style={[styles.fieldHint, { marginTop: 12 }]}>{etiquetaIdentificador(form.tipoVehiculo)}</Text>
-        <TextInput style={styles.abmInput} value={form.identificador} autoCapitalize="characters" onChangeText={(t) => setForm({ ...form, identificador: t })} placeholder={placeholderIdentificador(form.tipoVehiculo)} placeholderTextColor={colors.textDim} />
-
-        {requiereModelo(form.tipoVehiculo) && (
-          <>
-            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Modelo</Text>
-            <TextInput style={styles.abmInput} value={form.modelo} onChangeText={(t) => setForm({ ...form, modelo: t })} placeholder="CAT 320D" placeholderTextColor={colors.textDim} />
-            <Text style={styles.fieldNote}>
-              Dos máquinas pueden compartir modelo: el número interno es el que las distingue.
-            </Text>
-          </>
-        )}
-
-        <Text style={[styles.fieldHint, { marginTop: 12 }]}>Combustible</Text>
-        <OptionChips options={COMBUSTIBLE_OPTS} value={form.tipoCombustible} onChange={(k) => setForm({ ...form, tipoCombustible: k })} />
-
-        <Text style={[styles.fieldHint, { marginTop: 12 }]}>Estado</Text>
-        <OptionChips options={ESTADO_OPTS} value={form.estado} onChange={(k) => setForm({ ...form, estado: k })} />
-
-        <Text style={[styles.fieldHint, { marginTop: 12 }]}>Capacidad de tanque (L)</Text>
-        <TextInput style={styles.abmInput} value={form.capacidadTanque} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, capacidadTanque: t })} />
-
-        {/* La etiqueta sigue al tipo elegido: una máquina vial mide horas de
-            horómetro, no kilómetros. */}
-        <Text style={styles.fieldHint}>{etiquetaUso(form.tipoVehiculo)}</Text>
-        <TextInput style={styles.abmInput} value={form.usoAcumulado} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, usoAcumulado: t })} />
-
-        <Text style={styles.fieldHint}>{etiquetaConsumo(form.tipoVehiculo)}</Text>
-        <TextInput style={styles.abmInput} value={form.consumoPromedio} keyboardType="numeric" onChangeText={(t) => setForm({ ...form, consumoPromedio: t })} />
-        <Text style={styles.abmHint}>
-          Estimación inicial. A partir de la segunda carga se reemplaza por el consumo real
-          calculado con las cargas del vehículo.
+        <Text style={styles.formTitle}>
+          {editing === 'new' ? 'Nuevo vehículo' : esHerramienta ? 'Editar herramienta' : 'Editar vehículo'}
         </Text>
 
-        <Text style={styles.fieldHint}>Último mantenimiento (AAAA-MM-DD)</Text>
-        <TextInput style={styles.abmInput} value={form.fechaUltimoMantenimiento} onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })} />
+        {/* El tipo va PRIMERO: de él dependen qué campos aparecen debajo (los
+            de un vehículo, o solo nombre + capacidad de una herramienta). */}
+        <Text style={styles.fieldHint}>Tipo de vehículo</Text>
+        <OptionChips
+          options={TIPO_VEHICULO_OPTS}
+          value={form.tipoVehiculo}
+          onChange={(k) => setForm({ ...form, tipoVehiculo: k })}
+          disabledKeys={disabledTipoKeys}
+        />
+        {editing !== 'new' && (
+          <Text style={styles.fieldNote}>
+            Vehículo y herramienta son registros distintos: no se puede convertir uno en otro
+            editando. Para eso, dalo de baja y cargalo de nuevo con el tipo correcto.
+          </Text>
+        )}
+
+        {esHerramienta ? (
+          <>
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Nombre</Text>
+            <TextInput
+              style={styles.abmInput}
+              value={form.nombreHerramienta}
+              onChangeText={(t) => setForm({ ...form, nombreHerramienta: t })}
+              placeholder="Motosierra Stihl"
+              placeholderTextColor={colors.textDim}
+            />
+
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Capacidad (L)</Text>
+            <TextInput
+              style={styles.abmInput}
+              value={form.capacidadTanque}
+              keyboardType="number-pad"
+              onChangeText={(t) => setForm({ ...form, capacidadTanque: t })}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>{etiquetaIdentificador(tipoVehiculoForm)}</Text>
+            <TextInput style={styles.abmInput} value={form.identificador} autoCapitalize="characters" onChangeText={(t) => setForm({ ...form, identificador: t })} placeholder={placeholderIdentificador(tipoVehiculoForm)} placeholderTextColor={colors.textDim} />
+
+            {requiereModelo(tipoVehiculoForm) && (
+              <>
+                <Text style={[styles.fieldHint, { marginTop: 12 }]}>Modelo</Text>
+                <TextInput style={styles.abmInput} value={form.modelo} onChangeText={(t) => setForm({ ...form, modelo: t })} placeholder="CAT 320D" placeholderTextColor={colors.textDim} />
+                <Text style={styles.fieldNote}>
+                  Dos máquinas pueden compartir modelo: el número interno es el que las distingue.
+                </Text>
+              </>
+            )}
+
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Combustible</Text>
+            <OptionChips options={COMBUSTIBLE_OPTS} value={form.tipoCombustible} onChange={(k) => setForm({ ...form, tipoCombustible: k })} />
+
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Estado</Text>
+            <OptionChips options={ESTADO_OPTS} value={form.estado} onChange={(k) => setForm({ ...form, estado: k })} />
+
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Capacidad de tanque (L)</Text>
+            <TextInput style={styles.abmInput} value={form.capacidadTanque} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, capacidadTanque: t })} />
+
+            {/* La etiqueta sigue al tipo elegido: una máquina vial mide horas de
+                horómetro, no kilómetros. */}
+            <Text style={styles.fieldHint}>{etiquetaUso(tipoVehiculoForm)}</Text>
+            <TextInput style={styles.abmInput} value={form.usoAcumulado} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, usoAcumulado: t })} />
+
+            <Text style={styles.fieldHint}>{etiquetaConsumo(tipoVehiculoForm)}</Text>
+            <TextInput style={styles.abmInput} value={form.consumoPromedio} keyboardType="numeric" onChangeText={(t) => setForm({ ...form, consumoPromedio: t })} />
+            <Text style={styles.abmHint}>
+              Estimación inicial. A partir de la segunda carga se reemplaza por el consumo real
+              calculado con las cargas del vehículo.
+            </Text>
+
+            <Text style={styles.fieldHint}>Último mantenimiento (AAAA-MM-DD)</Text>
+            <TextInput style={styles.abmInput} value={form.fechaUltimoMantenimiento} onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })} />
+          </>
+        )}
 
         {formError && <Text style={styles.error}>{formError}</Text>}
 
@@ -529,6 +680,15 @@ function VehiclesABM() {
     );
   }
 
+  // Lista unificada: vehículos y herramientas conviven en la misma sección de
+  // Flota (no hay una pestaña aparte para herramientas).
+  const items: FlotaItem[] = data
+    ? [
+        ...data.vehiculos.map((v): FlotaItem => ({ kind: 'vehiculo', v })),
+        ...data.herramientas.map((h): FlotaItem => ({ kind: 'herramienta', h })),
+      ]
+    : [];
+
   return (
     <View style={{ flex: 1, marginTop: 4 }}>
       <Pressable style={styles.addBtn} onPress={openNew}>
@@ -541,51 +701,87 @@ function VehiclesABM() {
         </View>
       ) : error ? (
         <ErrorState message={error} onRetry={refetch} />
-      ) : !data || data.length === 0 ? (
-        <EmptyState message="No hay vehículos cargados. Agregá el primero con los datos reales de la empresa." />
+      ) : items.length === 0 ? (
+        <EmptyState message="No hay vehículos ni herramientas cargados. Agregá el primero con los datos reales de la empresa." />
       ) : (
-        data.map((v) => {
-          const Icon = iconForTipoVehiculo(v.tipoVehiculo);
-          const est = estadoStyle[v.estado];
-          const baja = v.fechaBaja !== null;
+        items.map((item) => {
+          if (item.kind === 'vehiculo') {
+            const v = item.v;
+            const Icon = iconForTipoVehiculo(v.tipoVehiculo);
+            const est = estadoStyle[v.estado];
+            const baja = v.fechaBaja !== null;
+            return (
+              <View key={`v-${v.id}`} style={[styles.abmCard, baja && { opacity: 0.5 }]}>
+                <View style={styles.abmHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 10 }}>
+                    <View style={styles.abmIcon}>
+                      <Icon width={24} height={24} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      {/* Mismo nombre que ve el operario: en una máquina manda el
+                          modelo con el interno entre paréntesis, en el resto la
+                          patente. Si el admin y el operario nombraran distinto al
+                          mismo vehículo, no podrían entenderse por teléfono. */}
+                      <Text style={styles.abmName} numberOfLines={1}>
+                        {tituloVehiculo(v)}
+                      </Text>
+                      <Text style={styles.abmSub}>
+                        {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]} ·{' '}
+                        {v.consumoPromedio} {unidadConsumo(v.tipoVehiculo)}
+                      </Text>
+                      {/* El reciente solo se muestra cuando difiere del histórico:
+                          si son iguales no aporta nada, y cuando se despega es
+                          justamente la señal que interesa ver. */}
+                      {v.consumoReciente != null && v.consumoReciente !== v.consumoPromedio && (
+                        <Text style={styles.abmSub}>
+                          Últimas cargas: {v.consumoReciente} {unidadConsumo(v.tipoVehiculo)}
+                        </Text>
+                      )}
+                      <Text style={[styles.abmEstado, { color: est.color }]}>
+                        {baja ? 'DADO DE BAJA' : estadoLabel[v.estado]}
+                      </Text>
+                    </View>
+                  </View>
+                  {!baja && (
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <Pressable style={styles.iconBtn} onPress={() => openEdit(item)}>
+                        <Text>✏️</Text>
+                      </Pressable>
+                      <Pressable style={styles.iconBtn} onPress={() => removeVehiculo(v)}>
+                        <Text>🗑️</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          }
+
+          // Herramienta: se identifica por su nombre (no tiene identificador ni
+          // patente), y no muestra estado/consumo porque no aplican.
+          const h = item.h;
+          const baja = (h.fechaBaja ?? null) !== null;
           return (
-            <View key={v.id} style={[styles.abmCard, baja && { opacity: 0.5 }]}>
+            <View key={`h-${h.id}`} style={[styles.abmCard, baja && { opacity: 0.5 }]}>
               <View style={styles.abmHeader}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 10 }}>
                   <View style={styles.abmIcon}>
-                    <Icon width={24} height={24} color={colors.primary} />
+                    <Text style={{ fontSize: 20 }}>🔧</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    {/* Mismo nombre que ve el operario: en una máquina manda el
-                        modelo con el interno entre paréntesis, en el resto la
-                        patente. Si el admin y el operario nombraran distinto al
-                        mismo vehículo, no podrían entenderse por teléfono. */}
                     <Text style={styles.abmName} numberOfLines={1}>
-                      {tituloVehiculo(v)}
+                      {h.nombre}
                     </Text>
-                    <Text style={styles.abmSub}>
-                      {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]} ·{' '}
-                      {v.consumoPromedio} {unidadConsumo(v.tipoVehiculo)}
-                    </Text>
-                    {/* El reciente solo se muestra cuando difiere del histórico:
-                        si son iguales no aporta nada, y cuando se despega es
-                        justamente la señal que interesa ver. */}
-                    {v.consumoReciente != null && v.consumoReciente !== v.consumoPromedio && (
-                      <Text style={styles.abmSub}>
-                        Últimas cargas: {v.consumoReciente} {unidadConsumo(v.tipoVehiculo)}
-                      </Text>
-                    )}
-                    <Text style={[styles.abmEstado, { color: est.color }]}>
-                      {baja ? 'DADO DE BAJA' : estadoLabel[v.estado]}
-                    </Text>
+                    <Text style={styles.abmSub}>Herramienta · Capacidad {h.capacidad} L</Text>
+                    {baja && <Text style={[styles.abmEstado, { color: colors.danger }]}>DADO DE BAJA</Text>}
                   </View>
                 </View>
                 {!baja && (
                   <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <Pressable style={styles.iconBtn} onPress={() => openEdit(v)}>
+                    <Pressable style={styles.iconBtn} onPress={() => openEdit(item)}>
                       <Text>✏️</Text>
                     </Pressable>
-                    <Pressable style={styles.iconBtn} onPress={() => remove(v)}>
+                    <Pressable style={styles.iconBtn} onPress={() => removeHerramienta(h)}>
                       <Text>🗑️</Text>
                     </Pressable>
                   </View>

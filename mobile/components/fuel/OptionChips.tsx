@@ -10,22 +10,33 @@ export function OptionChips<T extends string | number>({
   options,
   value,
   onChange,
+  disabledKeys = [],
 }: {
   options: { key: T; label: string }[];
   value: T | null;
   onChange: (key: T) => void;
+  // Opciones que se muestran pero no se pueden elegir (ej. cruzar de vehículo a
+  // herramienta al editar). Se deshabilitan en vez de ocultarse: así el usuario
+  // ve que la opción existe y entiende por qué no puede tocarla.
+  disabledKeys?: T[];
 }) {
   return (
     <View style={styles.wrap}>
       {options.map((o) => {
         const selected = o.key === value;
+        const disabled = disabledKeys.includes(o.key);
         return (
           <Pressable
             key={String(o.key)}
-            style={[styles.chip, selected && styles.chipActive]}
-            onPress={() => onChange(o.key)}
+            style={[styles.chip, selected && styles.chipActive, disabled && styles.chipDisabled]}
+            onPress={() => !disabled && onChange(o.key)}
+            disabled={disabled}
           >
-            <Text style={[styles.chipText, selected && styles.chipTextActive]}>{o.label}</Text>
+            <Text
+              style={[styles.chipText, selected && styles.chipTextActive, disabled && styles.chipTextDisabled]}
+            >
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -44,6 +55,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   chipActive: { backgroundColor: colors.amberBg, borderColor: colors.primary },
+  chipDisabled: { opacity: 0.4 },
   chipText: { color: colors.textMuted, fontSize: 13, fontFamily: fonts.sansMed },
   chipTextActive: { color: colors.primary, fontFamily: fonts.sansSemi },
+  chipTextDisabled: { color: colors.textDim },
 });
