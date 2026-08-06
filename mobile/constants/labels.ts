@@ -13,6 +13,7 @@ export const combustibleLabel: Record<TipoCombustible, string> = {
   GASOIL_GRADO_2: 'Gasoil Grado 2',
   GASOIL_GRADO_3: 'Gasoil Grado 3',
   GNC: 'GNC',
+  MEZCLA: 'Mezcla (nafta + aceite)',
 };
 
 export const tipoVehiculoLabel: Record<TipoVehiculo, string> = {
@@ -32,6 +33,31 @@ export function iconForTipoVehiculo(t: TipoVehiculo): FC<SvgProps> {
   if (t === 'CAMIONETA') return IconPickup;
   if (t === 'CAMION') return IconTruck;
   return IconExcavator; // MAQUINA
+}
+
+/**
+ * Opción "HERRAMIENTA" del selector de tipo en el ABM de vehículos. Es
+ * SOLO de UI: no existe en el enum TipoVehiculo del backend (una herramienta
+ * es una entidad/tabla distinta) y nunca se manda como `tipoVehiculo` en un
+ * request. Se usa para que el formulario decida qué campos mostrar y a qué
+ * endpoint mandar el alta/edición.
+ */
+export const TIPO_HERRAMIENTA = 'HERRAMIENTA' as const;
+export type TipoSeleccionVehiculo = TipoVehiculo | typeof TIPO_HERRAMIENTA;
+
+export const tipoSeleccionLabel: Record<TipoSeleccionVehiculo, string> = {
+  ...tipoVehiculoLabel,
+  HERRAMIENTA: 'Herramienta',
+};
+
+/**
+ * Ícono para una fila de la lista unificada de vehículos y herramientas. Una
+ * herramienta no tiene ícono propio en assets/icons (no es un vehículo), así
+ * que se representa con un emoji en vez de sumar un SVG nuevo solo para esto.
+ */
+export function iconForTipoSeleccion(t: TipoSeleccionVehiculo): FC<SvgProps> | null {
+  if (t === TIPO_HERRAMIENTA) return null;
+  return iconForTipoVehiculo(t);
 }
 
 /** Formatea un monto en pesos argentinos: 53070 -> "$53.070". */

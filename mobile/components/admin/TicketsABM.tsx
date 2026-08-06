@@ -12,6 +12,7 @@ import {
   type Ticket,
 } from '../../services/tickets';
 import { getAdminVehiculos, tituloVehiculo, type Vehiculo } from '../../services/vehiculos';
+import { getAdminHerramientas, type Herramienta } from '../../services/herramientas';
 import { getAdminEmpleados, type Empleado } from '../../services/empleados';
 import { getProveedores, type Proveedor } from '../../services/catalogos';
 
@@ -23,6 +24,7 @@ const TODOS = -1;
 
 type Catalogos = {
   vehiculos: Vehiculo[];
+  herramientas: Herramienta[];
   empleados: Empleado[];
   proveedores: Proveedor[];
 };
@@ -70,9 +72,9 @@ export function TicketsABM() {
   // Los catálogos se piden una sola vez: alimentan los chips de filtro y la
   // resolución de IDs a nombres. Sin ellos la lista mostraría "Vehículo #3".
   useEffect(() => {
-    Promise.all([getAdminVehiculos(), getAdminEmpleados(), getProveedores()])
-      .then(([vehiculos, empleados, proveedores]) =>
-        setCatalogos({ vehiculos, empleados, proveedores }))
+    Promise.all([getAdminVehiculos(), getAdminHerramientas(), getAdminEmpleados(), getProveedores()])
+      .then(([vehiculos, herramientas, empleados, proveedores]) =>
+        setCatalogos({ vehiculos, herramientas, empleados, proveedores }))
       .catch((e) => setError(e instanceof Error ? e.message : 'No se pudieron cargar los catálogos.'));
   }, []);
 
@@ -284,12 +286,23 @@ function parseMonto(texto: string): number | null {
  * mostrarlos crudos dejaría "Vehículo #3 · Proveedor #1" en pantalla.
  */
 function toRow(t: Ticket, cat: Catalogos): Row & { operario: string } {
-  const vehiculo = cat.vehiculos.find((v) => v.id === t.idVehiculo);
+  // Exactamente uno de los dos viene con valor (ver services/tickets.ts).
+  const vehiculo = t.idVehiculo != null ? cat.vehiculos.find((v) => v.id === t.idVehiculo) : undefined;
+  const herramienta = t.idHerramienta != null ? cat.herramientas.find((h) => h.id === t.idHerramienta) : undefined;
   const proveedor = cat.proveedores.find((p) => p.id === t.idProveedor);
   const empleado = cat.empleados.find((e) => e.username === t.empleadoUsername);
   return {
     id: t.id,
-    identificador: vehiculo ? tituloVehiculo(vehiculo) : `Vehículo #${t.idVehiculo}`,
+    identificador: vehiculo
+      ? tituloVehiculo(vehiculo)
+      : herramienta
+        ? herramienta.nombre
+        : t.idVehiculo != null
+          ? `Vehículo #${t.idVehiculo}`
+          : `Herramienta #${t.idHerramienta}`,
+    // Row.tipoVehiculo solo maneja el icono de vehículo: una herramienta no
+    // tiene uno propio, así que cae en un fallback (tipoCombustible queda
+    // null, así que la ficha no muestra un combustible que no aplica).
     tipoVehiculo: vehiculo?.tipoVehiculo ?? 'CAMION',
     tipoCombustible: vehiculo?.tipoCombustible ?? null,
     fecha: formatFecha(t.fechaCarga),

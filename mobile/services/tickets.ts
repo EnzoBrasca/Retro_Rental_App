@@ -14,7 +14,10 @@ export interface Ticket {
   fechaCarga: string;
   idPrecio: number;
   idProveedor: number;
-  idVehiculo: number;
+  // Exactamente uno de los dos viene con valor: el ticket pertenece a UN
+  // vehículo o a UNA herramienta, nunca a ambos ni a ninguno.
+  idVehiculo: number | null;
+  idHerramienta: number | null;
   empleadoUsername: string;
   // Precio por litro efectivamente aplicado a esta carga. El monto total no
   // viaja: es litros × este precio.
@@ -132,12 +135,22 @@ export function analyzeTicket(fotoUri: string): Promise<TicketAnalysis> {
 // Datos de la carga (sin la foto, que va aparte como archivo multipart).
 export interface CreateTicketPayload {
   litros: number;
-  idPrecio: number;
+  // Exactamente uno de los dos, nunca ambos: un vehículo ya tiene el precio
+  // resuelto en el catálogo (idPrecio); una herramienta no tiene combustible
+  // fijo, así que manda el elegido para ESTA carga (tipoCombustible) y el
+  // backend resuelve el precio (crea el de MEZCLA copiando el de NAFTA_SUPER
+  // del proveedor si todavía no existe, ver TicketService.resolvePrecioPorCombustible).
+  idPrecio?: number;
+  tipoCombustible?: TipoCombustible;
   idProveedor: number;
-  idVehiculo: number;
-  // Lectura del odómetro/horómetro al momento de la carga. Obligatoria: sin
-  // ella no se puede calcular el consumo real entre cargas.
-  usoAcumulado: number;
+  // Se manda SIEMPRE uno de los dos, nunca los dos juntos: la carga es a un
+  // vehículo o a una herramienta.
+  idVehiculo?: number;
+  idHerramienta?: number;
+  // Lectura del odómetro/horómetro al momento de la carga. Obligatoria para un
+  // vehículo (sin ella no se puede calcular el consumo real entre cargas). Una
+  // herramienta no tiene contador, así que NO se manda en ese caso.
+  usoAcumulado?: number;
   // Precio por litro realmente pagado. Solo se manda si el empleado corrigió el
   // del catálogo; si va vacío, el backend usa el vigente (idPrecio).
   precioUnitario?: number;
@@ -153,10 +166,15 @@ export interface CreateTicketPayload {
 export function createTicket(payload: CreateTicketPayload, fotoUri?: string | null): Promise<Ticket> {
   const form = new FormData();
   form.append('litros', String(payload.litros));
-  form.append('idPrecio', String(payload.idPrecio));
+  // Uno de los dos, nunca ambos (ver CreateTicketPayload).
+  if (payload.idPrecio != null) form.append('idPrecio', String(payload.idPrecio));
+  if (payload.tipoCombustible != null) form.append('tipoCombustible', payload.tipoCombustible);
   form.append('idProveedor', String(payload.idProveedor));
-  form.append('idVehiculo', String(payload.idVehiculo));
-  form.append('usoAcumulado', String(payload.usoAcumulado));
+  // Uno de los dos, nunca ambos (ver CreateTicketPayload).
+  if (payload.idVehiculo != null) form.append('idVehiculo', String(payload.idVehiculo));
+  if (payload.idHerramienta != null) form.append('idHerramienta', String(payload.idHerramienta));
+  // Una herramienta no tiene contador: no se manda usoAcumulado para ella.
+  if (payload.usoAcumulado != null) form.append('usoAcumulado', String(payload.usoAcumulado));
   if (payload.precioUnitario != null) {
     form.append('precioUnitario', String(payload.precioUnitario));
   }

@@ -8,6 +8,7 @@ import { LoadDetailModal } from '../../components/fuel/LoadDetailModal';
 import { useFetch } from '../../hooks/useFetch';
 import { getMisTickets, Ticket } from '../../services/tickets';
 import { getVehiculos, tituloVehiculo, Vehiculo, TipoCombustible } from '../../services/vehiculos';
+import { getHerramientas, Herramienta } from '../../services/herramientas';
 import { getProveedores, getPrecios, Proveedor, Precio } from '../../services/catalogos';
 import { formatFecha, formatMoney } from '../../constants/labels';
 
@@ -39,13 +40,14 @@ export default function HistorialScreen() {
   const [selected, setSelected] = useState<Row | null>(null);
 
   const { data, loading, error, refetch } = useFetch(async () => {
-    const [tickets, vehiculos, proveedores, precios] = await Promise.all([
+    const [tickets, vehiculos, herramientas, proveedores, precios] = await Promise.all([
       getMisTickets(),
       getVehiculos(),
+      getHerramientas(),
       getProveedores(),
       getPrecios(),
     ]);
-    return { tickets, vehiculos, proveedores, precios };
+    return { tickets, vehiculos, herramientas, proveedores, precios };
   });
 
   // El tab de Historial queda montado en el navegador de pestañas, así que
@@ -69,17 +71,29 @@ export default function HistorialScreen() {
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     const vById = new Map<number, Vehiculo>(data.vehiculos.map((v) => [v.id, v]));
+    const hById = new Map<number, Herramienta>(data.herramientas.map((h) => [h.id, h]));
     const pById = new Map<number, Proveedor>(data.proveedores.map((p) => [p.id, p]));
     const precioById = new Map<number, Precio>(data.precios.map((p) => [p.id, p]));
 
     return data.tickets.map((t: Ticket) => {
-      const v = vById.get(t.idVehiculo);
+      // Exactamente uno de los dos viene con valor (ver services/tickets.ts).
+      const v = t.idVehiculo != null ? vById.get(t.idVehiculo) : undefined;
+      const h = t.idHerramienta != null ? hById.get(t.idHerramienta) : undefined;
       const precio = precioById.get(t.idPrecio);
       const unitario = precio ? precio.precioUnitario : 0;
       return {
         id: t.id,
-        identificador: v ? tituloVehiculo(v) : `Vehículo #${t.idVehiculo}`,
-        tipoVehiculo: v ? v.tipoVehiculo : 'MAQUINA',
+        identificador: v
+          ? tituloVehiculo(v)
+          : h
+            ? h.nombre
+            : t.idVehiculo != null
+              ? `Vehículo #${t.idVehiculo}`
+              : `Herramienta #${t.idHerramienta}`,
+        // Row.tipoVehiculo solo maneja el icono de vehículo: una herramienta no
+        // tiene uno propio, así que cae en un fallback (no se muestra combustible
+        // para ella, tipoCombustible queda null).
+        tipoVehiculo: v ? v.tipoVehiculo : 'CAMION',
         tipoCombustible: v ? v.tipoCombustible : null,
         fecha: formatFecha(t.fechaCarga),
         fechaCarga: t.fechaCarga,

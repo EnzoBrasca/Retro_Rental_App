@@ -22,20 +22,29 @@ import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenSta
 import { OptionChips } from '../../components/fuel/OptionChips';
 import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
-import { getVehiculos, etiquetaLectura, tituloVehiculo } from '../../services/vehiculos';
+import { getVehiculos, etiquetaLectura, tituloVehiculo, TipoCombustible } from '../../services/vehiculos';
+import { getHerramientas, Herramienta } from '../../services/herramientas';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
 import { combustibleLabel, formatMoney } from '../../constants/labels';
+
+// Una herramienta no tiene combustible fijo (a diferencia de un vehículo): se
+// elige carga por carga. Salvo GNC, que no aplica a una herramienta portátil.
+const COMBUSTIBLE_HERRAMIENTA_OPTS = (Object.keys(combustibleLabel) as TipoCombustible[])
+  .filter((k) => k !== 'GNC')
+  .map((k) => ({ key: k, label: combustibleLabel[k] }));
 
 type Stage = 'capture' | 'analyzing' | 'form';
 
 export default function EscanearScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  // El vehículo llega fijado desde la card de la flota (index.tsx). La pantalla
-  // ya no elige vehículo: lo recibe por parámetro y lo muestra bloqueado.
-  const params = useLocalSearchParams<{ idVehiculo?: string }>();
+  // El vehículo o la herramienta llegan fijados desde la card de la flota
+  // (index.tsx). La pantalla ya no elige entre ellos: los recibe por parámetro
+  // y los muestra bloqueados. Nunca llegan los dos juntos.
+  const params = useLocalSearchParams<{ idVehiculo?: string; idHerramienta?: string }>();
   const paramVehiculoId = params.idVehiculo ? Number(params.idVehiculo) : null;
+  const paramHerramientaId = params.idHerramienta ? Number(params.idHerramienta) : null;
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
@@ -45,13 +54,18 @@ export default function EscanearScreen() {
   const [fotoUri, setFotoUri] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
 
-  // Campos del formulario.
+  // Campos del formulario. Uno de los dos IDs está seteado, nunca los dos.
   const [idVehiculo, setIdVehiculo] = useState<number | null>(null);
+  const [idHerramienta, setIdHerramienta] = useState<number | null>(null);
   const [idProveedor, setIdProveedor] = useState<number | null>(null);
-  // idPrecio NO es estado: se deriva de (proveedor + combustible del vehículo).
+  // idPrecio NO es estado: se deriva de (proveedor + combustible del ítem).
   const [litros, setLitros] = useState('');
-  // Lectura del odómetro/horómetro del vehículo. Obligatoria.
+  // Lectura del odómetro/horómetro del vehículo. Obligatoria para un vehículo;
+  // una herramienta no tiene contador, así que este campo no aplica para ella.
   const [usoAcumulado, setUsoAcumulado] = useState('');
+  // Combustible elegido para la carga. Solo se usa con una herramienta: un
+  // vehículo ya tiene su tipoCombustible fijo.
+  const [tipoCombustibleHerramienta, setTipoCombustibleHerramienta] = useState<TipoCombustible | null>(null);
   // Precio por litro editable. Arranca vacío y se prellena con el vigente en
   // cuanto se puede resolver; el empleado puede pisarlo si el surtidor cobró
   // otra cosa. Se guarda como texto para no pelear con comas y decimales
@@ -65,20 +79,21 @@ export default function EscanearScreen() {
   const [fechaCarga, setFechaCarga] = useState<string | null>(null);
   const [analysisNote, setAnalysisNote] = useState<string | null>(null);
 
-  // Pool compartido: cualquier vehículo activo se puede cargar, así que traemos
-  // el catálogo completo (no solo los "míos"). El vehículo viene fijado por
-  // parámetro desde la card, y acá se resuelve contra este catálogo.
+  // Pool compartido: cualquier vehículo o herramienta activos se pueden cargar,
+  // así que traemos el catálogo completo (no solo los "míos"). El ítem viene
+  // fijado por parámetro desde la card, y acá se resuelve contra este catálogo.
   const { data, loading, error: loadError, refetch } = useFetch(async () => {
-    const [vehiculos, proveedores, precios] = await Promise.all([
+    const [vehiculos, herramientas, proveedores, precios] = await Promise.all([
       getVehiculos(),
+      getHerramientas(),
       getProveedores(),
       getPrecios(),
     ]);
-    return { vehiculos, proveedores, precios };
+    return { vehiculos, herramientas, proveedores, precios };
   });
 
   // Al entrar a la pantalla arrancamos en el FORMULARIO (carga manual) y limpiamos.
-  // La foto es opcional: se adjunta después. El vehículo queda fijado al que llegó
+  // La foto es opcional: se adjunta después. El ítem queda fijado al que llegó
   // por parámetro; el resto del formulario se resetea para no arrastrar una carga
   // previa entre entradas.
   useFocusEffect(
@@ -89,9 +104,11 @@ export default function EscanearScreen() {
       setFechaCarga(null);
       setAnalysisNote(null);
       setIdVehiculo(paramVehiculoId);
+      setIdHerramienta(paramHerramientaId);
       setIdProveedor(null);
       setLitros('');
-    }, [paramVehiculoId]),
+      setTipoCombustibleHerramienta(null);
+    }, [paramVehiculoId, paramHerramientaId]),
   );
 
   // Al capturar/elegir la foto pasamos por la etapa 'analyzing' (overlay) mientras
@@ -131,7 +148,9 @@ export default function EscanearScreen() {
 
       // El vehículo viene pre-seleccionado desde la card, así que la discrepancia
       // de combustible se evalúa acá, una vez que el OCR clasificó el ticket (antes
-      // se disparaba al elegir el vehículo en el formulario).
+      // se disparaba al elegir el vehículo en el formulario). Una herramienta no
+      // tiene combustible fijo (lo elige el empleado en el formulario), así que
+      // este aviso no aplica para ella.
       const vSel = data?.vehiculos.find((x) => x.id === idVehiculo);
       if (vSel && r.tipoCombustible != null && r.tipoCombustible !== vSel.tipoCombustible) {
         Alert.alert(
@@ -175,52 +194,89 @@ export default function EscanearScreen() {
     }
   };
 
-  // El precio se deriva de la intersección proveedor × combustible del vehículo.
-  // Se exige idProveedor != null y un vehículo elegido: si no, no se busca (un
-  // idProveedor null matchearía por error los precios legacy sin proveedor).
+  // Ítem fijado desde la card: vehículo o herramienta, nunca los dos.
   const vehiculoSel = data?.vehiculos.find((v) => v.id === idVehiculo);
+  const herramientaSel = data?.herramientas.find((h) => h.id === idHerramienta);
+  // El combustible que gobierna el precio: el fijo del vehículo, o el que el
+  // empleado eligió para la herramienta (no tiene uno propio).
+  const tipoCombustibleSel: TipoCombustible | null = vehiculoSel
+    ? vehiculoSel.tipoCombustible
+    : tipoCombustibleHerramienta;
+
+  // El precio se deriva de la intersección proveedor × combustible del ítem.
+  // Se exige idProveedor != null y un combustible resuelto: si no, no se busca
+  // (un idProveedor null matchearía por error los precios legacy sin proveedor).
   const precioSel =
-    idProveedor != null && vehiculoSel
+    idProveedor != null && tipoCombustibleSel != null
       ? data?.precios.find(
-          (p) => p.idProveedor === idProveedor && p.tipoCombustible === vehiculoSel.tipoCombustible,
+          (p) => p.idProveedor === idProveedor && p.tipoCombustible === tipoCombustibleSel,
         )
       : undefined;
+
+  // Referencia para MEZCLA cuando el proveedor todavía no tiene un precio
+  // propio: el vigente de NAFTA_SUPER de ESE proveedor (mismo criterio que
+  // usa el backend para crearlo, ver TicketService.resolvePrecioPorCombustible).
+  // Solo aplica a una herramienta: un vehículo siempre tiene su idPrecio ya
+  // resuelto por el catálogo.
+  const precioNaftaSuperProveedor =
+    idProveedor != null
+      ? data?.precios.find((p) => p.idProveedor === idProveedor && p.tipoCombustible === 'NAFTA_SUPER')
+      : undefined;
+  const esMezclaSinPrecioPropio =
+    idHerramienta != null && tipoCombustibleSel === 'MEZCLA' && !precioSel;
+
+  // Base para prellenar/comparar el precio por litro: el vigente de la
+  // combinación (proveedor, combustible) si existe, o el de NAFTA_SUPER como
+  // referencia cuando es una MEZCLA que el proveedor todavía no tiene cargada.
+  const precioBase = precioSel ?? (esMezclaSinPrecioPropio ? precioNaftaSuperProveedor : undefined);
+
   const litrosNum = parseFloat(litros.replace(',', '.')) || 0;
 
-  // El precio vigente prellena el campo apenas se resuelve, y se vuelve a
-  // prellenar si cambia el proveedor. No se pisa lo que el empleado ya tipeó
-  // dentro de la misma selección: para eso se compara contra el último vigente
-  // aplicado, no contra el valor actual del input.
+  // El precio base prellena el campo apenas se resuelve, y se vuelve a
+  // prellenar si cambia el proveedor o el combustible. No se pisa lo que el
+  // empleado ya tipeó dentro de la misma selección: para eso se compara contra
+  // el último valor aplicado, no contra el valor actual del input.
   const ultimoPrecioAplicado = useRef<number | null>(null);
   useEffect(() => {
-    if (precioSel && ultimoPrecioAplicado.current !== precioSel.precioUnitario) {
-      ultimoPrecioAplicado.current = precioSel.precioUnitario;
-      setPrecioEditado(String(precioSel.precioUnitario));
+    if (precioBase && ultimoPrecioAplicado.current !== precioBase.precioUnitario) {
+      ultimoPrecioAplicado.current = precioBase.precioUnitario;
+      setPrecioEditado(String(precioBase.precioUnitario));
     }
-    if (!precioSel) {
+    if (!precioBase) {
       ultimoPrecioAplicado.current = null;
       setPrecioEditado('');
     }
-  }, [precioSel]);
+  }, [precioBase]);
 
   const precioNum = parseFloat(precioEditado.replace(',', '.')) || 0;
   // El total sigue al precio que el empleado ve, no al del catálogo.
   const total = precioNum > 0 ? litrosNum * precioNum : 0;
-  // Solo se manda si difiere del vigente: si es igual, que resuelva el backend.
-  const precioFueCorregido = precioSel != null && precioNum > 0
-    && Math.abs(precioNum - precioSel.precioUnitario) > 0.001;
+  // Solo se manda si difiere de la base: si es igual, que resuelva el backend.
+  const precioFueCorregido = precioBase != null && precioNum > 0
+    && Math.abs(precioNum - precioBase.precioUnitario) > 0.001;
 
   const submit = async () => {
     setError(null);
     // La foto NO se valida: es opcional. Se puede confirmar sin comprobante.
-    if (!idVehiculo) return setError('Elegí el vehículo.');
+    if (!idVehiculo && !idHerramienta) return setError('Elegí el vehículo o la herramienta.');
+    if (idHerramienta && !tipoCombustibleHerramienta) return setError('Elegí el combustible de esta carga.');
     if (!idProveedor) return setError('Elegí el proveedor.');
-    if (!precioSel) return setError('No hay un precio cargado para ese proveedor y combustible.');
+    // precioBase cubre los dos casos: el vigente ya resuelto (precioSel), o el
+    // de NAFTA_SUPER como referencia inicial de una MEZCLA que el proveedor
+    // todavía no tiene cargada. Si no hay ninguno de los dos, no hay de dónde
+    // partir.
+    if (!precioBase) return setError('No hay un precio cargado para ese proveedor y combustible.');
     if (litrosNum <= 0) return setError('Ingresá los litros cargados.');
     if (precioNum <= 0) return setError('Ingresá el precio por litro.');
-    const usoNum = parseInt(usoAcumulado, 10);
-    if (!(usoNum >= 0)) {
-      return setError(`Ingresá ${etiquetaLectura(vehiculoSel?.tipoVehiculo ?? null)}.`);
+
+    // Una herramienta no tiene contador: la lectura solo se pide y se manda
+    // para un vehículo.
+    let usoNum: number | undefined;
+    if (idVehiculo) {
+      usoNum = parseInt(usoAcumulado, 10);
+      if (!(usoNum >= 0)) {
+        return setError(`Ingresá ${etiquetaLectura(vehiculoSel?.tipoVehiculo ?? null)}.`);
+      }
     }
 
     try {
@@ -228,9 +284,14 @@ export default function EscanearScreen() {
       await createTicket(
         {
           litros: litrosNum,
-          idPrecio: precioSel.id,
+          // Vehículo: manda idPrecio (el catálogo ya lo resolvió). Herramienta:
+          // manda tipoCombustible en su lugar; el backend resuelve o crea el
+          // precio (ver CreateTicketPayload).
+          idPrecio: idVehiculo != null ? precioSel?.id : undefined,
+          tipoCombustible: idHerramienta != null ? tipoCombustibleHerramienta ?? undefined : undefined,
           idProveedor,
-          idVehiculo,
+          idVehiculo: idVehiculo ?? undefined,
+          idHerramienta: idHerramienta ?? undefined,
           usoAcumulado: usoNum,
           precioUnitario: precioFueCorregido ? precioNum : undefined,
           fechaCarga: fechaCarga ?? undefined,
@@ -338,17 +399,34 @@ export default function EscanearScreen() {
             <View style={{ height: 160 }}>
               <ErrorState message={loadError ?? 'Error'} onRetry={refetch} />
             </View>
-          ) : !vehiculoSel ? (
+          ) : !vehiculoSel && !herramientaSel ? (
             <View style={styles.blocked}>
-              <EmptyState message="Este vehículo ya no está disponible. Volvé a la flota y elegí otro." />
+              <EmptyState message="Este ítem ya no está disponible. Volvé a la flota y elegí otro." />
             </View>
           ) : (
             <>
-              <Text style={styles.label}>Vehículo</Text>
+              <Text style={styles.label}>{vehiculoSel ? 'Vehículo' : 'Herramienta'}</Text>
               <View style={styles.vehiculoFijo}>
-                <Text style={styles.vehiculoFijoName}>{tituloVehiculo(vehiculoSel)}</Text>
-                <Text style={styles.vehiculoFijoSub}>{combustibleLabel[vehiculoSel.tipoCombustible]}</Text>
+                <Text style={styles.vehiculoFijoName}>
+                  {vehiculoSel ? tituloVehiculo(vehiculoSel) : herramientaSel!.nombre}
+                </Text>
+                <Text style={styles.vehiculoFijoSub}>
+                  {vehiculoSel ? combustibleLabel[vehiculoSel.tipoCombustible] : `Capacidad ${herramientaSel!.capacidad} L`}
+                </Text>
               </View>
+
+              {/* Una herramienta no tiene combustible fijo (a diferencia de un
+                  vehículo): se elige acá, carga por carga. GNC no aplica. */}
+              {herramientaSel && (
+                <>
+                  <Text style={styles.label}>Combustible de esta carga</Text>
+                  <OptionChips
+                    options={COMBUSTIBLE_HERRAMIENTA_OPTS}
+                    value={tipoCombustibleHerramienta}
+                    onChange={setTipoCombustibleHerramienta}
+                  />
+                </>
+              )}
 
               <Text style={styles.label}>Proveedor</Text>
               <OptionChips
@@ -360,7 +438,9 @@ export default function EscanearScreen() {
               <Text style={styles.label}>Precio por litro</Text>
               {!idProveedor ? (
                 <Text style={styles.precioHint}>Elegí el proveedor para ver el precio.</Text>
-              ) : precioSel ? (
+              ) : !tipoCombustibleSel ? (
+                <Text style={styles.precioHint}>Elegí el combustible de esta carga para ver el precio.</Text>
+              ) : precioBase ? (
                 <>
                   <TextInput
                     style={styles.input}
@@ -370,16 +450,21 @@ export default function EscanearScreen() {
                     placeholder="0"
                     placeholderTextColor={colors.textDim}
                   />
-                  {/* Se avisa cuando el valor difiere del catálogo, para que una
+                  {/* Se avisa cuando el valor difiere de la base, para que una
                       corrección sea siempre deliberada y no un error de tipeo. */}
                   {precioFueCorregido ? (
                     <Text style={styles.precioHint}>
-                      Corregís el precio de {combustibleLabel[vehiculoSel.tipoCombustible]}:{' '}
-                      {formatMoney(precioSel.precioUnitario)} → {formatMoney(precioNum)} / L
+                      Corregís el precio de {combustibleLabel[tipoCombustibleSel]}:{' '}
+                      {formatMoney(precioBase.precioUnitario)} → {formatMoney(precioNum)} / L
+                    </Text>
+                  ) : esMezclaSinPrecioPropio ? (
+                    <Text style={styles.precioHint}>
+                      Este proveedor todavía no tiene un precio de mezcla propio: te mostramos el de
+                      nafta súper como base. Corregilo al precio real de la mezcla.
                     </Text>
                   ) : (
                     <Text style={styles.precioHint}>
-                      Precio actual de {combustibleLabel[vehiculoSel.tipoCombustible]}. Cambialo si el
+                      Precio actual de {combustibleLabel[tipoCombustibleSel]}. Cambialo si el
                       surtidor cobró otro valor.
                     </Text>
                   )}
@@ -401,21 +486,27 @@ export default function EscanearScreen() {
                 placeholderTextColor={colors.textDim}
               />
 
-              {/* La etiqueta sigue al vehículo: una máquina vial marca horas de
-                  horómetro, un camión kilómetros de odómetro. */}
-              <Text style={styles.label}>{etiquetaLectura(vehiculoSel.tipoVehiculo)}</Text>
-              <TextInput
-                style={styles.input}
-                value={usoAcumulado}
-                onChangeText={setUsoAcumulado}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={colors.textDim}
-              />
-              <Text style={styles.precioHint}>
-                Última lectura registrada: {vehiculoSel.usoAcumulado}
-                {vehiculoSel.unidadUso === 'HORAS' ? ' h' : ' km'}
-              </Text>
+              {/* Una herramienta no tiene contador: no lleva horómetro ni
+                  odómetro, así que este campo solo aparece para un vehículo. */}
+              {vehiculoSel && (
+                <>
+                  {/* La etiqueta sigue al vehículo: una máquina vial marca horas de
+                      horómetro, un camión kilómetros de odómetro. */}
+                  <Text style={styles.label}>{etiquetaLectura(vehiculoSel.tipoVehiculo)}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={usoAcumulado}
+                    onChangeText={setUsoAcumulado}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.textDim}
+                  />
+                  <Text style={styles.precioHint}>
+                    Última lectura registrada: {vehiculoSel.usoAcumulado}
+                    {vehiculoSel.unidadUso === 'HORAS' ? ' h' : ' km'}
+                  </Text>
+                </>
+              )}
 
               <View style={styles.totalBox}>
                 <Text style={styles.totalLabel}>TOTAL ESTIMADO</Text>
