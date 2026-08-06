@@ -1,5 +1,8 @@
 package com.retrorental.backend.dto.request;
 
+import com.retrorental.backend.model.enums.TipoCombustible;
+import com.retrorental.backend.validation.CargaOrigen;
+import com.retrorental.backend.validation.OrigenCargaCoherente;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Positive;
@@ -11,7 +14,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
-public class CreateTicketRequest {
+@OrigenCargaCoherente
+public class CreateTicketRequest implements CargaOrigen {
 
     @NotNull(message = "Los litros son obligatorios")
     @Positive(message = "Los litros deben ser mayores a cero")
@@ -21,9 +25,18 @@ public class CreateTicketRequest {
     @PastOrPresent(message = "La fecha de carga no puede ser futura")
     private LocalDateTime fechaCarga;
 
-    @NotNull(message = "El precio es obligatorio")
+    // Precio del catalogo ya resuelto. Obligatorio SOLO cuando el origen es un
+    // vehiculo (lo exige @OrigenCargaCoherente, no un @NotNull de campo): una
+    // herramienta no lo manda, manda tipoCombustible en su lugar y el service
+    // lo resuelve (ver TicketService.resolvePrecioPorCombustible).
     @Positive(message = "El id de precio debe ser válido")
     private Integer idPrecio;
+
+    // Combustible elegido para ESTA carga. Obligatorio SOLO cuando el origen es
+    // una herramienta (una herramienta no tiene combustible fijo, a diferencia
+    // de un vehiculo, que ya lo trae resuelto en su idPrecio). Lo exige
+    // @OrigenCargaCoherente.
+    private TipoCombustible tipoCombustible;
 
     // Precio por litro REALMENTE pagado. Opcional: si no viene, vale el del
     // catalogo (idPrecio). Si viene y difiere, el service valida que no se aleje
@@ -32,8 +45,10 @@ public class CreateTicketRequest {
     private BigDecimal precioUnitario;
 
     // Lectura del odometro/horometro del vehiculo al momento de la carga.
-    // Obligatoria: es lo que permite calcular el consumo real entre cargas.
-    @NotNull(message = "La lectura del contador es obligatoria")
+    // Obligatoria SOLO cuando el origen es un vehiculo (una herramienta no
+    // tiene contador ni horometro): lo exige @OrigenCargaCoherente, no un
+    // @NotNull de campo, porque la obligatoriedad depende de idVehiculo/
+    // idHerramienta.
     @PositiveOrZero(message = "La lectura del contador no puede ser negativa")
     private Integer usoAcumulado;
 
@@ -41,11 +56,16 @@ public class CreateTicketRequest {
     @Positive(message = "El id de proveedor debe ser válido")
     private Integer idProveedor;
 
-    // Vehiculo que se está cargando. Debe ser uno de los asignados al empleado
-    // (se valida en el service contra su lista de vehiculos).
-    @NotNull(message = "El vehiculo es obligatorio")
+    // Vehiculo que se está cargando. Exclusivo con idHerramienta: exactamente
+    // uno de los dos debe venir (lo exige @OrigenCargaCoherente). Debe ser uno
+    // de los asignados al empleado (se valida en el service).
     @Positive(message = "El id de vehiculo debe ser válido")
     private Integer idVehiculo;
+
+    // Herramienta que se está cargando (motosierra, bidon, etc.). Exclusivo
+    // con idVehiculo.
+    @Positive(message = "El id de herramienta debe ser válido")
+    private Integer idHerramienta;
 
     // Foto del ticket de carga (parte multipart "ticketFoto"). OPCIONAL: el
     // empleado puede registrar la carga sin comprobante (equipos de gama baja /

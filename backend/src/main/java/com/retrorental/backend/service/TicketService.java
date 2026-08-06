@@ -8,6 +8,7 @@ import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.exception.TicketAnalysisException;
 import com.retrorental.backend.model.Empleado;
+import com.retrorental.backend.model.Herramienta;
 import com.retrorental.backend.model.Persona;
 import com.retrorental.backend.model.Precio;
 import com.retrorental.backend.model.Proveedor;
@@ -16,6 +17,7 @@ import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.model.enums.Estado;
 import com.retrorental.backend.model.enums.Servicio;
 import com.retrorental.backend.model.enums.TipoCombustible;
+import com.retrorental.backend.repository.HerramientaRepository;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
@@ -47,6 +49,7 @@ public class TicketService {
     private final PrecioRepository precioRepository;
     private final ProveedorRepository proveedorRepository;
     private final VehiculoRepository vehiculoRepository;
+    private final HerramientaRepository herramientaRepository;
     private final PersonaRepository personaRepository;
     private final StorageService storageService;
     // Opcional: el bean de análisis solo existe si hay API key de Mistral. Crear
@@ -68,62 +71,72 @@ public class TicketService {
     public TicketResponse create(CreateTicketRequest request, String empleadoUsername) {
         Persona persona = resolvePersona(empleadoUsername);
 
-        // Validamos las FK baratas ANTES de subir archivos, para no dejar
-        // objetos huerfanos en MinIO si el request es invalido.
-        Precio precio = precioRepository.findById(request.getIdPrecio())
-            .orElseThrow(() -> new ResourceNotFoundException(
-                ErrorCode.PRECIO_NOT_FOUND, "No existe el precio indicado", "idPrecio"));
+        // Se resuelve el proveedor ANTES que el precio (y ANTES de subir archivos,
+        // para no dejar objetos huerfanos en MinIO si el request es invalido):
+        // la resolucion del precio de una herramienta depende de el (ver
+        // resolvePrecioPorCombustible).
         Proveedor proveedor = proveedorRepository.findById(request.getIdProveedor())
             .orElseThrow(() -> new ResourceNotFoundException(
                 ErrorCode.PROVEEDOR_NOT_FOUND, "No existe el proveedor indicado", "idProveedor"));
 
-        // Coherencia precio↔proveedor: si el precio pertenece a una estación, debe
-        // ser la MISMA que la del ticket. El precio es por (proveedor, combustible),
-        // así que cargar una compra con el precio de OTRA estación sería un dato
-        // inconsistente. (Precios legacy sin proveedor no se validan.)
-        if (precio.getProveedor() != null
-            && !precio.getProveedor().getId().equals(proveedor.getId())) {
-            throw new ConflictException(
-                ErrorCode.PRECIO_PROVEEDOR_MISMATCH,
-                "El precio indicado corresponde a otra estación de servicio", "idPrecio");
-        }
+        // Vehiculo: idPrecio ya trae el catalogo resuelto. Herramienta: manda
+        // tipoCombustible en su lugar (no hay un idPrecio previo que elegir), y
+        // el precio se resuelve/crea aca (ver resolvePrecioPorCombustible). Cual
+        // de los dos vino lo garantiza @OrigenCargaCoherente.
+        Precio precio = request.getIdPrecio() != null
+            ? resolvePrecioPorId(request.getIdPrecio(), proveedor)
+            : resolvePrecioPorCombustible(proveedor, request.getTipoCombustible());
 
         // Precio realmente pagado. Si el empleado lo corrigio (el del catalogo
         // estaba desactualizado), se valida el margen y el catalogo se actualiza:
         // el proximo que cargue ve el precio corregido. Sin esto el catalogo
         // envejeceria y el propio margen terminaria bloqueando cargas legitimas.
+        // La MEZCLA no tiene tope: su precio se aleja legitimamente del de la
+        // nafta base que tomo como referencia (ver validarMargen).
         Precio precioAplicado = precio;
         if (request.getPrecioUnitario() != null
             && precio.getPrecioUnitario().compareTo(request.getPrecioUnitario()) != 0) {
-            validarMargen(request.getPrecioUnitario(), precio.getPrecioUnitario(), "precioUnitario");
+            validarMargen(request.getPrecioUnitario(), precio.getPrecioUnitario(),
+                precio.getTipoCombustible(), "precioUnitario");
             precioAplicado = reemplazarVigente(
                 proveedor, precio.getTipoCombustible(), request.getPrecioUnitario());
         }
 
-        Vehiculo vehiculo = resolveVehiculoCargable(request.getIdVehiculo());
+        // Origen de la carga: EXACTAMENTE uno de los dos (lo garantiza
+        // @OrigenCargaCoherente en el request y el CHECK de la base). Una
+        // herramienta no tiene contador: no hay lectura que validar ni
+        // operario que actualizar.
+        Vehiculo vehiculo = null;
+        Herramienta herramienta;
+        if (request.getIdVehiculo() != null) {
+            vehiculo = resolveVehiculoCargable(request.getIdVehiculo());
 
-        // Un odometro/horometro no retrocede. Si la lectura es menor que la
-        // ultima registrada, casi siempre es un error de tipeo: se rechaza con el
-        // valor anterior a la vista para que el empleado pueda corregirlo.
-        Integer usoPrevio = vehiculo.getUsoAcumulado();
-        if (usoPrevio != null && request.getUsoAcumulado() < usoPrevio) {
-            throw new ConflictException(
-                ErrorCode.USO_ACUMULADO_RETROCEDE,
-                "La lectura (" + request.getUsoAcumulado() + ") es menor que la ultima registrada ("
-                    + usoPrevio + ") para este vehiculo",
-                "usoAcumulado");
-        }
-        // La ficha del vehiculo queda con la ultima lectura conocida.
-        vehiculo.setUsoAcumulado(request.getUsoAcumulado());
+            // Un odometro/horometro no retrocede. Si la lectura es menor que la
+            // ultima registrada, casi siempre es un error de tipeo: se rechaza con el
+            // valor anterior a la vista para que el empleado pueda corregirlo.
+            Integer usoPrevio = vehiculo.getUsoAcumulado();
+            if (usoPrevio != null && request.getUsoAcumulado() < usoPrevio) {
+                throw new ConflictException(
+                    ErrorCode.USO_ACUMULADO_RETROCEDE,
+                    "La lectura (" + request.getUsoAcumulado() + ") es menor que la ultima registrada ("
+                        + usoPrevio + ") para este vehiculo",
+                    "usoAcumulado");
+            }
+            // La ficha del vehiculo queda con la ultima lectura conocida.
+            vehiculo.setUsoAcumulado(request.getUsoAcumulado());
 
-        // Pool compartido: el operario "actual" del vehiculo se actualiza en cada
-        // carga al empleado que la registra. Así la card de la flota muestra quién
-        // lo usó por última vez, pisándose cada vez que otro operario le carga.
-        // Vehiculo.operario es de tipo Empleado, así que solo se actualiza cuando
-        // quien carga es un empleado; un administrador puede cargar tickets pero
-        // no "toma" el vehiculo como operario del pool.
-        if (persona instanceof Empleado emp) {
-            vehiculo.setOperario(emp);
+            // Pool compartido: el operario "actual" del vehiculo se actualiza en cada
+            // carga al empleado que la registra. Así la card de la flota muestra quién
+            // lo usó por última vez, pisándose cada vez que otro operario le carga.
+            // Vehiculo.operario es de tipo Empleado, así que solo se actualiza cuando
+            // quien carga es un empleado; un administrador puede cargar tickets pero
+            // no "toma" el vehiculo como operario del pool.
+            if (persona instanceof Empleado emp) {
+                vehiculo.setOperario(emp);
+            }
+            herramienta = null;
+        } else {
+            herramienta = resolveHerramientaCargable(request.getIdHerramienta());
         }
 
         // Subimos a MinIO y guardamos SOLO la key (la URL presignada expira).
@@ -142,20 +155,29 @@ public class TicketService {
         ticket.setLitros(request.getLitros());
         ticket.setFechaCarga(request.getFechaCarga() != null ? request.getFechaCarga() : LocalDateTime.now());
         ticket.setPrecio(precioAplicado);
-        ticket.setUsoAcumulado(request.getUsoAcumulado());
+        // usoAcumulado solo tiene sentido para un vehiculo: una herramienta no
+        // tiene contador, por eso no viene en el request cuando el origen es
+        // idHerramienta (@OrigenCargaCoherente lo garantiza).
+        ticket.setUsoAcumulado(vehiculo != null ? request.getUsoAcumulado() : null);
         ticket.setProveedor(proveedor);
         ticket.setPersona(persona);
         ticket.setVehiculo(vehiculo);
+        ticket.setHerramienta(herramienta);
         ticket.setTicketFotoUrl(ticketFotoKey);
         ticket.setTableroFotoUrl(tableroFotoKey);
 
         Ticket guardado = ticketRepository.save(ticket);
 
-        // Recien ahora, con el ticket ya persistido, el consumo se recalcula
-        // incluyendolo. El vehiculo se guarda una sola vez con todo junto: la
-        // lectura nueva, el operario y el consumo.
-        recalcularConsumo(vehiculo);
-        vehiculoRepository.save(vehiculo);
+        // El consumo/lectura del vehiculo solo se recalcula cuando el ticket
+        // ES de un vehiculo. Una herramienta no tiene contador ni consumo
+        // promedio: sus cargas NUNCA participan de este calculo.
+        if (vehiculo != null) {
+            // Recien ahora, con el ticket ya persistido, el consumo se recalcula
+            // incluyendolo. El vehiculo se guarda una sola vez con todo junto: la
+            // lectura nueva, el operario y el consumo.
+            recalcularConsumo(vehiculo);
+            vehiculoRepository.save(vehiculo);
+        }
 
         return toResponse(guardado);
     }
@@ -251,10 +273,15 @@ public class TicketService {
         // Recien con el ticket ya marcado, las dos consultas de abajo lo ven
         // como anulado y lo excluyen. Si se hiciera antes del save, el ticket
         // seguiria contando y no se revertiria nada.
+        //
+        // Un ticket de herramienta no tiene vehiculo que revertir: no adelanto
+        // ninguna lectura ni consumo, asi que no hay nada que recalcular.
         Vehiculo vehiculo = ticket.getVehiculo();
-        recalcularUsoAcumulado(vehiculo);
-        recalcularConsumo(vehiculo);
-        vehiculoRepository.save(vehiculo);
+        if (vehiculo != null) {
+            recalcularUsoAcumulado(vehiculo);
+            recalcularConsumo(vehiculo);
+            vehiculoRepository.save(vehiculo);
+        }
 
         // Las fotos NO se borran del storage: son el respaldo del comprobante y
         // la anulacion es reversible.
@@ -367,11 +394,71 @@ public class TicketService {
         // descarta y se devuelve el vigente: aca NO se lanza excepcion, porque
         // esto alimenta una sugerencia de formulario y trabar el analisis por un
         // precio dudoso dejaria al empleado sin poder cargar.
-        if (vigente != null && fueraDeMargen(objetivo, vigente.getPrecioUnitario())) {
+        if (vigente != null && fueraDeMargen(objetivo, vigente.getPrecioUnitario(), tipoCombustible)) {
             return vigente;
         }
 
         return reemplazarVigente(proveedor, tipoCombustible, objetivo);
+    }
+
+    // Resuelve el precio de una carga de VEHICULO (idPrecio ya elegido en el
+    // formulario, resuelto contra el catalogo). Valida coherencia
+    // precio↔proveedor: si el precio pertenece a una estación, debe ser la
+    // MISMA que la del ticket. El precio es por (proveedor, combustible), así
+    // que cargar una compra con el precio de OTRA estación sería un dato
+    // inconsistente. (Precios legacy sin proveedor no se validan.)
+    private Precio resolvePrecioPorId(Integer idPrecio, Proveedor proveedor) {
+        Precio precio = precioRepository.findById(idPrecio)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.PRECIO_NOT_FOUND, "No existe el precio indicado", "idPrecio"));
+
+        if (precio.getProveedor() != null
+            && !precio.getProveedor().getId().equals(proveedor.getId())) {
+            throw new ConflictException(
+                ErrorCode.PRECIO_PROVEEDOR_MISMATCH,
+                "El precio indicado corresponde a otra estación de servicio", "idPrecio");
+        }
+        return precio;
+    }
+
+    /**
+     * Resuelve el precio de una carga de HERRAMIENTA, que no manda idPrecio
+     * (no hay uno resuelto de antemano: el combustible se elige carga por
+     * carga) sino el tipoCombustible elegido.
+     *
+     * - Si el proveedor ya tiene un vigente de ese combustible, se usa tal cual.
+     * - Si NO lo tiene y es MEZCLA (nafta con aceite): no es un producto que
+     *   vendan las estaciones (no tiene precio propio en el catálogo), así que
+     *   se crea copiando como valor inicial el vigente de NAFTA_SUPER del MISMO
+     *   proveedor. El empleado ve ese valor y lo corrige al precio real de la
+     *   mezcla (sin tope de margen, ver fueraDeMargen). Si el proveedor tampoco
+     *   tiene ese NAFTA_SUPER, no hay de donde copiar: error explícito, no se
+     *   inventa un precio en cero.
+     * - Para cualquier otro combustible sin vigente (ej. un bidón de GASOIL en
+     *   un proveedor que no lo tiene cargado): error explícito. A diferencia de
+     *   MEZCLA, ningún otro combustible tiene una referencia de la que copiar.
+     */
+    private Precio resolvePrecioPorCombustible(Proveedor proveedor, TipoCombustible tipoCombustible) {
+        Precio vigente = precioRepository
+            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, tipoCombustible)
+            .orElse(null);
+        if (vigente != null) {
+            return vigente;
+        }
+
+        if (tipoCombustible == TipoCombustible.MEZCLA) {
+            Precio base = precioRepository
+                .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, TipoCombustible.NAFTA_SUPER)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    ErrorCode.PRECIO_BASE_MEZCLA_NOT_FOUND,
+                    "El proveedor no tiene un precio vigente de nafta super para tomar como base de la mezcla",
+                    "idProveedor"));
+            return reemplazarVigente(proveedor, TipoCombustible.MEZCLA, base.getPrecioUnitario());
+        }
+
+        throw new ResourceNotFoundException(
+            ErrorCode.PRECIO_NOT_FOUND_PARA_COMBUSTIBLE,
+            "El proveedor no tiene un precio vigente para ese combustible", "idProveedor");
     }
 
     /**
@@ -398,17 +485,31 @@ public class TicketService {
         return precioRepository.save(nuevo);
     }
 
-    /** Si el precio propuesto se aleja del vigente mas de lo tolerado. */
-    private boolean fueraDeMargen(BigDecimal propuesto, BigDecimal vigente) {
+    /**
+     * Si el precio propuesto se aleja del vigente mas de lo tolerado.
+     *
+     * La MEZCLA (nafta con aceite, motosierra) queda SIN TOPE: cuando el
+     * proveedor no tiene un vigente propio, se crea tomando como base el
+     * vigente de NAFTA_SUPER de ese proveedor (ver
+     * resolvePrecioPorCombustible), y el usuario lo corrige despues al precio
+     * real de la mezcla, que lleva aceite y por eso se aleja legitimamente del
+     * de la nafta pura. Aplicarle el mismo margen que al resto trabaria
+     * correcciones validas.
+     */
+    private boolean fueraDeMargen(BigDecimal propuesto, BigDecimal vigente, TipoCombustible tipoCombustible) {
         if (propuesto == null || vigente == null) {
+            return false;
+        }
+        if (tipoCombustible == TipoCombustible.MEZCLA) {
             return false;
         }
         return propuesto.subtract(vigente).abs().compareTo(margenMaximo) > 0;
     }
 
     /** Igual que fueraDeMargen pero cortando la operacion: la usa la carga manual. */
-    private void validarMargen(BigDecimal propuesto, BigDecimal vigente, String campo) {
-        if (fueraDeMargen(propuesto, vigente)) {
+    private void validarMargen(BigDecimal propuesto, BigDecimal vigente,
+                               TipoCombustible tipoCombustible, String campo) {
+        if (fueraDeMargen(propuesto, vigente, tipoCombustible)) {
             throw new ConflictException(
                 ErrorCode.PRECIO_FUERA_DE_RANGO,
                 "El precio ingresado (" + propuesto + ") se aleja mas de " + margenMaximo
@@ -558,6 +659,22 @@ public class TicketService {
         return vehiculo;
     }
 
+    // Valida que la herramienta se pueda cargar: que exista (404) y que no
+    // esté dada de baja (409). No hay chequeo de "mantenimiento" ni pool de
+    // operario: una herramienta no tiene Estado ni asignación, solo nombre y
+    // capacidad.
+    private Herramienta resolveHerramientaCargable(Integer herramientaId) {
+        Herramienta herramienta = herramientaRepository.findById(herramientaId)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                ErrorCode.HERRAMIENTA_NOT_FOUND, "No existe la herramienta indicada", "idHerramienta"));
+
+        if (herramienta.getFechaBaja() != null) {
+            throw new ConflictException(
+                ErrorCode.HERRAMIENTA_ALREADY_INACTIVE, "La herramienta está dada de baja", "idHerramienta");
+        }
+        return herramienta;
+    }
+
     // Construye la respuesta generando URLs presignadas frescas a partir de las
     // keys almacenadas. La URL NUNCA se persiste: se calcula en cada lectura.
     private TicketResponse toResponse(Ticket ticket) {
@@ -566,16 +683,22 @@ public class TicketService {
         // inexistente, que además rompería con una key null).
         String ticketKey = ticket.getTicketFotoUrl();
         String tableroKey = ticket.getTableroFotoUrl();
+        // Exactamente uno de vehiculo/herramienta viene con valor. unidadUso
+        // se deriva del vehiculo; una carga de herramienta no tiene unidad
+        // (no tiene contador).
+        Vehiculo vehiculo = ticket.getVehiculo();
+        Herramienta herramienta = ticket.getHerramienta();
         return new TicketResponse(
             ticket.getId(),
             ticket.getLitros(),
             ticket.getFechaCarga(),
             ticket.getPrecio().getId(),
             ticket.getProveedor().getId(),
-            ticket.getVehiculo().getId(),
+            vehiculo != null ? vehiculo.getId() : null,
+            herramienta != null ? herramienta.getId() : null,
             ticket.getPersona().getUsername(),
             ticket.getUsoAcumulado(),
-            ticket.getVehiculo().getTipoVehiculo().unidadUso(),
+            vehiculo != null ? vehiculo.getTipoVehiculo().unidadUso() : null,
             ticket.getPrecio().getPrecioUnitario(),
             ticketKey,
             ticketKey != null ? storageService.getUrl(ticketKey) : null,

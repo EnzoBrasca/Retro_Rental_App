@@ -14,10 +14,12 @@ import com.retrorental.backend.dto.request.CreateTicketRequest;
 import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.AppException;
 import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.model.Administrador;
 import java.time.LocalDateTime;
 import java.util.List;
 import com.retrorental.backend.model.Empleado;
+import com.retrorental.backend.model.Herramienta;
 import com.retrorental.backend.model.Precio;
 import com.retrorental.backend.model.Proveedor;
 import com.retrorental.backend.model.Ticket;
@@ -27,6 +29,7 @@ import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.model.enums.Servicio;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
+import com.retrorental.backend.repository.HerramientaRepository;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
@@ -59,6 +62,7 @@ class TicketServiceTest {
     @Mock private PrecioRepository precioRepository;
     @Mock private ProveedorRepository proveedorRepository;
     @Mock private VehiculoRepository vehiculoRepository;
+    @Mock private HerramientaRepository herramientaRepository;
     @Mock private PersonaRepository personaRepository;
     @Mock private StorageService storageService;
     @Mock private ObjectProvider<TicketAnalysisService> analysisProvider;
@@ -68,6 +72,7 @@ class TicketServiceTest {
     private Proveedor proveedor;
     private Precio vigente;
     private Vehiculo vehiculo;
+    private Herramienta herramienta;
 
     private static final BigDecimal PRECIO_VIGENTE = new BigDecimal("2086.00");
 
@@ -95,6 +100,11 @@ class TicketServiceTest {
         vehiculo.setTipoCombustible(TipoCombustible.GASOIL_GRADO_2);
         vehiculo.setUsoAcumulado(1000);
 
+        herramienta = new Herramienta();
+        herramienta.setId(7);
+        herramienta.setNombre("Motosierra Stihl");
+        herramienta.setCapacidad(new BigDecimal("0.30"));
+
         Empleado empleado = new Empleado();
         empleado.setId(2);
         empleado.setUsername("juanperez");
@@ -104,6 +114,7 @@ class TicketServiceTest {
         when(precioRepository.findById(10)).thenReturn(Optional.of(vigente));
         when(proveedorRepository.findById(1)).thenReturn(Optional.of(proveedor));
         when(vehiculoRepository.findById(5)).thenReturn(Optional.of(vehiculo));
+        when(herramientaRepository.findById(7)).thenReturn(Optional.of(herramienta));
         when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
             proveedor, TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(vigente));
         when(precioRepository.save(any(Precio.class))).thenAnswer(i -> i.getArgument(0));
@@ -122,6 +133,29 @@ class TicketServiceTest {
         req.setIdVehiculo(5);
         req.setPrecioUnitario(precioUnitario);
         req.setUsoAcumulado(usoAcumulado);
+        return req;
+    }
+
+    private CreateTicketRequest requestHerramienta(BigDecimal precioUnitario) {
+        CreateTicketRequest req = new CreateTicketRequest();
+        req.setLitros(0.3);
+        req.setIdPrecio(10);
+        req.setIdProveedor(1);
+        req.setIdHerramienta(7);
+        req.setPrecioUnitario(precioUnitario);
+        return req;
+    }
+
+    // Contrato nuevo: una herramienta NO manda idPrecio, manda tipoCombustible
+    // y el service resuelve el precio (ver resolvePrecioPorCombustible).
+    private CreateTicketRequest requestHerramientaConCombustible(
+            TipoCombustible tipoCombustible, BigDecimal precioUnitario) {
+        CreateTicketRequest req = new CreateTicketRequest();
+        req.setLitros(0.3);
+        req.setTipoCombustible(tipoCombustible);
+        req.setIdProveedor(1);
+        req.setIdHerramienta(7);
+        req.setPrecioUnitario(precioUnitario);
         return req;
     }
 
@@ -172,6 +206,177 @@ class TicketServiceTest {
         service.create(request(borde, 1200), "juanperez");
 
         verify(precioRepository).save(any(Precio.class));
+    }
+
+    @Test
+    void precioDeMezcla_muyLejosDelVigente_NoAplicaElMargen() {
+        // La mezcla lleva aceite: su precio real se aleja legitimamente del de
+        // la nafta base que tomo como referencia. El margen de +-30 NO debe
+        // aplicarle, o trabaria correcciones validas.
+        vigente.setTipoCombustible(TipoCombustible.MEZCLA);
+        BigDecimal muyLejos = PRECIO_VIGENTE.add(new BigDecimal("500")); // muy fuera de +-30
+
+        service.create(request(muyLejos, 1200), "juanperez");
+
+        verify(precioRepository).save(any(Precio.class));
+        verify(ticketRepository).save(any(Ticket.class));
+    }
+
+    // --------------------------------------------------- precio por combustible
+
+    @Test
+    void herramientaConMezcla_sinPrecioPrevio_copiaElDeNaftaSuperDelProveedor() {
+        // El proveedor no tiene (YPF, MEZCLA) todavia, pero si tiene (YPF,
+        // NAFTA_SUPER): el service tiene que crear la mezcla copiando ese valor.
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.empty());
+        Precio naftaSuper = new Precio();
+        naftaSuper.setId(20);
+        naftaSuper.setPrecioUnitario(PRECIO_VIGENTE);
+        naftaSuper.setServicio(Servicio.COMBUSTIBLE);
+        naftaSuper.setTipoCombustible(TipoCombustible.NAFTA_SUPER);
+        naftaSuper.setProveedor(proveedor);
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.NAFTA_SUPER)).thenReturn(Optional.of(naftaSuper));
+
+        service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez");
+
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository).save(captor.capture());
+        Precio creado = captor.getValue();
+        assertEquals(TipoCombustible.MEZCLA, creado.getTipoCombustible());
+        assertEquals(proveedor, creado.getProveedor());
+        assertEquals(PRECIO_VIGENTE, creado.getPrecioUnitario());
+        // El de nafta super no se toca ni se cierra: solo sirvio de referencia.
+        assertNull(naftaSuper.getFechaHasta());
+
+        ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
+        verify(ticketRepository).save(ticketCaptor.capture());
+        assertEquals(creado, ticketCaptor.getValue().getPrecio());
+    }
+
+    @Test
+    void herramientaConMezcla_conPrecioPrevio_usaElSuyoYNoLoPisaConElDeNafta() {
+        Precio mezclaVigente = new Precio();
+        mezclaVigente.setId(30);
+        mezclaVigente.setPrecioUnitario(new BigDecimal("2450.00"));
+        mezclaVigente.setServicio(Servicio.COMBUSTIBLE);
+        mezclaVigente.setTipoCombustible(TipoCombustible.MEZCLA);
+        mezclaVigente.setProveedor(proveedor);
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.of(mezclaVigente));
+
+        service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez");
+
+        // No se crea ni se toca ningun precio: ya habia uno vigente.
+        verify(precioRepository, never()).save(any(Precio.class));
+        verify(precioRepository, never()).findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.NAFTA_SUPER);
+
+        ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
+        verify(ticketRepository).save(ticketCaptor.capture());
+        assertEquals(mezclaVigente, ticketCaptor.getValue().getPrecio());
+    }
+
+    @Test
+    void herramientaConMezcla_sinNaftaSuperDelProveedor_rechazaConErrorClaro() {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.empty());
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.NAFTA_SUPER)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+            () -> service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez"));
+
+        assertEquals(ErrorCode.PRECIO_BASE_MEZCLA_NOT_FOUND, ex.getCode());
+        verify(precioRepository, never()).save(any(Precio.class));
+        verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void herramientaSinMezcla_sinPrecioVigenteEnElProveedor_rechazaSinInventarPrecio() {
+        // Un bidon con GASOIL en un proveedor que no tiene ese precio cargado:
+        // a diferencia de MEZCLA, aca no hay de donde copiar, asi que se rechaza.
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+            () -> service.create(
+                requestHerramientaConCombustible(TipoCombustible.GASOIL_GRADO_2, null), "juanperez"));
+
+        assertEquals(ErrorCode.PRECIO_NOT_FOUND_PARA_COMBUSTIBLE, ex.getCode());
+        verify(precioRepository, never()).save(any(Precio.class));
+        verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void vehiculoConIdPrecio_siguenFuncionandoIgualQueAntes() {
+        // La carga de vehiculo con idPrecio no cambia: sigue resolviendose por
+        // id, sin pasar por resolvePrecioPorCombustible.
+        service.create(request(null, 1200), "juanperez");
+
+        ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
+        verify(ticketRepository).save(ticketCaptor.capture());
+        assertEquals(vigente, ticketCaptor.getValue().getPrecio());
+        verify(precioRepository, never()).findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.NAFTA_SUPER);
+    }
+
+    // ----------------------------------------------------------- herramienta
+
+    @Test
+    void crearConHerramienta_noTocaVehiculoNiContador() {
+        service.create(requestHerramienta(null), "juanperez");
+
+        // Una herramienta no tiene contador ni pool de operario: no hay
+        // vehiculo que actualizar ni consumo que recalcular.
+        verify(vehiculoRepository, never()).save(any(Vehiculo.class));
+
+        ArgumentCaptor<Ticket> captor = ArgumentCaptor.forClass(Ticket.class);
+        verify(ticketRepository).save(captor.capture());
+        Ticket guardado = captor.getValue();
+        assertEquals(herramienta, guardado.getHerramienta());
+        assertNull(guardado.getVehiculo());
+        assertNull(guardado.getUsoAcumulado());
+    }
+
+    @Test
+    void crearConHerramientaDadaDeBaja_rechaza() {
+        herramienta.setFechaBaja(java.time.LocalDate.now());
+
+        ConflictException ex = assertThrows(ConflictException.class,
+            () -> service.create(requestHerramienta(null), "juanperez"));
+
+        assertEquals(ErrorCode.HERRAMIENTA_ALREADY_INACTIVE, ex.getCode());
+        verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void crearConHerramientaInexistente_devuelve404() {
+        when(herramientaRepository.findById(99)).thenReturn(Optional.empty());
+        CreateTicketRequest req = requestHerramienta(null);
+        req.setIdHerramienta(99);
+
+        ResourceNotFoundException ex = assertThrows(
+            ResourceNotFoundException.class,
+            () -> service.create(req, "juanperez"));
+
+        assertEquals(ErrorCode.HERRAMIENTA_NOT_FOUND, ex.getCode());
+    }
+
+    @Test
+    void anularTicketDeHerramienta_noTocaNingunVehiculo() {
+        Administrador admin = admin();
+        Ticket ticketHerramienta = new Ticket();
+        ticketHerramienta.setId(50);
+        ticketHerramienta.setHerramienta(herramienta);
+        when(ticketRepository.findById(50)).thenReturn(Optional.of(ticketHerramienta));
+
+        service.anular(50, "admin");
+
+        assertNotNull(ticketHerramienta.getFechaAnulacion());
+        assertEquals(admin, ticketHerramienta.getAnuladoPor());
+        verify(vehiculoRepository, never()).save(any(Vehiculo.class));
     }
 
     // -------------------------------------------------------------- contador

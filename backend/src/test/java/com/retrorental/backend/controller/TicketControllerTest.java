@@ -38,7 +38,7 @@ class TicketControllerTest extends AbstractControllerTest {
     private TicketService ticketService;
 
     private TicketResponse sampleTicket() {
-        return new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1,
+        return new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1, null,
             "juanperez", 1250, UnidadUso.HORAS, new BigDecimal("2086.00"),
             "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2", null, null);
@@ -115,6 +115,125 @@ class TicketControllerTest extends AbstractControllerTest {
                 .param("idVehiculo", "1"))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_conHerramienta_devuelve200() throws Exception {
+        // Una herramienta no tiene contador: no se manda usoAcumulado. Tampoco
+        // manda idPrecio: manda tipoCombustible, y el service lo resuelve.
+        when(ticketService.create(any(), anyString())).thenReturn(sampleTicket());
+
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "0.3")
+                .param("tipoCombustible", "MEZCLA")
+                .param("idProveedor", "1")
+                .param("idHerramienta", "1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_conVehiculoYHerramienta_devuelve400() throws Exception {
+        // Exactamente uno de los dos: nunca ambos.
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "42.5")
+                .param("idPrecio", "1")
+                .param("idProveedor", "1")
+                .param("idVehiculo", "1")
+                .param("idHerramienta", "1")
+                .param("usoAcumulado", "1250"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("idHerramienta"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_sinVehiculoNiHerramienta_devuelve400() throws Exception {
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "42.5")
+                .param("idPrecio", "1")
+                .param("idProveedor", "1"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("idVehiculo"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_herramientaConUsoAcumulado_devuelve400() throws Exception {
+        // Una herramienta no tiene contador ni horometro: no se le puede
+        // mandar una lectura.
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "0.3")
+                .param("idPrecio", "1")
+                .param("idProveedor", "1")
+                .param("idHerramienta", "1")
+                .param("usoAcumulado", "10"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("usoAcumulado"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_herramientaSinTipoCombustible_devuelve400() throws Exception {
+        // Una herramienta no tiene combustible fijo: sin tipoCombustible no
+        // hay como resolver el precio.
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "0.3")
+                .param("idProveedor", "1")
+                .param("idHerramienta", "1"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("tipoCombustible"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_herramientaConIdPrecio_devuelve400() throws Exception {
+        // Contrato nuevo: una herramienta manda tipoCombustible, no idPrecio.
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "0.3")
+                .param("idPrecio", "1")
+                .param("tipoCombustible", "MEZCLA")
+                .param("idProveedor", "1")
+                .param("idHerramienta", "1"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("idPrecio"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_vehiculoConTipoCombustible_devuelve400() throws Exception {
+        // Contrato nuevo: un vehiculo tiene el combustible fijo, no se le
+        // manda tipoCombustible.
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "42.5")
+                .param("idPrecio", "1")
+                .param("tipoCombustible", "NAFTA_SUPER")
+                .param("idProveedor", "1")
+                .param("idVehiculo", "1")
+                .param("usoAcumulado", "1250"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("tipoCombustible"));
+    }
+
+    @Test
+    @WithMockUser(username = "juanperez", roles = "EMPLEADO")
+    void crear_vehiculoSinIdPrecio_devuelve400() throws Exception {
+        mockMvc.perform(multipart("/tickets")
+                .param("litros", "42.5")
+                .param("idProveedor", "1")
+                .param("idVehiculo", "1")
+                .param("usoAcumulado", "1250"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+            .andExpect(jsonPath("$.errors[0].field").value("idPrecio"));
     }
 
     @Test

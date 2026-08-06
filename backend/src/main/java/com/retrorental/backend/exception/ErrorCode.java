@@ -30,6 +30,10 @@ public enum ErrorCode {
     VEHICULO_ALREADY_ASSIGNED(HttpStatus.CONFLICT),
     VEHICULO_NOT_AVAILABLE(HttpStatus.CONFLICT),
 
+    // --- Herramientas ---
+    HERRAMIENTA_NOT_FOUND(HttpStatus.NOT_FOUND),
+    HERRAMIENTA_ALREADY_INACTIVE(HttpStatus.CONFLICT),
+
     // --- Empleados ---
     EMPLEADO_NOT_FOUND(HttpStatus.NOT_FOUND),
     EMPLEADO_ALREADY_INACTIVE(HttpStatus.CONFLICT),
@@ -48,6 +52,14 @@ public enum ErrorCode {
     // El precio corregido a mano se aleja demasiado del vigente (ver
     // app.precio.margen-maximo). Freno contra ceros de mas y OCR alucinado.
     PRECIO_FUERA_DE_RANGO(HttpStatus.CONFLICT),
+    // Una carga de herramienta pidio un tipoCombustible sin precio vigente
+    // para ese proveedor y no es MEZCLA (unico caso que se auto-crea): no hay
+    // de donde sacar el precio, no se inventa.
+    PRECIO_NOT_FOUND_PARA_COMBUSTIBLE(HttpStatus.NOT_FOUND),
+    // MEZCLA sin precio vigente en el proveedor se crea copiando el vigente de
+    // NAFTA_SUPER de ESE proveedor (ver TicketService.resolvePrecioPorCombustible).
+    // Si el proveedor tampoco tiene NAFTA_SUPER, no hay base de la que copiar.
+    PRECIO_BASE_MEZCLA_NOT_FOUND(HttpStatus.NOT_FOUND),
     ANALYSIS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
     ANALYSIS_FAILED(HttpStatus.SERVICE_UNAVAILABLE),
 
