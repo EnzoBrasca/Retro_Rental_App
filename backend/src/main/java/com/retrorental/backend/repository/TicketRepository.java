@@ -41,9 +41,15 @@ public interface TicketRepository
 
     /**
      * Tickets VIGENTES de un período [desde, hasta) para el cálculo de
-     * estadísticas. Límite superior EXCLUSIVO. Trae precio, vehiculo, persona y
-     * proveedor con JOIN FETCH para evitar el N+1 al agregar el gasto y los
-     * desgloses por vehiculo/empleado/proveedor en memoria.
+     * estadísticas. Límite superior EXCLUSIVO. Trae precio, vehiculo, herramienta,
+     * persona y proveedor con JOIN FETCH para evitar el N+1 al agregar el gasto y
+     * los desgloses por vehiculo/empleado/proveedor en memoria.
+     *
+     * vehiculo y herramienta van con LEFT JOIN FETCH (no JOIN a secas): un
+     * ticket tiene exactamente uno de los dos, así que un INNER JOIN sobre
+     * cualquiera de las dos EXCLUIRÍA de las estadísticas los tickets del otro
+     * origen (los de herramienta desaparecerían con INNER JOIN a vehiculo, y
+     * viceversa).
      *
      * El filtro de anulados es lo que hace que anular un ticket corrija SOLO el
      * gasto de la analítica: no hay ningún total guardado, todo se agrega al
@@ -51,7 +57,8 @@ public interface TicketRepository
      */
     @Query("SELECT t FROM Ticket t "
         + "JOIN FETCH t.precio "
-        + "JOIN FETCH t.vehiculo "
+        + "LEFT JOIN FETCH t.vehiculo "
+        + "LEFT JOIN FETCH t.herramienta "
         + "JOIN FETCH t.persona "
         + "JOIN FETCH t.proveedor "
         + "WHERE t.fechaCarga >= :desde AND t.fechaCarga < :hasta "

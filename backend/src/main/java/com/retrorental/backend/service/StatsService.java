@@ -6,6 +6,7 @@ import com.retrorental.backend.dto.response.StatsResponse;
 import com.retrorental.backend.model.Persona;
 import com.retrorental.backend.model.Proveedor;
 import com.retrorental.backend.model.Ticket;
+import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.repository.TicketRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Estadísticas de consumo de combustible por período. Diario, semanal y mensual
@@ -69,8 +71,10 @@ public class StatsService {
         List<Ticket> tickets = ticketRepository.findForStats(desde, hasta);
 
         if (vehiculoId != null) {
+            // Filtrar por vehiculo excluye de por si los tickets de
+            // herramienta (getVehiculo() es null para esos).
             tickets = tickets.stream()
-                .filter(t -> t.getVehiculo().getId().equals(vehiculoId))
+                .filter(t -> t.getVehiculo() != null && t.getVehiculo().getId().equals(vehiculoId))
                 .toList();
         }
         if (empleadoIds != null && !empleadoIds.isEmpty()) {
@@ -80,6 +84,11 @@ public class StatsService {
         }
 
         double totalLitros = 0d;
+        // Litros cargados a VEHICULOS unicamente. Va aparte de totalLitros
+        // porque es el numerador de promedioLitrosPorVehiculo, cuyo denominador
+        // (vehiculosActivos) tampoco cuenta herramientas: mezclarlos inflaria el
+        // promedio de cada vehiculo con la nafta de las motosierras y bidones.
+        double litrosDeVehiculos = 0d;
         BigDecimal gastoTotal = BigDecimal.ZERO;
         // LinkedHashMap: acumula preservando orden de aparición (el orden
         // final lo define el sort por gasto, esto es solo estable).
@@ -92,6 +101,9 @@ public class StatsService {
                 .multiply(BigDecimal.valueOf(litros));
 
             totalLitros += litros;
+            if (t.getVehiculo() != null) {
+                litrosDeVehiculos += litros;
+            }
             gastoTotal = gastoTotal.add(gasto);
 
             Proveedor p = t.getProveedor();
@@ -118,12 +130,16 @@ public class StatsService {
         desglosePorEmpleado.sort(Comparator.comparing(EmpleadoConsumo::gasto, Comparator.reverseOrder()));
 
         // vehiculosActivos ya no se calcula por acumulacion: se cuentan los
-        // vehiculos distintos que aparecen en los tickets del período.
+        // vehiculos distintos que aparecen en los tickets del período. Los
+        // tickets de herramienta (getVehiculo() null) quedan afuera: una
+        // herramienta no es un vehiculo y no debe inflar este conteo.
         int vehiculosActivos = (int) tickets.stream()
-            .map(t -> t.getVehiculo().getId())
+            .map(Ticket::getVehiculo)
+            .filter(Objects::nonNull)
+            .map(Vehiculo::getId)
             .distinct()
             .count();
-        double promedio = vehiculosActivos == 0 ? 0d : totalLitros / vehiculosActivos;
+        double promedio = vehiculosActivos == 0 ? 0d : litrosDeVehiculos / vehiculosActivos;
 
         return new StatsResponse(
             desdeInclusive,

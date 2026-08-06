@@ -10,5 +10,15 @@ public enum TipoCombustible {
     NAFTA_PREMIUM,
     GASOIL_GRADO_2,
     GASOIL_GRADO_3,
-    GNC
+    GNC,
+    // Nafta con aceite para motores 2 tiempos (motosierra). Solo aplica a
+    // cargas de HERRAMIENTA, nunca a un vehiculo: por eso solo se agrega al
+    // CHECK de precios.tipo_combustible y no al de vehiculos.tipo_combustible
+    // (ver V8__agregar_herramientas.sql). Si el proveedor no tiene un vigente
+    // propio de mezcla, se crea tomando como referencia inicial el vigente de
+    // NAFTA_SUPER de ESE proveedor (ver TicketService.resolvePrecioPorCombustible)
+    // y el usuario lo corrige al precio real de la mezcla. Por eso el margen de
+    // correccion (+-30) NO aplica a este tipo: el precio de la mezcla se aleja
+    // legitimamente del de nafta pura.
+    MEZCLA
 }

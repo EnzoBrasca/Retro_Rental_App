@@ -93,6 +93,12 @@ public class DataSeeder implements CommandLineRunner {
     // Siembra un precio vigente por cada (proveedor, combustible): asume que toda
     // estación vende todos los productos. El precio nace del base × factor de la
     // estación, redondeado a 2 decimales.
+    //
+    // MEZCLA queda afuera a proposito: no es un producto que vendan las
+    // estaciones (no tiene entrada en PRECIO_BASE), sino el precio que el
+    // propio ticket de la motosierra crea/corrige a partir del vigente de
+    // NAFTA_SUPER de ese proveedor (ver TicketService.resolvePrecioPorCombustible).
+    // Sembrarlo aca inventaria un precio de mezcla que nadie cargo.
     private void seedPrecios() {
         if (precioRepository.count() > 0) {
             log.info("[seed] precios ya existen, se omite");
@@ -103,9 +109,9 @@ public class DataSeeder implements CommandLineRunner {
         List<Precio> precios = new ArrayList<>();
         for (Proveedor prov : proveedorRepository.findAll()) {
             BigDecimal factor = FACTOR_POR_PROVEEDOR.getOrDefault(prov.getNombre(), BigDecimal.ONE);
-            for (TipoCombustible tc : TipoCombustible.values()) {
-                BigDecimal valor = PRECIO_BASE.get(tc).multiply(factor).setScale(2, RoundingMode.HALF_UP);
-                precios.add(precio(prov, tc, valor, hoy));
+            for (Map.Entry<TipoCombustible, BigDecimal> entry : PRECIO_BASE.entrySet()) {
+                BigDecimal valor = entry.getValue().multiply(factor).setScale(2, RoundingMode.HALF_UP);
+                precios.add(precio(prov, entry.getKey(), valor, hoy));
             }
         }
         precioRepository.saveAll(precios);

@@ -47,9 +47,20 @@ public class Ticket {
     @JoinColumn(name = "id_persona", nullable = false)
     private Persona persona;
 
+    // Un ticket pertenece a UN vehiculo O a UNA herramienta, nunca los dos ni
+    // ninguno (ver tickets_origen_check en V8__agregar_herramientas.sql).
+    // Nullable: antes de las herramientas, todo ticket tenia vehiculo.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "id_vehiculo", nullable = false)
+    @JoinColumn(name = "id_vehiculo")
     private Vehiculo vehiculo;
+
+    // Herramienta cargada (motosierra, bidon, etc.), exclusiva con vehiculo. A
+    // diferencia del vehiculo no tiene contador: los tickets de herramienta no
+    // participan de ningun calculo de consumo/uso acumulado (ver
+    // TicketService.recalcularConsumo y StatsService).
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_herramienta")
+    private Herramienta herramienta;
 
     // Anulacion (baja logica). Null = ticket VIGENTE. Un ticket es un registro
     // contable: no se borra, se anula. Las consultas de consumo, estadisticas e
