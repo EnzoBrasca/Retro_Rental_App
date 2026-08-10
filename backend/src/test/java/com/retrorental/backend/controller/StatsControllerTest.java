@@ -32,7 +32,10 @@ class StatsControllerTest extends AbstractControllerTest {
     private StatsResponse sample() {
         return new StatsResponse(
             LocalDate.of(2026, 7, 8), LocalDate.of(2026, 7, 8),
-            120.5, new BigDecimal("240000"), 4L, 3, 40.16, List.of(), List.of());
+            120.5, new BigDecimal("240000"), 4L, 3, 40.16,
+            // Sin vehiculo filtrado no hay consumo: es el caso por defecto del panel.
+            null, null,
+            List.of(), List.of());
     }
 
     @Test

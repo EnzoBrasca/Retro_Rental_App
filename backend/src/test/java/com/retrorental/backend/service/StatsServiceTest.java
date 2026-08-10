@@ -17,9 +17,11 @@ import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.model.enums.Servicio;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
+import com.retrorental.backend.model.enums.UnidadUso;
 import com.retrorental.backend.repository.TicketRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +51,28 @@ class StatsServiceTest {
         vehiculo.setTipoVehiculo(TipoVehiculo.CAMION);
 
         return ticket(litros, precioUnitario, vehiculo, null);
+    }
+
+    /**
+     * Carga de un vehiculo tal como la devuelve la consulta de consumo: con
+     * lectura del contador y fecha, que es lo que define si cae dentro del rango
+     * o si es la linea base anterior a el.
+     */
+    private Ticket carga(TipoVehiculo tipo, int uso, double litros, LocalDateTime fechaCarga) {
+        Vehiculo vehiculo = new Vehiculo();
+        vehiculo.setId(1);
+        vehiculo.setTipoVehiculo(tipo);
+
+        Ticket t = ticket(litros, new BigDecimal("2000"), vehiculo, null);
+        t.setUsoAcumulado(uso);
+        t.setFechaCarga(fechaCarga);
+        return t;
+    }
+
+    private void cargasDelVehiculo(Ticket... cargas) {
+        when(ticketRepository
+            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(1))
+            .thenReturn(List.of(cargas));
     }
 
     private Ticket ticketDeHerramienta(int idHerramienta, double litros, BigDecimal precioUnitario) {
@@ -151,5 +175,120 @@ class StatsServiceTest {
         StatsResponse resp = service.daily(LocalDate.of(2026, 8, 1), 1, null);
 
         assertEquals(1, resp.cantidadRegistros());
+    }
+
+    // -----------------------------------------------------------------------
+    // Consumo del vehiculo seleccionado.
+    //
+    // Es el UNICO dato del panel que no sale de agregar los tickets del rango:
+    // el metodo de tanque lleno necesita la carga ANTERIOR al rango como linea
+    // base, porque los litros de una carga reponen lo gastado desde la previa.
+    // -----------------------------------------------------------------------
+
+    @Test
+    void consumo_esNullSinVehiculoSeleccionado() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
+            ticketDeVehiculo(1, 50.0, new BigDecimal("2000"))
+        ));
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), null, null);
+
+        // Sin vehiculo seleccionado el promedio de la flota mezclaria maquinas
+        // (L/h) con camiones (L/100km): son unidades distintas, no se promedian.
+        assertEquals(null, resp.consumoPeriodo());
+        assertEquals(null, resp.unidadUso());
+    }
+
+    @Test
+    void consumo_deMaquinaSeExpresaEnLitrosPorHora() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        cargasDelVehiculo(
+            carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
+            carga(TipoVehiculo.MAQUINA, 1010, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0))
+        );
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), 1, null);
+
+        // 30 L en las 10 h que van de 1000 a 1010. Los 40 L de la linea base no
+        // cuentan: esa carga marca el inicio del tramo, no consumo dentro de el.
+        assertEquals(new BigDecimal("3.00"), resp.consumoPeriodo());
+        assertEquals(UnidadUso.HORAS, resp.unidadUso());
+    }
+
+    @Test
+    void consumo_deCamionSeExpresaCada100Km() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        cargasDelVehiculo(
+            carga(TipoVehiculo.CAMION, 5000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
+            carga(TipoVehiculo.CAMION, 5200, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0))
+        );
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), 1, null);
+
+        // 30 L en 200 km => 15 L cada 100 km.
+        assertEquals(new BigDecimal("15.00"), resp.consumoPeriodo());
+        assertEquals(UnidadUso.KM, resp.unidadUso());
+    }
+
+    @Test
+    void consumo_ignoraLasCargasPosterioresAlRango() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        cargasDelVehiculo(
+            carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
+            carga(TipoVehiculo.MAQUINA, 1010, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0)),
+            // Ya fuera del dia consultado: no puede entrar al calculo, o el dato
+            // dejaria de corresponder al periodo que el admin tiene en pantalla.
+            carga(TipoVehiculo.MAQUINA, 1040, 90.0, LocalDateTime.of(2026, 8, 9, 10, 0))
+        );
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), 1, null);
+
+        assertEquals(new BigDecimal("3.00"), resp.consumoPeriodo());
+    }
+
+    @Test
+    void consumo_conDosCargasDentroDelRangoNoNecesitaLineaBasePrevia() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        cargasDelVehiculo(
+            carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 5, 8, 0)),
+            carga(TipoVehiculo.MAQUINA, 1020, 50.0, LocalDateTime.of(2026, 8, 5, 18, 0))
+        );
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), 1, null);
+
+        // La primera del rango oficia de linea base: 50 L en 20 h.
+        assertEquals(new BigDecimal("2.50"), resp.consumoPeriodo());
+    }
+
+    @Test
+    void consumo_esNullConUnaSolaCargaYSinLineaBase() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        cargasDelVehiculo(
+            carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 5, 10, 0))
+        );
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), 1, null);
+
+        // Una sola carga no define ningun intervalo: no hay consumo que informar.
+        // Devolver 0 seria peor que no devolver nada, porque se leeria como dato.
+        assertEquals(null, resp.consumoPeriodo());
+    }
+
+    @Test
+    void consumo_ignoraElFiltroDeEmpleado() {
+        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        cargasDelVehiculo(
+            carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
+            carga(TipoVehiculo.MAQUINA, 1010, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0))
+        );
+
+        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 5), 1, List.of(999));
+
+        // Decision explicita: el consumo se calcula sobre TODAS las cargas del
+        // vehiculo. Sacar del medio las cargas de otro empleado dejaria el uso
+        // completo del intervalo sin los litros que lo repusieron, y el numero
+        // saldria sistematicamente bajo. El consumo es del vehiculo, no de quien
+        // apreto el surtidor.
+        assertEquals(new BigDecimal("3.00"), resp.consumoPeriodo());
     }
 }
