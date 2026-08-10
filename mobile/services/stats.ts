@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { UnidadUso } from './vehiculos';
 
 /**
  * Estadísticas de consumo para el panel del administrador. Espejo de
@@ -29,6 +30,13 @@ export interface Stats {
   cantidadRegistros: number;
   vehiculosActivos: number;
   promedioLitrosPorVehiculo: number;
+  // Consumo real del vehículo filtrado durante el período, en la unidad que
+  // indica `unidadUso`. Ambos vienen en null cuando no hay un vehículo
+  // seleccionado (promediar la flota mezclaría L/h con L/100km) o cuando no hay
+  // dos lecturas con las que formar un intervalo. Null NO es cero: sin dato la
+  // tarjeta no se muestra.
+  consumoPeriodo: number | null;
+  unidadUso: UnidadUso | null;
   desglosePorProveedor: ProveedorConsumo[];
   desglosePorEmpleado: EmpleadoConsumo[];
 }

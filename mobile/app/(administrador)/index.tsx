@@ -24,6 +24,7 @@ import {
   etiquetaUso,
   etiquetaConsumo,
   unidadConsumo,
+  sufijoConsumo,
   etiquetaIdentificador,
   placeholderIdentificador,
   requiereModelo,
@@ -308,7 +309,26 @@ function Analytics() {
               delta="por carga"
               deltaColor={colors.orange}
             />
-            <Kpi label="Litros / vehículo" value={`${Math.round(stats.promedioLitrosPorVehiculo)} L`} delta="promedio" deltaColor={colors.textFaint} />
+            {/* Un mismo slot con dos lecturas, según haya o no un vehículo
+                filtrado. Con "Todos" el consumo se omite a propósito: promediar
+                L/h de las máquinas con L/100km de los camiones no da un número
+                con sentido. Con un vehículo elegido, en cambio, "litros /
+                vehículo" sería solo el total repetido. */}
+            {stats.consumoPeriodo != null && stats.unidadUso != null ? (
+              <Kpi
+                label="Consumo"
+                value={`${stats.consumoPeriodo} ${sufijoConsumo(stats.unidadUso)}`}
+                delta="en el período"
+                deltaColor={colors.textFaint}
+              />
+            ) : vehiculoId != null ? (
+              // Vehículo elegido pero sin dos lecturas en el período con las que
+              // formar un intervalo. Se dice, en vez de mostrar un cero que se
+              // leería como "no consumió".
+              <Kpi label="Consumo" value="—" delta="sin datos suficientes" deltaColor={colors.textFaint} />
+            ) : (
+              <Kpi label="Litros / vehículo" value={`${Math.round(stats.promedioLitrosPorVehiculo)} L`} delta="promedio" deltaColor={colors.textFaint} />
+            )}
           </View>
 
           <View style={styles.chartCard}>
