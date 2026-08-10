@@ -7,6 +7,7 @@ import com.retrorental.backend.model.Persona;
 import com.retrorental.backend.model.Proveedor;
 import com.retrorental.backend.model.Ticket;
 import com.retrorental.backend.model.Vehiculo;
+import com.retrorental.backend.model.enums.UnidadUso;
 import com.retrorental.backend.repository.TicketRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -141,6 +142,8 @@ public class StatsService {
             .count();
         double promedio = vehiculosActivos == 0 ? 0d : litrosDeVehiculos / vehiculosActivos;
 
+        Consumo consumo = consumoDelPeriodo(vehiculoId, desde, hasta);
+
         return new StatsResponse(
             desdeInclusive,
             hastaExclusive.minusDays(1), // se expone el último día INCLUIDO
@@ -149,9 +152,83 @@ public class StatsService {
             tickets.size(),
             vehiculosActivos,
             redondearLitros(promedio),
+            consumo.valor(),
+            consumo.unidad(),
             desglosePorProveedor,
             desglosePorEmpleado
         );
+    }
+
+    /** Consumo del vehículo en el período, o los dos campos en null si no hay dato. */
+    private record Consumo(BigDecimal valor, UnidadUso unidad) {
+        private static final Consumo SIN_DATO = new Consumo(null, null);
+    }
+
+    /**
+     * Consumo real del vehículo seleccionado durante el período.
+     *
+     * <h2>Por qué no sale de los tickets que ya tenemos</h2>
+     * El resto del panel agrega los tickets del rango y listo. El consumo NO
+     * puede: por el método de tanque lleno, los litros de una carga reponen lo
+     * gastado desde la carga ANTERIOR. La primera carga del rango solo fija la
+     * línea base, así que con los tickets del rango solos se pierde un intervalo
+     * — y en un rango diario, que suele tener una sola carga, se pierden todos.
+     * Por eso se trae el histórico del vehículo y se toma además la última carga
+     * previa a {@code desde} como línea base.
+     *
+     * <h2>Por qué ignora el filtro de empleado</h2>
+     * El intervalo entre dos cargas necesita las cargas CONSECUTIVAS. Filtrando
+     * por empleado se caen del medio las que hizo otro: el intervalo conserva
+     * todo el uso pero pierde los litros que lo repusieron, y el consumo sale
+     * sistemáticamente bajo. No es una aproximación, es un número equivocado. El
+     * consumo es una propiedad del vehículo, no de quién cargó.
+     */
+    private Consumo consumoDelPeriodo(Integer vehiculoId, LocalDateTime desde, LocalDateTime hasta) {
+        if (vehiculoId == null) {
+            // Sin vehículo seleccionado no hay consumo que informar: promediar
+            // la flota mezclaría L/h de las máquinas con L/100km del resto.
+            return Consumo.SIN_DATO;
+        }
+
+        // Misma consulta que alimenta el consumo persistido del vehículo (ver
+        // TicketService.recalcularConsumo): cargas vigentes con lectura, en
+        // orden de lectura. Las lecturas son monótonas (una carga que retrocede
+        // el contador se rechaza al crearse), así que ese orden es también el
+        // cronológico.
+        List<Ticket> cargasDelVehiculo = ticketRepository
+            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculoId);
+        if (cargasDelVehiculo.isEmpty()) {
+            return Consumo.SIN_DATO;
+        }
+
+        Ticket lineaBase = null;
+        List<Ticket> delPeriodo = new ArrayList<>();
+        for (Ticket t : cargasDelVehiculo) {
+            if (t.getFechaCarga().isBefore(desde)) {
+                lineaBase = t; // se queda la última previa al rango
+            } else if (t.getFechaCarga().isBefore(hasta)) {
+                delPeriodo.add(t);
+            }
+            // Las posteriores al rango quedan afuera: el dato tiene que
+            // corresponder al período que el admin tiene en pantalla.
+        }
+
+        List<ConsumoCalculator.Carga> cargas = new ArrayList<>();
+        if (lineaBase != null) {
+            cargas.add(new ConsumoCalculator.Carga(lineaBase.getUsoAcumulado(), lineaBase.getLitros()));
+        }
+        for (Ticket t : delPeriodo) {
+            cargas.add(new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()));
+        }
+
+        UnidadUso unidad = cargasDelVehiculo.get(0).getVehiculo().getTipoVehiculo().unidadUso();
+        // La ventana del consumo "reciente" no interesa acá: el período ya ES la
+        // ventana. Pasando el total de cargas, reciente == histórico y se ignora.
+        BigDecimal valor = ConsumoCalculator.calcular(cargas, unidad, cargas.size()).historico();
+
+        // Sin valor no se informa unidad tampoco: una unidad suelta invitaría al
+        // cliente a pintar un "0 L/h" que nadie calculó.
+        return valor == null ? Consumo.SIN_DATO : new Consumo(valor, unidad);
     }
 
     private static BigDecimal redondear(BigDecimal valor) {
