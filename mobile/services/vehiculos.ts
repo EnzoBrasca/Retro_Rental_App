@@ -77,6 +77,30 @@ export function sufijoConsumo(unidad: UnidadUso): string {
   return unidad === 'HORAS' ? 'L/h' : 'L/100km';
 }
 
+// Consumo ya formateado para la tarjeta del panel de estadísticas, que expresa
+// los vehículos de ruta en km/L y no en L/100km como el resto de la app.
+//
+// Son la misma medida dada vuelta (km/L = 100 / L/100km), no dos datos
+// distintos, pero se leen al revés: en L/100km más bajo es mejor y en km/L más
+// alto es mejor. El ABM sigue en L/100km porque es la unidad en la que se carga
+// y se persiste `consumoPromedio`, así que `sufijoConsumo` queda intacta.
+//
+// La inversión se hace acá y no en el backend a propósito: el APK ya instalado
+// renderiza `consumoPeriodo` con su etiqueta vieja, y si el servidor mandara
+// km/L esa versión mostraría el número nuevo rotulado "L/100km".
+export function consumoParaStats(valor: number, unidad: UnidadUso): string {
+  if (unidad === 'HORAS') {
+    return `${valor} L/h`;
+  }
+  // El backend redondea a 2 decimales, así que un consumo absurdamente bajo
+  // puede llegar como 0 y la inversión daría Infinity. Sin dato utilizable se
+  // muestra el mismo guion que la tarjeta usa cuando no hay consumo.
+  if (valor <= 0) {
+    return '—';
+  }
+  return `${(100 / valor).toFixed(2)} km/L`;
+}
+
 // Igual que `sufijoConsumo` pero derivando la unidad del tipo, para cuando no
 // hay respuesta del servidor de la cual leerla.
 export function unidadConsumo(tipo: TipoVehiculo | null): string {
