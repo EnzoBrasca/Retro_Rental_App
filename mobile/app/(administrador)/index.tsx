@@ -24,7 +24,7 @@ import {
   etiquetaUso,
   etiquetaConsumo,
   unidadConsumo,
-  sufijoConsumo,
+  consumoParaStats,
   etiquetaIdentificador,
   placeholderIdentificador,
   requiereModelo,
@@ -311,13 +311,13 @@ function Analytics() {
             />
             {/* Un mismo slot con dos lecturas, según haya o no un vehículo
                 filtrado. Con "Todos" el consumo se omite a propósito: promediar
-                L/h de las máquinas con L/100km de los camiones no da un número
+                L/h de las máquinas con los km/L de los camiones no da un número
                 con sentido. Con un vehículo elegido, en cambio, "litros /
                 vehículo" sería solo el total repetido. */}
             {stats.consumoPeriodo != null && stats.unidadUso != null ? (
               <Kpi
                 label="Consumo"
-                value={`${stats.consumoPeriodo} ${sufijoConsumo(stats.unidadUso)}`}
+                value={consumoParaStats(stats.consumoPeriodo, stats.unidadUso)}
                 delta="en el período"
                 deltaColor={colors.textFaint}
               />
