@@ -18,6 +18,7 @@ import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.AuthService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -34,6 +35,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 // El limite de intentos se sube bien alto para que no interfiera: aca se
 // ejerce el contrato de /auth, y el rate limit tiene su propio test.
 @TestPropertySource(properties = "app.rate-limit.login.max-attempts=1000")
+@Tag("auth")
 class AuthControllerTest extends AbstractControllerTest {
 
     @MockitoBean

@@ -22,6 +22,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -37,6 +38,7 @@ import com.retrorental.backend.repository.EmpleadoHabilitadoRepository;
  * tres rechazos sean indistinguibles entre si.
  */
 @ExtendWith(MockitoExtension.class)
+@Tag("habilitado")
 class HabilitadoServiceTest {
 
     @Mock private EmpleadoHabilitadoRepository habilitadoRepository;

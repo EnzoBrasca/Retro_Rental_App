@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import com.retrorental.backend.model.enums.UnidadUso;
 import java.math.BigDecimal;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -38,6 +39,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 @WebMvcTest(controllers = AdminTicketController.class)
 @Import({SecurityConfig.class, JwtFilter.class})
+@Tag("ticket")
 class AdminTicketControllerTest extends AbstractControllerTest {
 
     @MockitoBean

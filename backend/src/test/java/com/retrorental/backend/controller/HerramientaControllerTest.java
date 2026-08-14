@@ -11,6 +11,7 @@ import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.service.HerramientaService;
 import java.math.BigDecimal;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -24,6 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 @WebMvcTest(controllers = HerramientaController.class)
 @Import({SecurityConfig.class, JwtFilter.class})
+@Tag("herramienta")
 class HerramientaControllerTest extends AbstractControllerTest {
 
     @MockitoBean

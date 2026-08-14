@@ -15,6 +15,7 @@ import com.retrorental.backend.security.AnalyzeRateLimitFilter;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.TicketService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -45,6 +46,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
     "app.rate-limit.analyze.max-attempts=3",
     "app.rate-limit.analyze.window-seconds=600"
 })
+@Tag("auth")
 class AnalyzeRateLimitFilterTest extends AbstractControllerTest {
 
     @MockitoBean

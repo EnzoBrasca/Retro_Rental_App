@@ -16,6 +16,7 @@ import com.retrorental.backend.exception.InvalidCredentialsException;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.AuthService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -37,6 +38,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
     "app.rate-limit.login.max-attempts=3",
     "app.rate-limit.login.window-seconds=600"
 })
+@Tag("auth")
 class LoginRateLimitFilterTest extends AbstractControllerTest {
 
     @MockitoBean

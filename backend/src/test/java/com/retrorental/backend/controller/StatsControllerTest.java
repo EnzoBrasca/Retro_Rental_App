@@ -13,6 +13,7 @@ import com.retrorental.backend.service.StatsService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -24,6 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 @WebMvcTest(controllers = StatsController.class)
 @Import({SecurityConfig.class, JwtFilter.class})
+@Tag("stats")
 class StatsControllerTest extends AbstractControllerTest {
 
     @MockitoBean

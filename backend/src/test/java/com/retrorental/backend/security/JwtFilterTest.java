@@ -18,6 +18,7 @@ import jakarta.servlet.FilterChain;
 import java.time.LocalDate;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -41,6 +42,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@Tag("auth")
 class JwtFilterTest {
 
     @Mock private JwtUtil jwtUtil;

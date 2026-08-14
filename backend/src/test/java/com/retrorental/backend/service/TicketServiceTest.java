@@ -37,6 +37,7 @@ import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
 import com.retrorental.backend.repository.HerramientaRepository;
 import org.springframework.mock.web.MockMultipartFile;
+import org.junit.jupiter.api.Tag;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
@@ -64,6 +65,7 @@ import java.util.Optional;
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@Tag("ticket")
 class TicketServiceTest {
 
     @Mock private TicketRepository ticketRepository;
