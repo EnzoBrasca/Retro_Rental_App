@@ -94,9 +94,60 @@ server {
 
     client_max_body_size 25m;
 
+    # ---- Defensa en profundidad sobre lo que sirve MinIO ----
+    #
+    # El backend ya valida por magic bytes y guarda cada objeto con el
+    # content-type REAL (ver ImageValidator), asi que en teoria por aca solo
+    # salen imagenes. Estas dos cabeceras son el cinturon por si esa validacion
+    # falla o se saltea algun dia: convierten un archivo malicioso en algo
+    # inerte en vez de en codigo ejecutandose en nuestro propio dominio.
+    #
+    # Importa especialmente en ESTE server block: aca viven las URLs
+    # presignadas de todas las fotos, asi que un script servido desde este host
+    # correria en el mismo origen que ellas.
+    #
+    # attachment  -> el navegador descarga en vez de renderizar. Un HTML servido
+    #                desde aca deja de ser una pagina y pasa a ser un archivo.
+    # nosniff     -> impide que el navegador adivine el tipo por contenido
+    #                cuando el declarado no le cierra (sin esto, Content-Type
+    #                correcto + sniffing agresivo todavia puede terminar en
+    #                ejecucion).
+    #
+    # El "always" es necesario: sin el, add_header no se aplica a las respuestas
+    # de error (4xx/5xx), que es justo donde un cuerpo controlado por el
+    # atacante podria colarse.
+    add_header Content-Disposition "attachment" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # ---- Superficie expuesta: SOLO la descarga de fotos ----
+    #
+    # Antes, un unico "location /" proxeaba TODO minio:9000, es decir la API S3
+    # completa publicada en internet: listado de buckets, escritura, borrado,
+    # administracion. Que el bucket sea privado contenia el riesgo, pero
+    # cualquier error de politica futuro —o una vulnerabilidad de MinIO— pasaba
+    # a ser explotable de forma remota sin necesidad de nada mas.
+    #
+    # Lo unico que este host tiene que servir son los GET presignados que emite
+    # el backend, cuya ruta es /<bucket>/<objectkey>. Todo lo demas se corta.
+
+    # Todo lo que no sea el bucket de tickets no existe para afuera.
+    # 404 y no 403: un 403 confirmaria que ahi atras hay algo.
     location / {
+        return 404;
+    }
+
+    location /${APP_MINIO_BUCKET}/ {
+        # Solo lectura. Las URLs presignadas del backend son GET; un PUT o un
+        # DELETE contra este host no tiene ningun caso de uso legitimo.
+        # HEAD va incluido porque los clientes lo usan antes de descargar.
+        limit_except GET HEAD {
+            deny all;
+        }
+
         proxy_pass http://minio:9000;
         proxy_http_version 1.1;
+        # El Host original se reenvia sin reescribir: la firma presignada se
+        # calcula sobre el, asi que cambiarlo haria fallar toda descarga con 403.
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
