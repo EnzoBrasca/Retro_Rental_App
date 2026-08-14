@@ -1,6 +1,7 @@
 package com.retrorental.backend;
 
 import com.retrorental.backend.service.MinioStorageService;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
@@ -29,6 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
+@Tag("core")
 class BackendApplicationTests {
 
     @MockitoBean

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.StorageException;
 import java.nio.charset.StandardCharsets;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 
@@ -14,6 +15,7 @@ import org.springframework.mock.web.MockMultipartFile;
  * cualquier cosa a un dominio nuestro que el navegador ejecuta". Por eso se
  * testea sobre todo el caso adverso: el archivo que MIENTE sobre lo que es.
  */
+@Tag("ticket")
 class ImageValidatorTest {
 
     private final ImageValidator validator = new ImageValidator();

@@ -7,11 +7,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import com.retrorental.backend.model.enums.UnidadUso;
 import com.retrorental.backend.service.ConsumoCalculator.Carga;
 import com.retrorental.backend.service.ConsumoCalculator.Consumo;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.List;
 
+@Tag("ticket")
 class ConsumoCalculatorTest {
 
     private static final int VENTANA = 10;

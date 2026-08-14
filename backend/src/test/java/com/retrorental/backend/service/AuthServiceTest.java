@@ -23,6 +23,7 @@ import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.security.JwtUtil;
 import java.time.LocalDate;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -38,6 +39,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
+@Tag("auth")
 class AuthServiceTest {
 
     @Mock private PersonaRepository personaRepository;

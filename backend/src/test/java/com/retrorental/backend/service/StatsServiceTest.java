@@ -24,6 +24,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -39,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * otro con NullPointerException) apenas existiera un ticket sin vehiculo.
  */
 @ExtendWith(MockitoExtension.class)
+@Tag("stats")
 class StatsServiceTest {
 
     @Mock private TicketRepository ticketRepository;

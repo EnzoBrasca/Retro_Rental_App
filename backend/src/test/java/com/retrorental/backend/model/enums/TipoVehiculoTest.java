@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -13,6 +14,7 @@ import org.junit.jupiter.params.provider.EnumSource;
  * evita el error que reporto el cliente: cargar kilometros en una maquina vial,
  * que en realidad mide horas de horometro.
  */
+@Tag("vehiculo")
 class TipoVehiculoTest {
 
     @Test
