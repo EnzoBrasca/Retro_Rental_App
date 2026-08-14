@@ -51,8 +51,12 @@ public class TicketController {
     }
 
     // Devuelve un ticket con URLs presignadas frescas para sus imagenes.
+    // El solicitante sale del JWT: solo el dueño del ticket o un administrador
+    // pueden verlo (lo resuelve el service). Sin eso, el id es correlativo y
+    // cualquier empleado podia recorrerlos todos.
     @GetMapping("/{id}")
-    public ResponseEntity<TicketResponse> get(@PathVariable Integer id) {
-        return ResponseEntity.ok(ticketService.get(id));
+    public ResponseEntity<TicketResponse> get(
+            @PathVariable Integer id, Authentication authentication) {
+        return ResponseEntity.ok(ticketService.get(id, authentication.getName()));
     }
 }

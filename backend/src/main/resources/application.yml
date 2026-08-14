@@ -54,6 +54,18 @@ app:
     login:
       max-attempts: ${LOGIN_MAX_ATTEMPTS:10}
       window-seconds: ${LOGIN_WINDOW_SECONDS:60}
+    # Freno de consumo sobre POST /tickets/analyze (ver AnalyzeRateLimitFilter).
+    # Ventana fija por USUARIO autenticado, no por IP: los empleados cargan
+    # desde el campo con datos moviles y varios comparten la IP de salida de la
+    # operadora, asi que limitar por IP castigaria a companeros que no hicieron
+    # nada.
+    #
+    # 20 por hora deja muchisimo margen para el uso real (un empleado carga un
+    # punado de tickets por dia, y cada uno se analiza una vez), pero corta en
+    # seco un bucle: sin esto, cada llamada es un OCR PAGO de Mistral.
+    analyze:
+      max-attempts: ${ANALYZE_MAX_ATTEMPTS:20}
+      window-seconds: ${ANALYZE_WINDOW_SECONDS:3600}
 
 mistral:
   # API key de Mistral (console.mistral.ai). Sin ella, el cliente no se crea y el
@@ -65,6 +77,18 @@ mistral:
   model: ${MISTRAL_MODEL:mistral-ocr-latest}
   # Timeout de cada request al modelo, en segundos.
   timeout-seconds: ${MISTRAL_TIMEOUT_SECONDS:30}
+  # Mamparo: cuantos analisis pueden estar en vuelo AL MISMO TIEMPO.
+  # No es un limite de uso (de eso se ocupa app.rate-limit.analyze), sino un
+  # tope de concurrencia. Sin el, el limite real seria el pool de hilos de
+  # Tomcat: 200 llamadas simultaneas = 200 hilos bloqueados hasta 30s y 200
+  # imagenes en base64 en memoria, y la API deja de responder para todo lo
+  # demas. Con el tope, la saturacion del OCR se queda en un 503 de ESE
+  # endpoint y el resto de la app sigue en pie.
+  max-concurrent: ${MISTRAL_MAX_CONCURRENT:5}
+  # Cuanto espera un analisis a que se libere un lugar antes de rendirse con
+  # 503. Corto a proposito: mejor que el empleado cargue a mano que dejarlo
+  # esperando con un hilo del servidor retenido.
+  acquire-timeout-seconds: ${MISTRAL_ACQUIRE_TIMEOUT_SECONDS:5}
 
 minio:
   # Endpoint interno: lo usa el backend para operar contra MinIO.

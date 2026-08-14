@@ -45,6 +45,10 @@ services:
       - "443:443"
     environment:
       APP_DOMAIN: ${APP_DOMAIN}
+      # El nombre del bucket viaja con prefijo APP_ para que lo alcance el
+      # filtro de envsubst de abajo. nginx lo necesita para permitir SOLO las
+      # descargas de ese prefijo y bloquear el resto de la API de MinIO.
+      APP_MINIO_BUCKET: ${MINIO_BUCKET:-tickets}
       # Limita envsubst a las variables APP_*: sin esto se comeria tambien las
       # variables propias de nginx ($host, $scheme...) y romperia la config.
       NGINX_ENVSUBST_FILTER: "^APP_"

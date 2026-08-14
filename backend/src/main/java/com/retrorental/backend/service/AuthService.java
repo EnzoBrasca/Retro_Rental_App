@@ -4,9 +4,10 @@ import com.retrorental.backend.dto.request.LoginRequest;
 import com.retrorental.backend.dto.request.RegisterRequest;
 import com.retrorental.backend.dto.response.AuthResponse;
 import com.retrorental.backend.model.Empleado;
+import com.retrorental.backend.model.EmpleadoHabilitado;
 import com.retrorental.backend.model.Persona;
-import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.exception.ForbiddenException;
 import com.retrorental.backend.exception.InvalidCredentialsException;
 import com.retrorental.backend.model.embeddable.Telefono;
 import com.retrorental.backend.model.enums.Rol;
@@ -15,6 +16,7 @@ import com.retrorental.backend.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
@@ -26,12 +28,49 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final UsernameGenerator usernameGenerator;
+    private final HabilitadoService habilitadoService;
 
+    /**
+     * Registro publico de empleados.
+     *
+     * Sigue siendo self-service y el formulario no cambio: lo unico que se
+     * agrega es que el documento tiene que estar en el padron que carga el
+     * administrador (ver HabilitadoService). Sin ese filtro, "publico"
+     * significaba que cualquier persona de internet con la URL de la API
+     * obtenia una cuenta EMPLEADO valida.
+     *
+     * Orden de los chequeos, a proposito:
+     *
+     *  1. Padron. Va PRIMERO para que el rechazo por documento desconocido sea
+     *     indistinguible del rechazo por documento no habilitado. Si el chequeo
+     *     de duplicado fuera primero, su 409 delataria que ese documento tiene
+     *     cuenta, para CUALQUIER numero probado.
+     *  2. Documento duplicado. Documento que ya existe se rechaza SIEMPRE.
+     *     Esta regla no admite excepciones ni condiciones — es lo que hace
+     *     imposible que un registro se apropie de una cuenta ajena. Lo unico
+     *     que cambio es la RESPUESTA: antes devolvia un 409
+     *     DOCUMENTO_ALREADY_EXISTS, que confirmaba a cualquiera que ese
+     *     documento tenia cuenta. Ahora devuelve el mismo rechazo generico que
+     *     el padron, asi el registro publico tiene una sola respuesta de
+     *     fracaso y no sirve para averiguar nada.
+     *
+     *     El 409 explicito sigue existiendo, pero solo en POST /admin/empleados
+     *     (ver EmpleadoService): ahi quien pregunta es un administrador
+     *     autenticado que necesita saber por que fallo el alta.
+     *
+     * Transaccional: la persona y el consumo de su habilitacion se guardan o
+     * se descartan juntos. Sin esto, un fallo despues del insert dejaria la
+     * cuenta creada con la habilitacion todavia libre, reutilizable por otro.
+     */
+    @Transactional
     public AuthResponse register(RegisterRequest request) {
 
+        EmpleadoHabilitado habilitado =
+            habilitadoService.validarHabilitacion(request.getDocumento(), request.getApellido());
+
         if (personaRepository.existsByDocumento(request.getDocumento())) {
-            throw new ConflictException(
-                ErrorCode.DOCUMENTO_ALREADY_EXISTS, "Ya existe un usuario con ese documento", "documento");
+            throw new ForbiddenException(
+                ErrorCode.REGISTRO_NO_HABILITADO, HabilitadoService.RECHAZO_REGISTRO);
         }
 
         // El registro público SIEMPRE crea un empleado. El rol no se toma del
@@ -57,11 +96,16 @@ public class AuthService {
 
         personaRepository.save(persona);
 
+        // La habilitacion se consume recien aca, con la cuenta ya creada: si el
+        // alta hubiera fallado, el empleado real todavia puede reintentar.
+        habilitadoService.marcarUsado(habilitado, persona);
+
         String token = jwtUtil.generateToken(persona.getUsername(), persona.getRol().name());
 
         return toAuthResponse(persona, token);
     }
 
+    @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
 
         Persona persona = personaRepository.findByUsername(request.getUsername())

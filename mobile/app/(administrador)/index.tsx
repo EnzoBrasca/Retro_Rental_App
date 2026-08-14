@@ -44,6 +44,12 @@ import {
   desactivarEmpleado,
   Empleado,
 } from '../../services/empleados';
+import {
+  getHabilitados,
+  createHabilitado,
+  deleteHabilitado,
+  Habilitado,
+} from '../../services/habilitados';
 import { getAdminPersonas, PersonaOpcion } from '../../services/personas';
 import {
   formatDay,
@@ -844,7 +850,46 @@ const empleadoFormFrom = (e: Empleado): EmpleadoFormState => ({
   telefonoNumero: e.telefono?.numero ?? '',
 });
 
+/**
+ * Pestaña "Personal": dos vistas de la misma realidad.
+ *
+ *  - Empleados: quienes YA tienen cuenta.
+ *  - Habilitados: los documentos autorizados a crearse una.
+ *
+ * Van juntas y no en pestañas separadas del nivel superior porque el jefe
+ * piensa en "mi gente", no en dos entidades: habilitar a alguien es el paso
+ * previo a que aparezca en la otra lista, no una tarea de otro rubro.
+ */
 function PersonalABM() {
+  const [sub, setSub] = useState<'empleados' | 'habilitados'>('empleados');
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={[styles.topTabs, { marginBottom: 14 }]}>
+        <Pressable
+          style={[styles.topTab, sub === 'empleados' && styles.topTabActive]}
+          onPress={() => setSub('empleados')}
+        >
+          <Text style={[styles.topTabText, sub === 'empleados' && styles.topTabTextActive]}>
+            Empleados
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.topTab, sub === 'habilitados' && styles.topTabActive]}
+          onPress={() => setSub('habilitados')}
+        >
+          <Text style={[styles.topTabText, sub === 'habilitados' && styles.topTabTextActive]}>
+            Habilitados
+          </Text>
+        </Pressable>
+      </View>
+
+      {sub === 'empleados' ? <EmpleadosList /> : <HabilitadosList />}
+    </View>
+  );
+}
+
+function EmpleadosList() {
   const { data, loading, error, refetch } = useFetch(getAdminEmpleados);
 
   // editing: null (lista) | 'new' | id del empleado en edición.
@@ -1023,6 +1068,189 @@ function PersonalABM() {
             </View>
           );
         })
+      )}
+    </View>
+  );
+}
+
+/**
+ * Padrón de habilitados: los documentos que el jefe autoriza a registrarse.
+ *
+ * Por qué existe esta pantalla: /auth/register es público a propósito (el
+ * empleado se da de alta solo, sin fricción). Sin padrón, "público" significaba
+ * que cualquier persona de internet con la URL de la API obtenía una cuenta de
+ * empleado válida. Acá el jefe carga los documentos de su nómina — que ya
+ * tiene — y solo esa gente puede registrarse.
+ *
+ * Cada fila muestra su estado (sin registrar / registrado), así el jefe ve en
+ * un solo lugar a quién habilitó y quién efectivamente entró.
+ */
+function HabilitadosList() {
+  const { data, loading, error, refetch } = useFetch(getHabilitados);
+
+  const [creando, setCreando] = useState(false);
+  const [documento, setDocumento] = useState('');
+  const [apellido, setApellido] = useState('');
+  const [nombre, setNombre] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const abrirNuevo = () => {
+    setDocumento('');
+    setApellido('');
+    setNombre('');
+    setFormError(null);
+    setCreando(true);
+  };
+
+  const guardar = async () => {
+    setFormError(null);
+    if (!DOCUMENTO_REGEX.test(documento.trim())) {
+      return setFormError('El documento debe tener entre 7 y 9 dígitos.');
+    }
+    if (!apellido.trim()) {
+      return setFormError('Ingresá el apellido.');
+    }
+
+    try {
+      setSaving(true);
+      await createHabilitado({
+        documento: documento.trim(),
+        apellido: apellido.trim(),
+        nombre: nombre.trim() || undefined,
+      });
+      setCreando(false);
+      await refetch();
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : 'No se pudo guardar.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const quitar = (h: Habilitado) => {
+    Alert.alert(
+      'Quitar del padrón',
+      `¿Quitar el documento ${h.documento}? No va a poder registrarse en la app.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Quitar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteHabilitado(h.id);
+              await refetch();
+            } catch (err) {
+              Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo quitar.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  if (creando) {
+    return (
+      <View style={{ marginTop: 4 }}>
+        <Text style={styles.formTitle}>Habilitar empleado</Text>
+        <Text style={[styles.abmSub, { marginBottom: 12 }]}>
+          El empleado se registra solo desde la app. El apellido tiene que coincidir con el
+          que cargues acá.
+        </Text>
+
+        <Text style={styles.fieldHint}>Documento</Text>
+        <TextInput
+          style={styles.abmInput}
+          value={documento}
+          keyboardType="number-pad"
+          onChangeText={setDocumento}
+          placeholder="30123456"
+          placeholderTextColor={colors.textDim}
+        />
+
+        <Text style={styles.fieldHint}>Apellido</Text>
+        <TextInput
+          style={styles.abmInput}
+          value={apellido}
+          onChangeText={setApellido}
+          placeholder="Pérez"
+          placeholderTextColor={colors.textDim}
+        />
+
+        <Text style={styles.fieldHint}>Nombre (opcional)</Text>
+        <TextInput
+          style={styles.abmInput}
+          value={nombre}
+          onChangeText={setNombre}
+          placeholder="Juan"
+          placeholderTextColor={colors.textDim}
+        />
+
+        {formError && <Text style={styles.error}>{formError}</Text>}
+
+        <View style={styles.abmActions}>
+          <Pressable
+            style={[styles.abmBtn, { backgroundColor: colors.primary }]}
+            onPress={guardar}
+            disabled={saving}
+          >
+            <Text style={[styles.abmBtnText, { color: colors.bgDeep }]}>
+              {saving ? 'Guardando…' : 'Habilitar'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]}
+            onPress={() => setCreando(false)}
+            disabled={saving}
+          >
+            <Text style={[styles.abmBtnText, { color: colors.text }]}>Cancelar</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, marginTop: 4 }}>
+      <Pressable style={styles.addBtn} onPress={abrirNuevo}>
+        <Text style={styles.addBtnText}>+ HABILITAR EMPLEADO</Text>
+      </Pressable>
+
+      {loading ? (
+        <View style={{ height: 160 }}>
+          <Loading />
+        </View>
+      ) : error ? (
+        <ErrorState message={error} onRetry={refetch} />
+      ) : !data || data.length === 0 ? (
+        <EmptyState message="Nadie habilitado todavía. Sin esto, nadie puede registrarse en la app." />
+      ) : (
+        data.map((h) => (
+          <View key={h.id} style={[styles.abmCard, h.registrado && { opacity: 0.6 }]}>
+            <View style={styles.abmHeader}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.abmName} numberOfLines={1}>
+                  {h.nombre ? `${h.nombre} ${h.apellido}` : h.apellido}
+                </Text>
+                <Text style={styles.abmSub}>DNI {h.documento}</Text>
+                <Text
+                  style={[
+                    styles.abmEstado,
+                    { color: h.registrado ? colors.textMuted : colors.primary },
+                  ]}
+                >
+                  {h.registrado ? `REGISTRADO · ${h.username}` : 'SIN REGISTRAR'}
+                </Text>
+              </View>
+              {!h.registrado && (
+                <Pressable style={styles.iconBtn} onPress={() => quitar(h)}>
+                  <Text>🗑️</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        ))
       )}
     </View>
   );

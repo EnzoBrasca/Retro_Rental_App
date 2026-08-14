@@ -20,6 +20,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "allowBackup": false,
       "permissions": [
         "android.permission.CAMERA"
       ]
@@ -43,7 +44,8 @@
           "photosPermission": "La app accede a tus fotos para adjuntar el ticket de carga desde la galería.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},
