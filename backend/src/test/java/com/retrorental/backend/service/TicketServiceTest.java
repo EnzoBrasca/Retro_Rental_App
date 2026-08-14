@@ -1,6 +1,8 @@
 package com.retrorental.backend.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.inOrder;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -13,12 +15,16 @@ import static org.mockito.Mockito.when;
 import com.retrorental.backend.dto.request.CreateTicketRequest;
 import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.AppException;
+import com.retrorental.backend.dto.response.TicketResponse;
+import com.retrorental.backend.dto.response.TicketAnalysisResult;
+import com.retrorental.backend.exception.StorageException;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.model.Administrador;
 import java.time.LocalDateTime;
 import java.util.List;
 import com.retrorental.backend.model.Empleado;
+import com.retrorental.backend.model.Persona;
 import com.retrorental.backend.model.Herramienta;
 import com.retrorental.backend.model.Precio;
 import com.retrorental.backend.model.Proveedor;
@@ -30,6 +36,7 @@ import com.retrorental.backend.model.enums.Servicio;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
 import com.retrorental.backend.repository.HerramientaRepository;
+import org.springframework.mock.web.MockMultipartFile;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
@@ -40,6 +47,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -66,6 +74,7 @@ class TicketServiceTest {
     @Mock private PersonaRepository personaRepository;
     @Mock private StorageService storageService;
     @Mock private ObjectProvider<TicketAnalysisService> analysisProvider;
+    @Mock private ImageValidator imageValidator;
 
     @InjectMocks private TicketService service;
 
@@ -448,6 +457,155 @@ class TicketServiceTest {
         a.setRol(Rol.ADMINISTRADOR);
         when(personaRepository.findByUsername("admin")).thenReturn(Optional.of(a));
         return a;
+    }
+
+    // -----------------------------------------------------------------------
+    // analyze(): es el TERCER camino por el que entra un archivo y el unico que
+    // NO pasa por el storage — la foto va derecho a Mistral. Validar solo
+    // dentro de MinioStorageService lo dejaria afuera, y este camino manda los
+    // bytes a un tercero con NUESTRA API key.
+    // -----------------------------------------------------------------------
+
+    private MockMultipartFile fotoJpeg() {
+        return new MockMultipartFile("ticketFoto", "t.jpg", "image/jpeg",
+            new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00});
+    }
+
+    @Test
+    void analyze_rechazaArchivoQueNoEsImagen_sinLlamarAlOcr() {
+        TicketAnalysisService ocr = mock(TicketAnalysisService.class);
+        when(analysisProvider.getIfAvailable()).thenReturn(ocr);
+
+        MockMultipartFile html = new MockMultipartFile("ticketFoto", "t.jpg", "image/jpeg",
+            "<script>alert(1)</script>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        when(imageValidator.validar(html)).thenThrow(new StorageException(
+            ErrorCode.FILE_TYPE_NOT_ALLOWED, "El archivo no es una imagen valida"));
+
+        StorageException ex = assertThrows(StorageException.class, () -> service.analyze(html));
+
+        assertEquals(ErrorCode.FILE_TYPE_NOT_ALLOWED, ex.getCode());
+        // Lo importante: no se gasto una llamada PAGA de OCR en un archivo que
+        // ya sabiamos que habia que rechazar.
+        verify(ocr, never()).analyze(any());
+    }
+
+    @Test
+    void analyze_validaAntesDeLlamarAlOcr() {
+        TicketAnalysisService ocr = mock(TicketAnalysisService.class);
+        when(analysisProvider.getIfAvailable()).thenReturn(ocr);
+        when(ocr.analyze(any())).thenReturn(new TicketAnalysisResult(
+            null, null, null, null, null, null, null));
+
+        MockMultipartFile foto = fotoJpeg();
+        when(imageValidator.validar(foto)).thenReturn(ImageValidator.Formato.JPEG);
+
+        service.analyze(foto);
+
+        InOrder orden = inOrder(imageValidator, ocr);
+        orden.verify(imageValidator).validar(foto);
+        orden.verify(ocr).analyze(foto);
+    }
+
+    // -----------------------------------------------------------------------
+    // get(): control de propiedad. Antes de esto, el id es correlativo y
+    // cualquier empleado autenticado podia recorrer 1..N y llevarse los tickets
+    // de toda la empresa, URLs firmadas de las fotos incluidas.
+    // -----------------------------------------------------------------------
+
+    /** Empleado dueno de los tickets que se usan abajo. */
+    private Empleado duenoJuan() {
+        Empleado e = new Empleado();
+        e.setId(42);
+        e.setUsername("juanperez");
+        e.setRol(Rol.EMPLEADO);
+        when(personaRepository.findByUsername("juanperez")).thenReturn(Optional.of(e));
+        return e;
+    }
+
+    private Empleado otroEmpleado() {
+        Empleado e = new Empleado();
+        e.setId(77);
+        e.setUsername("mgomez");
+        e.setRol(Rol.EMPLEADO);
+        when(personaRepository.findByUsername("mgomez")).thenReturn(Optional.of(e));
+        return e;
+    }
+
+    private Ticket ticketDe(int id, Persona dueno) {
+        Ticket t = ticketDe(id, 1000, 40.0);
+        t.setPersona(dueno);
+        t.setPrecio(vigente);
+        t.setProveedor(proveedor);
+        when(ticketRepository.findById(id)).thenReturn(Optional.of(t));
+        return t;
+    }
+
+    @Test
+    void get_elDuenoVeSuPropioTicket() {
+        Empleado juan = duenoJuan();
+        ticketDe(5, juan);
+
+        TicketResponse r = service.get(5, "juanperez");
+
+        assertEquals(5, r.id());
+    }
+
+    /** El corazon de SEC-03: un empleado NO puede leer el ticket de otro. */
+    @Test
+    void get_otroEmpleadoNoPuedeVerloYRecibe404() {
+        Empleado juan = duenoJuan();
+        otroEmpleado();
+        ticketDe(5, juan);
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+            () -> service.get(5, "mgomez"));
+
+        assertEquals(ErrorCode.TICKET_NOT_FOUND, ex.getCode());
+    }
+
+    /**
+     * 404 y no 403: un 403 confirmaria que ese ticket existe, y con ids
+     * correlativos eso alcanza para contar las cargas de la empresa aunque no
+     * se pueda leer ninguna. El rechazo tiene que ser indistinguible de "no
+     * existe".
+     */
+    @Test
+    void get_ticketAjenoYTicketInexistenteSonIndistinguibles() {
+        Empleado juan = duenoJuan();
+        otroEmpleado();
+        ticketDe(5, juan);
+        when(ticketRepository.findById(999)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException ajeno = assertThrows(ResourceNotFoundException.class,
+            () -> service.get(5, "mgomez"));
+        ResourceNotFoundException inexistente = assertThrows(ResourceNotFoundException.class,
+            () -> service.get(999, "mgomez"));
+
+        assertEquals(ajeno.getCode(), inexistente.getCode());
+        assertEquals(ajeno.getMessage(), inexistente.getMessage());
+    }
+
+    /** El administrador gestiona la flota completa: ve cualquier ticket. */
+    @Test
+    void get_elAdministradorVeCualquierTicket() {
+        Empleado juan = duenoJuan();
+        admin();
+        ticketDe(5, juan);
+
+        TicketResponse r = service.get(5, "admin");
+
+        assertEquals(5, r.id());
+    }
+
+    @Test
+    void get_ticketInexistenteDevuelve404() {
+        duenoJuan();
+        when(ticketRepository.findById(999)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+            () -> service.get(999, "juanperez"));
+
+        assertEquals(ErrorCode.TICKET_NOT_FOUND, ex.getCode());
     }
 
     @Test

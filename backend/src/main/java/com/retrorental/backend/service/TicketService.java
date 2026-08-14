@@ -53,6 +53,7 @@ public class TicketService {
     private final HerramientaRepository herramientaRepository;
     private final PersonaRepository personaRepository;
     private final StorageService storageService;
+    private final ImageValidator imageValidator;
     // Opcional: el bean de análisis solo existe si hay API key de Mistral. Crear
     // tickets NO debe depender de eso, por eso se inyecta con ObjectProvider.
     private final ObjectProvider<TicketAnalysisService> analysisProvider;
@@ -304,6 +305,14 @@ public class TicketService {
             throw new TicketAnalysisException(ErrorCode.ANALYSIS_UNAVAILABLE,
                 "El análisis de tickets no está configurado (falta la API key de Mistral)");
         }
+
+        // Este es el TERCER camino por el que entra un archivo, y el unico que
+        // NO pasa por el storage: la foto va derecho a Mistral. Validar solo
+        // dentro de MinioStorageService lo dejaria afuera, y este camino manda
+        // los bytes a un tercero usando nuestra API key. Se valida antes de
+        // llamar al OCR para no gastar un cupo del mamparo en un archivo que ya
+        // sabemos que hay que rechazar.
+        imageValidator.validar(ticketFoto);
 
         var ocr = analysisService.analyze(ticketFoto);
 

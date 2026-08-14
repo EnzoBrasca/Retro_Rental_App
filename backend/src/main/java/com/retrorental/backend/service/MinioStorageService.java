@@ -25,13 +25,16 @@ public class MinioStorageService implements StorageService {
     private final MinioClient minioClient;
     private final MinioClient publicClient;
     private final MinioProperties properties;
+    private final ImageValidator imageValidator;
 
     public MinioStorageService(MinioClient minioClient,
                                @Qualifier("minioPublicClient") MinioClient publicClient,
-                               MinioProperties properties) {
+                               MinioProperties properties,
+                               ImageValidator imageValidator) {
         this.minioClient = minioClient;
         this.publicClient = publicClient;
         this.properties = properties;
+        this.imageValidator = imageValidator;
     }
 
     // Crea el bucket si todavia no existe, al arrancar la app.
@@ -50,19 +53,29 @@ public class MinioStorageService implements StorageService {
         }
     }
 
+    /**
+     * Sube una imagen y devuelve su object key.
+     *
+     * SOLO acepta imagenes, y lo decide mirando los magic bytes del contenido
+     * (ver ImageValidator). Tanto la extension como el content-type con que se
+     * guarda salen del formato DETECTADO, nunca de lo que mando el cliente:
+     * antes se tomaban de getOriginalFilename() y getContentType(), que son dos
+     * campos que el emisor escribe a mano. Con eso, un HTML declarado como
+     * text/html quedaba guardado como .html con ese tipo, y nginx lo servia
+     * desde files.<dominio> para que el navegador lo ejecutara.
+     */
     @Override
     public String upload(MultipartFile file, String folder) {
-        if (file == null || file.isEmpty()) {
-            throw new StorageException(ErrorCode.FILE_EMPTY, "El archivo esta vacio");
-        }
-        String objectKey = buildObjectKey(folder, file.getOriginalFilename());
+        ImageValidator.Formato formato = imageValidator.validar(file);
+
+        String objectKey = buildObjectKey(folder, formato);
         try (InputStream stream = file.getInputStream()) {
             minioClient.putObject(
                 PutObjectArgs.builder()
                     .bucket(properties.getBucket())
                     .object(objectKey)
                     .stream(stream, file.getSize(), -1)
-                    .contentType(file.getContentType())
+                    .contentType(formato.contentType())
                     .build());
             return objectKey;
         } catch (Exception e) {
@@ -101,12 +114,15 @@ public class MinioStorageService implements StorageService {
         }
     }
 
-    // Genera una key unica conservando la extension original del archivo.
-    private String buildObjectKey(String folder, String originalFilename) {
-        String extension = "";
-        if (originalFilename != null && originalFilename.contains(".")) {
-            extension = originalFilename.substring(originalFilename.lastIndexOf('.'));
-        }
-        return "%s/%s%s".formatted(folder, UUID.randomUUID(), extension);
+    /**
+     * Genera una key unica con la extension del formato DETECTADO.
+     *
+     * El nombre que manda el cliente no se usa para nada: ni para la extension
+     * ni para la key. Ademas de la extension enganosa, un originalFilename
+     * controlado por el emisor es el vector clasico de path traversal
+     * ("../../algo"). El UUID lo elimina de raiz.
+     */
+    private String buildObjectKey(String folder, ImageValidator.Formato formato) {
+        return "%s/%s%s".formatted(folder, UUID.randomUUID(), formato.extension());
     }
 }
