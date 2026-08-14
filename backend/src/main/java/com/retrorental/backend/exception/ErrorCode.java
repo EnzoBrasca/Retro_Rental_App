@@ -75,6 +75,11 @@ public enum ErrorCode {
     PRECIO_BASE_MEZCLA_NOT_FOUND(HttpStatus.NOT_FOUND),
     ANALYSIS_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
     ANALYSIS_FAILED(HttpStatus.SERVICE_UNAVAILABLE),
+    // El OCR esta saturado: se alcanzo el tope de analisis simultaneos (ver
+    // mistral.max-concurrent). Es distinto de ANALYSIS_UNAVAILABLE, que
+    // significa "no configurado": aca reintentar en un rato SI sirve, y el
+    // mobile puede decir cosas distintas en cada caso.
+    ANALYSIS_BUSY(HttpStatus.SERVICE_UNAVAILABLE),
 
     // --- Almacenamiento de archivos ---
     FILE_EMPTY(HttpStatus.BAD_REQUEST),
