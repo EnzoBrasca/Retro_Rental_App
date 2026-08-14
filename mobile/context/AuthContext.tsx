@@ -1,15 +1,23 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { AppState } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthResponse, Rol } from '../services/auth';
+import { AuthResponse } from '../services/auth';
 import { onUnauthorized, saveLastUsername } from '../services/session';
+import {
+  Usuario,
+  clearSession,
+  purgeLegacySession,
+  readSession,
+  saveSession,
+} from '../services/sessionStorage';
 
 /**
  * AuthContext: única fuente de verdad sobre QUIÉN está logueado en toda la app.
  *
  * Responsabilidades:
- *  - Guardar el usuario + token de forma persistente (AsyncStorage) para que
- *    la sesión sobreviva a cerrar y reabrir la app.
+ *  - Guardar la sesión de forma persistente para que sobreviva a cerrar y
+ *    reabrir la app. El CÓMO vive en `services/sessionStorage.ts`: el token va
+ *    a SecureStore (Keystore/Keychain) y el perfil a AsyncStorage. Este
+ *    contexto no sabe de almacenes; solo pide guardar, leer y limpiar.
  *  - Rehidratar esa sesión al arrancar (`isLoading` evita parpadeos/redirects
  *    prematuros mientras leemos el storage).
  *  - Cerrar la sesión apenas el token vence, por tres vías complementarias:
@@ -23,24 +31,9 @@ import { onUnauthorized, saveLastUsername } from '../services/session';
  * redirección por rol compare contra el mismo valor que emitió el servidor.
  */
 
-// Clave única bajo la que persistimos la sesión. `services/api.ts` lee esta
-// misma clave para adjuntar el token en el header Authorization.
-const STORAGE_KEY = 'user';
-
-export interface Usuario {
-  nombre: string;
-  apellido: string;
-  username: string;
-  rol: Rol;
-  token: string;
-  // Vencimiento del token en epoch millis, tal como lo firmó el backend.
-  // Puede faltar en sesiones viejas persistidas antes de este campo → esas se
-  // tratan como vencidas, así el usuario vuelve a loguearse una única vez.
-  expiresAt?: number;
-  // Teléfono formateado que llega en el AuthResponse. Puede faltar en sesiones
-  // viejas persistidas antes de este campo → tratar como opcional.
-  telefono?: string | null;
-}
+// `Usuario` se define junto a su persistencia (sessionStorage) y se reexporta
+// acá para no romper a las pantallas que ya lo importaban desde este módulo.
+export type { Usuario };
 
 interface AuthContextType {
   user: Usuario | null;
@@ -64,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     // Solo borramos la sesión: `lastUsername` se conserva a propósito para
     // prellenar el login la próxima vez.
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await clearSession();
     setUser(null);
   }, []);
 
@@ -72,12 +65,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // vigente. Sin este chequeo la app mostraría una sesión zombie: el usuario
   // navegando con su rol mientras cada request muere con 401.
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then(async (stored) => {
-        if (!stored) return;
-        const persisted = JSON.parse(stored) as Usuario;
+    // Se borra de entrada la sesión en formato viejo, donde el token vivía en
+    // claro en AsyncStorage. No se migra a propósito: ese token ya estuvo
+    // expuesto, así que se descarta y el usuario inicia sesión una vez más.
+    purgeLegacySession()
+      .then(readSession)
+      .then(async (persisted) => {
+        if (!persisted) return;
         if (isExpired(persisted)) {
-          await AsyncStorage.removeItem(STORAGE_KEY);
+          await clearSession();
           return;
         }
         setUser(persisted);
@@ -97,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (state !== 'active') return;
       setUser((current) => {
         if (current && isExpired(current)) {
-          void AsyncStorage.removeItem(STORAGE_KEY);
+          void clearSession();
           return null;
         }
         return current;
@@ -106,9 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.remove();
   }, []);
 
-  // El AuthResponse ya trae token + datos del usuario: lo guardamos tal cual.
+  // El AuthResponse trae token + datos del usuario. sessionStorage se encarga
+  // de separarlos: el token a SecureStore, el resto a AsyncStorage.
   const login = async (data: AuthResponse) => {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await saveSession(data);
     await saveLastUsername(data.username);
     setUser(data);
   };
