@@ -6,8 +6,8 @@ import com.retrorental.backend.dto.response.AuthResponse;
 import com.retrorental.backend.model.Empleado;
 import com.retrorental.backend.model.EmpleadoHabilitado;
 import com.retrorental.backend.model.Persona;
-import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.exception.ForbiddenException;
 import com.retrorental.backend.exception.InvalidCredentialsException;
 import com.retrorental.backend.model.embeddable.Telefono;
 import com.retrorental.backend.model.enums.Rol;
@@ -69,8 +69,8 @@ public class AuthService {
             habilitadoService.validarHabilitacion(request.getDocumento(), request.getApellido());
 
         if (personaRepository.existsByDocumento(request.getDocumento())) {
-            throw new ConflictException(
-                ErrorCode.DOCUMENTO_ALREADY_EXISTS, "Ya existe un usuario con ese documento", "documento");
+            throw new ForbiddenException(
+                ErrorCode.REGISTRO_NO_HABILITADO, HabilitadoService.RECHAZO_REGISTRO);
         }
 
         // El registro público SIEMPRE crea un empleado. El rol no se toma del
