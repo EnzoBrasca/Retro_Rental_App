@@ -30,6 +30,7 @@ public class EmpleadoService {
     private final VehiculoRepository vehiculoRepository;
     private final PasswordEncoder passwordEncoder;
     private final UsernameGenerator usernameGenerator;
+    private final HabilitadoService habilitadoService;
 
     /** Listado completo del personal, incluidos los dados de baja (para gestión). */
     @Transactional(readOnly = true)
@@ -66,7 +67,14 @@ public class EmpleadoService {
         telefono.setTelefono(request.getTelefono().getNumero());
         empleado.setTelefono(telefono);
 
-        return toResponse(personaRepository.save(empleado));
+        Empleado creado = personaRepository.save(empleado);
+
+        // El alta manual no pasa por el padron, pero si ese documento estaba
+        // habilitado hay que consumir la fila igual: de lo contrario le queda
+        // al jefe figurando como "sin registrar" un empleado que el mismo creo.
+        habilitadoService.marcarUsadoSiExiste(creado.getDocumento(), creado);
+
+        return toResponse(creado);
     }
 
     /**

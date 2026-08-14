@@ -15,11 +15,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Limita por IP de origen los POST publicos de la API (/auth/login y
@@ -29,11 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * creacion masiva de cuentas: la API es publica y no hay nada que frene a
  * alguien golpeandola a la velocidad de la red.
  *
- * Ventana fija en memoria: se cuentan los intentos de cada IP y, al superar el
- * maximo dentro de la ventana, se responde 429 hasta que la ventana vence. El
- * estado NO se comparte entre instancias ni sobrevive a un reinicio; hoy corre
- * una sola instancia del backend, asi que alcanza. Si algun dia se escala
- * horizontalmente, esto tiene que pasar a un contador compartido (Redis).
+ * Ventana fija en memoria por IP (ver FixedWindowCounter): al superar el maximo
+ * dentro de la ventana se responde 429 hasta que la ventana vence.
  *
  * Se cuentan TODOS los intentos, no solo los fallidos. Es a proposito: contar
  * solo fallos obliga a dejar pasar el request para saber como termino, y un
@@ -59,25 +52,15 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
      */
     private static final Set<String> RUTAS_LIMITADAS = Set.of("/auth/login", "/auth/register");
 
-    /**
-     * A partir de cuantas IPs distintas se hace limpieza de ventanas vencidas.
-     * Sin esto el mapa crece sin techo si alguien rota direcciones de origen.
-     */
-    private static final int CLEANUP_THRESHOLD = 1_000;
-
     private final ObjectMapper objectMapper;
-    private final int maxAttempts;
-    private final Duration window;
-
-    private final Map<String, Window> windowsPorIp = new ConcurrentHashMap<>();
+    private final FixedWindowCounter contador;
 
     public LoginRateLimitFilter(
             ObjectMapper objectMapper,
             @Value("${app.rate-limit.login.max-attempts:10}") int maxAttempts,
             @Value("${app.rate-limit.login.window-seconds:60}") long windowSeconds) {
         this.objectMapper = objectMapper;
-        this.maxAttempts = maxAttempts;
-        this.window = Duration.ofSeconds(windowSeconds);
+        this.contador = new FixedWindowCounter(maxAttempts, Duration.ofSeconds(windowSeconds));
     }
 
     /**
@@ -107,8 +90,8 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        if (excedeLimite(request.getRemoteAddr())) {
-            long segundos = window.toSeconds();
+        if (contador.excedeLimite(request.getRemoteAddr())) {
+            long segundos = contador.segundosDeVentana();
             response.setHeader("Retry-After", String.valueOf(segundos));
             escribirError(response, "Demasiados intentos. Espera "
                 + segundos + " segundos y volve a intentar.");
@@ -116,20 +99,6 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    /** Registra un intento de esa IP y devuelve si ya paso del maximo. */
-    private boolean excedeLimite(String ip) {
-        Instant ahora = Instant.now();
-
-        if (windowsPorIp.size() > CLEANUP_THRESHOLD) {
-            windowsPorIp.values().removeIf(w -> w.vencio(ahora, window));
-        }
-
-        Window ventana = windowsPorIp.compute(ip, (clave, actual) ->
-            (actual == null || actual.vencio(ahora, window)) ? new Window(ahora) : actual);
-
-        return ventana.intentos.incrementAndGet() > maxAttempts;
     }
 
     private void escribirError(HttpServletResponse response, String mensaje) throws IOException {
@@ -141,17 +110,4 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
         response.getWriter().write(objectMapper.writeValueAsString(body));
     }
 
-    /** Contador de intentos de una IP dentro de una ventana que arranca en {@code inicio}. */
-    private static final class Window {
-        private final Instant inicio;
-        private final AtomicInteger intentos = new AtomicInteger();
-
-        private Window(Instant inicio) {
-            this.inicio = inicio;
-        }
-
-        private boolean vencio(Instant ahora, Duration duracion) {
-            return inicio.plus(duracion).isBefore(ahora);
-        }
-    }
 }

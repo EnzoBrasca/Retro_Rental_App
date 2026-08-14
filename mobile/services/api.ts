@@ -1,15 +1,15 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { emitUnauthorized } from './session';
+import { readToken } from './sessionStorage';
 
 // El backend (Spring Boot) corre en el puerto 8080 por defecto.
 // En el celular físico no podés usar localhost: necesitás la IP de tu máquina
 // (por ej. http://192.168.0.10:8080) vía la env var EXPO_PUBLIC_API_URL.
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080';
 
-async function getToken(): Promise<string | null> {
-  const stored = await AsyncStorage.getItem('user');
-  if (!stored) return null;
-  return JSON.parse(stored).token;
+// El token vive en SecureStore (Keystore/Keychain), no en AsyncStorage: ver
+// services/sessionStorage.ts para el porqué.
+function getToken(): Promise<string | null> {
+  return readToken();
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

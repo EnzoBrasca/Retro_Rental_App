@@ -1,8 +1,10 @@
 package com.retrorental.backend.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -264,17 +266,21 @@ class TicketControllerTest extends AbstractControllerTest {
     @Test
     @WithMockUser(roles = "EMPLEADO")
     void get_ticketExistente_devuelve200() throws Exception {
-        when(ticketService.get(1)).thenReturn(sampleTicket());
+        when(ticketService.get(eq(1), any())).thenReturn(sampleTicket());
 
-        mockMvc.perform(get("/tickets/1"))
+        mockMvc.perform(get("/tickets/1").with(user("juanperez").roles("EMPLEADO")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.empleadoUsername").value("juanperez"));
+
+        // El solicitante sale del JWT, no de un parametro: es lo que permite al
+        // service decidir si quien pide es el dueno.
+        verify(ticketService).get(1, "juanperez");
     }
 
     @Test
     @WithMockUser(roles = "EMPLEADO")
     void get_ticketInexistente_devuelve404() throws Exception {
-        when(ticketService.get(eq(99))).thenThrow(new ResourceNotFoundException(
+        when(ticketService.get(eq(99), any())).thenThrow(new ResourceNotFoundException(
             ErrorCode.TICKET_NOT_FOUND, "Ticket no encontrado"));
 
         mockMvc.perform(get("/tickets/99"))

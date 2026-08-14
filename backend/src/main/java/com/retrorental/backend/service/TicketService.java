@@ -15,6 +15,7 @@ import com.retrorental.backend.model.Proveedor;
 import com.retrorental.backend.model.Ticket;
 import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.model.enums.Estado;
+import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.model.enums.Servicio;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.repository.HerramientaRepository;
@@ -52,6 +53,7 @@ public class TicketService {
     private final HerramientaRepository herramientaRepository;
     private final PersonaRepository personaRepository;
     private final StorageService storageService;
+    private final ImageValidator imageValidator;
     // Opcional: el bean de análisis solo existe si hay API key de Mistral. Crear
     // tickets NO debe depender de eso, por eso se inyecta con ObjectProvider.
     private final ObjectProvider<TicketAnalysisService> analysisProvider;
@@ -303,6 +305,14 @@ public class TicketService {
             throw new TicketAnalysisException(ErrorCode.ANALYSIS_UNAVAILABLE,
                 "El análisis de tickets no está configurado (falta la API key de Mistral)");
         }
+
+        // Este es el TERCER camino por el que entra un archivo, y el unico que
+        // NO pasa por el storage: la foto va derecho a Mistral. Validar solo
+        // dentro de MinioStorageService lo dejaria afuera, y este camino manda
+        // los bytes a un tercero usando nuestra API key. Se valida antes de
+        // llamar al OCR para no gastar un cupo del mamparo en un archivo que ya
+        // sabemos que hay que rechazar.
+        imageValidator.validar(ticketFoto);
 
         var ocr = analysisService.analyze(ticketFoto);
 
@@ -607,12 +617,50 @@ public class TicketService {
         );
     }
 
+    /**
+     * Un ticket con URLs presignadas frescas para sus imagenes.
+     *
+     * Solo lo ve su DUENO o un ADMINISTRADOR. Sin ese filtro, el id es
+     * correlativo y cualquier empleado autenticado podia recorrer 1..N y
+     * llevarse los tickets de toda la empresa: montos, proveedores, vehiculos y
+     * URLs firmadas de las fotos. listMine() ya filtraba por empleado; este
+     * metodo no, y era el agujero.
+     *
+     * El rechazo es 404 y no 403 a proposito: un 403 confirma que ese ticket
+     * existe, y con ids correlativos eso alcanza para contar cuantas cargas
+     * tiene la empresa aunque no se pueda leer ninguna. El rechazo no habla.
+     */
     @Transactional(readOnly = true)
-    public TicketResponse get(Integer id) {
+    public TicketResponse get(Integer id, String username) {
+        Persona solicitante = resolvePersona(username);
+
         Ticket ticket = ticketRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException(
-                ErrorCode.TICKET_NOT_FOUND, "Ticket no encontrado"));
+            .orElseThrow(this::ticketNoEncontrado);
+
+        if (!puedeVer(ticket, solicitante)) {
+            throw ticketNoEncontrado();
+        }
+
         return toResponse(ticket);
+    }
+
+    /**
+     * El administrador ve cualquier ticket (gestiona la flota completa); el
+     * empleado, solo los suyos.
+     *
+     * Se compara por ID y no por username: el username es unico, pero el ID es
+     * la identidad real de la fila. Si algun dia el username pasara a ser
+     * editable, comparar por texto convertiria un cambio de nombre en un
+     * agujero de permisos.
+     */
+    private boolean puedeVer(Ticket ticket, Persona solicitante) {
+        return solicitante.getRol() == Rol.ADMINISTRADOR
+            || ticket.getPersona().getId().equals(solicitante.getId());
+    }
+
+    private ResourceNotFoundException ticketNoEncontrado() {
+        return new ResourceNotFoundException(
+            ErrorCode.TICKET_NOT_FOUND, "Ticket no encontrado");
     }
 
     /**
