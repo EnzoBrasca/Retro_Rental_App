@@ -2,6 +2,7 @@ package com.retrorental.backend.config;
 
 import com.retrorental.backend.dto.response.ApiError;
 import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.security.AnalyzeRateLimitFilter;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -32,6 +33,7 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
     private final LoginRateLimitFilter loginRateLimitFilter;
+    private final AnalyzeRateLimitFilter analyzeRateLimitFilter;
     private final ObjectMapper objectMapper;
 
     @Bean
@@ -70,7 +72,12 @@ public class SecurityConfig {
             // El limitador va ANTES que el JwtFilter: un intento de login que ya
             // supero el limite se corta sin gastar nada del resto de la cadena.
             .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+            // Este va DESPUES del JwtFilter, no antes: limita /tickets/analyze
+            // por usuario autenticado, y el usuario lo deja en el
+            // SecurityContext el JwtFilter. Invertir el orden lo dejaria sin
+            // nadie a quien contarle la llamada, y el limite no aplicaria nunca.
+            .addFilterAfter(analyzeRateLimitFilter, JwtFilter.class);
 
         return http.build();
     }
