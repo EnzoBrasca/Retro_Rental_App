@@ -84,6 +84,10 @@ public enum ErrorCode {
     // --- Almacenamiento de archivos ---
     FILE_EMPTY(HttpStatus.BAD_REQUEST),
     FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE),
+    // El archivo no es una de las imagenes permitidas. Se decide por los magic
+    // bytes del contenido, NO por el Content-Type del request (ese lo escribe
+    // el cliente y no significa nada). Ver ImageValidator.
+    FILE_TYPE_NOT_ALLOWED(HttpStatus.BAD_REQUEST),
     STORAGE_ERROR(HttpStatus.BAD_GATEWAY),
 
     // --- Validacion / forma del request ---
