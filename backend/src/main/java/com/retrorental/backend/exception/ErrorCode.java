@@ -16,6 +16,11 @@ public enum ErrorCode {
     // --- Autenticacion / registro ---
     DOCUMENTO_ALREADY_EXISTS(HttpStatus.CONFLICT),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
+    // El documento no esta en el padron de habilitados, el apellido no
+    // coincide, o la habilitacion ya fue consumida. Es UN SOLO codigo para los
+    // tres casos a proposito: distinguirlos le permitiria a un desconocido
+    // averiguar que documentos pertenecen al personal del cliente.
+    REGISTRO_NO_HABILITADO(HttpStatus.FORBIDDEN),
 
     // --- Usuario / autorizacion ---
     USER_NOT_FOUND(HttpStatus.NOT_FOUND),
@@ -37,6 +42,14 @@ public enum ErrorCode {
     // --- Empleados ---
     EMPLEADO_NOT_FOUND(HttpStatus.NOT_FOUND),
     EMPLEADO_ALREADY_INACTIVE(HttpStatus.CONFLICT),
+
+    // --- Padron de habilitados a registrarse ---
+    HABILITADO_NOT_FOUND(HttpStatus.NOT_FOUND),
+    HABILITADO_ALREADY_EXISTS(HttpStatus.CONFLICT),
+    // Se intento quitar del padron una habilitacion ya consumida. La cuenta ya
+    // existe: para sacarle el acceso hay que dar de baja al empleado, no
+    // borrar la fila del padron.
+    HABILITADO_ALREADY_USED(HttpStatus.CONFLICT),
 
     // --- Tickets ---
     TICKET_NOT_FOUND(HttpStatus.NOT_FOUND),
