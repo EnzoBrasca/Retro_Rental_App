@@ -16,6 +16,13 @@ public interface EmpleadoHabilitadoRepository extends JpaRepository<EmpleadoHabi
     boolean existsByDocumento(String documento);
 
     /**
+     * Los habilitados cuyo documento esta en la lista. Lo usa el alta masiva
+     * para resolver en UNA consulta cuales ya existen, en vez de un
+     * existsByDocumento por elemento (ver docs/BACKEND-AUDIT.md, DB-07).
+     */
+    List<EmpleadoHabilitado> findByDocumentoIn(List<String> documentos);
+
+    /**
      * Padrón completo para el ABM del administrador, altas más recientes
      * primero.
      *

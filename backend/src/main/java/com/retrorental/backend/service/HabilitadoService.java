@@ -18,8 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Padron de documentos autorizados a registrarse por /auth/register.
@@ -153,16 +156,39 @@ public class HabilitadoService {
      */
     @Transactional
     public List<HabilitadoResponse> createBulk(List<CreateHabilitadoRequest> requests) {
+        // DOS consultas para todo el lote, no dos por elemento. Antes esto hacia
+        // un existsByDocumento + un save por cada request: con el tope de 500 del
+        // endpoint, hasta MIL viajes a la base para una operacion cuyo proposito
+        // declarado es cargar la nomina de una sola vez (ver
+        // docs/BACKEND-AUDIT.md, DB-07).
+        List<String> documentos = requests.stream()
+            .map(CreateHabilitadoRequest::getDocumento)
+            .toList();
+        Set<String> yaEnElPadron = habilitadoRepository.findByDocumentoIn(documentos).stream()
+            .map(EmpleadoHabilitado::getDocumento)
+            .collect(Collectors.toSet());
+
+        LocalDate hoy = LocalDate.now();
+        List<EmpleadoHabilitado> nuevos = new ArrayList<>();
         for (CreateHabilitadoRequest request : requests) {
-            if (!habilitadoRepository.existsByDocumento(request.getDocumento())) {
+            // Los repetidos se SALTEAN en lugar de abortar todo: cargar una lista
+            // de cincuenta y que falle entera por un repetido no le sirve a nadie.
+            //
+            // El add al set ademas cubre los duplicados DENTRO del mismo lote (un
+            // documento repetido dos veces en el archivo que subio el admin), que
+            // la version anterior tampoco manejaba: el segundo save habria roto
+            // contra la constraint UNIQUE.
+            if (yaEnElPadron.add(request.getDocumento())) {
                 EmpleadoHabilitado habilitado = new EmpleadoHabilitado();
                 habilitado.setDocumento(request.getDocumento());
                 habilitado.setApellido(request.getApellido());
                 habilitado.setNombre(request.getNombre());
-                habilitado.setFechaAlta(LocalDate.now());
-                habilitadoRepository.save(habilitado);
+                habilitado.setFechaAlta(hoy);
+                nuevos.add(habilitado);
             }
         }
+        habilitadoRepository.saveAll(nuevos);
+
         return listAll();
     }
 

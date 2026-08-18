@@ -19,10 +19,18 @@ public class PrecioService {
 
     private final PrecioRepository precioRepository;
 
+    /**
+     * Precios vigentes para el selector del formulario de carga.
+     *
+     * El filtro lo hace la BASE. Antes era `findAll()` + filtro en memoria, o
+     * sea que cada apertura del formulario cargaba el historial completo de
+     * precios —que solo crece, porque reemplazarVigente cierra las filas viejas
+     * en vez de borrarlas— para quedarse con un puñado (ver
+     * docs/BACKEND-AUDIT.md, DB-06).
+     */
     @Transactional(readOnly = true)
     public List<PrecioResponse> listVigentes() {
-        return precioRepository.findAll().stream()
-            .filter(p -> p.getFechaHasta() == null)
+        return precioRepository.findByFechaHastaIsNull().stream()
             .map(this::toResponse)
             .toList();
     }
