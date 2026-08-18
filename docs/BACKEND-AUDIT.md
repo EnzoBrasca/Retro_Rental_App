@@ -34,15 +34,20 @@ levantar el segundo piso y hacerlo después.
 
 ## Estado general
 
-| Severidad | Total | Resueltas | Pendientes |
-| --- | --- | --- | --- |
-| Crítica | 3 | 2 | 1 |
-| Alta | 5 | 3 | 2 |
-| Media | 11 | 0 | 11 |
-| Baja | 11 | 0 | 11 |
+| Severidad | Total | Resueltas | Parciales | Pendientes |
+| --- | --- | --- | --- | --- |
+| Crítica | 3 | 2 | 1 | 0 |
+| Alta | 5 | 3 | 0 | 2 |
+| Media | 11 | 3 | 0 | 8 |
+| Baja | 11 | 0 | 0 | 11 |
 
-**Fase 1 completada** (rama `perf/fase-1-indices-y-fetch-joins`): resueltos DB-00, DB-01,
-DB-02, DB-03 y DB-05. Suite en 207/207, con 3 tests nuevos contra Postgres real.
+**Fase 1 completada**: DB-00, DB-01, DB-02, DB-03, DB-05.
+**Fase 2 completada**: SVC-01, SVC-03, DB-09, y TX-01 **parcial** (`[~]`) — resuelto el
+camino del OCR, que era el grave; los uploads de `create()` quedan pendientes con la
+exposición acotada y el motivo documentado en el propio hallazgo.
+
+Rama `perf/fase-1-indices-y-fetch-joins`, suite en **209/209**, con 5 tests nuevos: 3
+contra Postgres real y 2 que vigilan fronteras transaccionales.
 
 ## Lo que ya está bien (no tocar)
 
@@ -134,7 +139,7 @@ al fetch (antes ni se traía, o sea que además era un N+1 para esos tickets).
 Se verificó que **falla** al revertir el arreglo (`Expected size: 2 but was: 1`); un test de
 regresión que pasa en ambos casos no sirve de nada.
 
-## [ ] TX-01 — I/O de red (MinIO y OCR) dentro de transacciones: agota el pool de conexiones
+## [~] TX-01 — I/O de red (MinIO y OCR) dentro de transacciones: agota el pool de conexiones
 
 **Ubicación:**
 - `backend/src/main/java/com/retrorental/backend/service/TicketService.java:72-185`
@@ -166,18 +171,58 @@ suma: `MinioConfig` no configura timeouts, así que un MinIO colgado bloquea
 Esto es autoinfligido: la app se cae sola sin que nadie la ataque, solo con que la usen
 como está pensada para ser usada.
 
-**Arreglo:**
-1. Sacar el I/O de la transacción. En `create()`: subir los archivos **antes** de abrir la
-   transacción (los uploads no dependen de nada de la DB, resuelven a keys de bytes), y
-   dejar adentro del `@Transactional` únicamente las escrituras. En `analyze()`: llamar al
-   OCR fuera de toda transacción y envolver solo `resolveProveedor`/`resolvePrecio` en un
-   bloque transaccional corto.
-2. Configurar timeouts explícitos de connect/read/write en los beans de `MinioConfig`,
-   espejando lo que ya hace `MistralConfig.java:27-30`.
-3. Fijar el tamaño del pool de Hikari explícitamente en vez de heredar el default (ver
-   DB-09).
+**CORRECCIÓN a lo que decía este documento: era peor de lo descrito.** Al implementar el
+arreglo se vio que `analyze()` abría la transacción **antes** de llamar a `tomarLugar()`,
+o sea antes del mamparo. Así que los requests **encolados** esperando un lugar libre —hasta
+5 segundos más— también retenían una conexión. El límite nunca fueron 5 conexiones: eran
+tantas como requests llegaran. El semáforo protege los hilos de Tomcat y la memoria; **no
+protegía el pool.** Diez análisis simultáneos se llevaban el pool completo.
 
-Los tres puntos son el mismo problema. Arreglar solo uno deja la mina activa.
+**Mitigación aplicada — 2 de 3 puntos, y el tercero acotado:**
+
+**a) `analyze()` — RESUELTO.** Ya no es `@Transactional`. La llamada al OCR corre sin
+conexión tomada, y lo único transaccional es `CatalogoOcrResolver.resolver()`, que dura
+tres consultas. Ese resolver **tiene que vivir en otro bean**: llamarlo desde el mismo
+sería una self-invocation y el proxy de Spring no abriría ninguna transacción — el arreglo
+se caería en silencio y nadie se enteraría.
+
+Verificado con `AnalyzeSinTransaccionTest`, que afirma sobre
+`TransactionSynchronizationManager` que no hay transacción abierta en el momento en que el
+OCR es invocado. Se comprobó que **falla** al volver a anotar `analyze()`. Este tipo de
+defecto es invisible para un test normal: la funcionalidad anda igual, solo que se come el
+pool. No hay assert de negocio que lo detecte.
+
+**b) Timeouts de MinIO — RESUELTO.** Los dos clientes se construyen con un `OkHttpClient`
+explícito (connect/read/write, 10s configurables). Antes no había ninguno: un MinIO colgado
+bloqueaba **para siempre**. Ahora la exposición está acotada.
+
+**c) Hikari — RESUELTO.** Configurado explícitamente en `application.yml`, con
+`connection-timeout` para fallar rápido y reciclado preventivo. El tamaño sigue siendo 10,
+pero ahora es una decisión escrita y no un default heredado en silencio.
+
+**LO QUE QUEDA PENDIENTE: los uploads de `create()` siguen dentro de la transacción.**
+
+Se decidió NO tocarlo en esta fase, y conviene dejar escrito el porqué:
+
+- **La exposición ya está acotada** por el punto (b): antes era infinita, ahora son 10
+  segundos por upload en el peor caso.
+- **La frecuencia es baja.** Un alta de ticket es una carga de combustible: unas pocas por
+  hora, no por segundo. Para saturar 10 conexiones con uploads de ~200ms harían falta más
+  de 16 altas por segundo.
+- **El arreglo tiene un trade-off real que merece decidirse a conciencia, no de arrastre.**
+  El código actual sube los archivos DESPUÉS de validar, deliberadamente, para no dejar
+  objetos huérfanos en MinIO si el request es inválido (está comentado en el código). Sacar
+  los uploads de la transacción obliga a elegir: o se sube antes de validar (y aparecen
+  huérfanos cuando alguien tipea mal la lectura del odómetro, que es un caso real), o se
+  parte en dos transacciones con re-fetch por id, que es más código y más superficie de
+  error.
+- **El test signal es débil para ese cambio.** Los 32 tests de `TicketService` mockean los
+  repositorios, así que **pasarían igual con una o con dos transacciones**. Hacer un cambio
+  riesgoso sin un test que lo distinga es exactamente cómo se rompen las cosas en silencio.
+
+Si se decide encararlo, la opción recomendada es la de dos transacciones con re-fetch por
+id: `reemplazarVigente` es idempotente en el reintento (si el vigente ya coincide, no crea
+fila nueva), así que un fallo en la segunda transacción deja el catálogo consistente.
 
 ## [x] DB-01 — `GET /tickets/me`: N+1 sobre una lista sin paginar
 
@@ -441,7 +486,7 @@ justifican la severidad alta: **son las que pueden corromper datos en silencio.*
 
 # MEDIAS
 
-## [ ] SVC-01 — `TicketService` es una god class de 759 líneas
+## [x] SVC-01 — `TicketService` es una god class de 759 líneas
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/service/TicketService.java`
 
@@ -464,10 +509,24 @@ Mezcla seis responsabilidades:
 
 `create()` sola tiene 113 líneas (`:72-185`).
 
-**Arreglo:** extraer `PrecioResolutionService` (grupo 2) y `VehiculoConsumoService`
-(grupo 4). Los dos son ya hoy métodos privados autocontenidos, sin estado oculto más allá
-de sus parámetros — la extracción es mecánica y de bajo riesgo. Hacerlo *antes* de TX-01
-hace TX-01 más fácil.
+**Mitigación aplicada:** se extrajeron **tres** servicios, no dos. `TicketService` quedó en
+**496 líneas**.
+
+- `PrecioCatalogoService` (grupo 2) — resolución por id y por combustible, reemplazo del
+  vigente, control de margen.
+- `VehiculoConsumoService` (grupo 4) — recálculo de consumo y de lectura del contador.
+- `CatalogoOcrResolver` (grupo 3) — no estaba en el plan original. Se separó porque **es el
+  mecanismo del arreglo de TX-01**: al vivir en otro bean, `analyze()` puede llamarlo y
+  obtener una transacción real. Si esa lógica se hubiera quedado en `TicketService`, la
+  llamada sería una self-invocation y no habría transacción ninguna.
+
+**Nota sobre los tests, que es donde estuvo la decisión de diseño.** En `TicketServiceTest`
+los colaboradores extraídos se construyen **reales** sobre los mismos repositorios
+mockeados, no como mocks. Mockearlos habría dejado los 32 tests en verde, pero habría
+convertido en verificaciones vacías a los que cubren "corregir el precio actualiza el
+catálogo" o "anular devuelve el consumo al del alta": esa lógica cambió de archivo, pero es
+la misma y hay que seguir probándola. La frontera de mockeo sigue donde corresponde: los
+repositorios y el I/O.
 
 ## [ ] SVC-02 — `StatsService` trae todo y filtra en memoria
 
@@ -527,7 +586,7 @@ asignados, es N sentencias donde alcanza una.
 void desasignarTodosDe(@Param("empleadoId") Long empleadoId);
 ```
 
-## [ ] DB-09 — Sin sizing de Hikari ni batch size de Hibernate
+## [x] DB-09 — Sin sizing de Hikari ni batch size de Hibernate
 
 **Ubicación:** `application.yml`, `application-dev.yml`, `application-prod.yml`
 
@@ -542,7 +601,7 @@ heredado en silencio.
 **Arreglo:** fijar el tamaño del pool explícitamente por perfil, con un comentario que
 explique el criterio. Agregar `batch_size` para cuando se apliquen los `saveAll` de DB-07.
 
-## [ ] SVC-03 — `MinioConfig` sin timeouts explícitos
+## [x] SVC-03 — `MinioConfig` sin timeouts explícitos
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/config/MinioConfig.java:20-37`
 
@@ -836,13 +895,26 @@ test nunca ejecuta. Ahora hay dónde poner ese tipo de test.
 instalado deja de leer bien el historial hasta que se actualice.** Hay que sacar versión
 nueva junto con este deploy.
 
-## Fase 2 — Sacar el I/O de las transacciones
+## ~~Fase 2 — Sacar el I/O de las transacciones~~ ✅ COMPLETADA (con una parte diferida)
 
-5. **SVC-01** (extraer `PrecioResolutionService` y `VehiculoConsumoService` de
-   `TicketService`) — hacerlo **primero** deja `create()` y `analyze()` mucho más chicos, y
-   por lo tanto hace el paso siguiente mucho más seguro de revisar.
-6. **TX-01** (I/O fuera de transacción + timeouts de MinIO + sizing de Hikari, los tres
-   juntos) — es el hallazgo crítico de disponibilidad.
+5. ~~**SVC-01**~~ — se extrajeron tres servicios, no dos. 759 → 496 líneas.
+6. ~~**TX-01**~~ — resuelto el camino del OCR (el que retenía conexiones hasta 35s),
+   acotados los timeouts de MinIO y fijado el pool. **Los uploads de `create()` quedan
+   dentro de la transacción a propósito**: exposición ya acotada a 10s, frecuencia baja, y
+   el arreglo tiene un trade-off (huérfanos en MinIO vs. dos transacciones) que merece
+   decidirse aparte. El detalle está en el hallazgo TX-01.
+7. ~~**SVC-03**, **DB-09**~~ — timeouts de MinIO y configuración explícita de Hikari.
+
+**Lo que dejó esta fase además del código:** una segunda clase de test que antes no
+existía. `AnalyzeSinTransaccionTest` no verifica una regla de negocio: verifica una
+**propiedad no funcional** —que no haya transacción abierta durante una llamada de red— y
+lo hace afirmando sobre `TransactionSynchronizationManager`.
+
+Eso importa porque los bugs de frontera transaccional **no rompen ninguna funcionalidad**.
+La app anda igual; solo se come el pool bajo carga. Ningún test de negocio los detecta, y
+una regresión (alguien vuelve a anotar `analyze`, o mueve el resolver adentro de
+`TicketService` y lo convierte en una self-invocation) pasaría entera. Ahora hay una red
+para eso, con un mensaje de fallo que explica qué revisar.
 
 ## Fase 3 — Red de seguridad antes de seguir tocando
 
