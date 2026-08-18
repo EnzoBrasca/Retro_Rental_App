@@ -38,19 +38,25 @@ levantar el segundo piso y hacerlo después.
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 2 | 1 | 0 |
 | Alta | 6 | 5 | 0 | 1 |
-| Media | 12 | 5 | 0 | 7 |
-| Baja | 11 | 0 | 0 | 11 |
+| Media | 12 | 11 | 0 | 1 |
+| Baja | 11 | 2 | 0 | 9 |
 
 **Fase 1 completada**: DB-00, DB-01, DB-02, DB-03, DB-05.
 **Fase 2 completada**: SVC-01, SVC-03, DB-09, y TX-01 **parcial** (`[~]`) — resuelto el
 camino del OCR, que era el grave; los uploads de `create()` quedan pendientes con la
 exposición acotada y el motivo documentado en el propio hallazgo.
 **Fase 3 completada**: TST-01, WEB-00 (bug nuevo), INF-02, BLD-01.
+**Fase 4 completada**: SVC-02, SVC-06, DB-06, DB-07, DB-08, DB-10, WEB-01, INF-01, más el
+índice cubridor que había quedado pendiente de DB-03.
 
-Rama `perf/fase-1-indices-y-fetch-joins`, suite en **280/280** (eran 204 al empezar).
+Rama `perf/fase-1-indices-y-fetch-joins`, suite en **292/292** (eran 204 al empezar).
 
-**Cobertura, medida por primera vez:** 77,7% de instrucciones, 70,9% de ramas.
+**Cobertura:** 78,1% de instrucciones, 70,9% de ramas.
 La línea de base al instalar JaCoCo fue 75,4% / 64,6%.
+
+**Lo que queda**, en orden de valor: `JwtUtil` al 4,3% de cobertura (lo que más incomoda
+por lo que hace), los uploads de `create()` de TX-01, `DB-04` (`litros` a `BigDecimal`, en
+su propia rama) y las bajas de limpieza.
 
 ## Lo que ya está bien (no tocar)
 
@@ -597,7 +603,7 @@ catálogo" o "anular devuelve el consumo al del alta": esa lógica cambió de ar
 la misma y hay que seguir probándola. La frontera de mockeo sigue donde corresponde: los
 repositorios y el I/O.
 
-## [ ] SVC-02 — `StatsService` trae todo y filtra en memoria
+## [x] SVC-02 — `StatsService` trae todo y filtra en memoria
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/service/StatsService.java:68-85`
 
@@ -610,7 +616,7 @@ asociaciones de las que el resultado necesita.
 **Arreglo:** empujar `vehiculoId`/`empleadoIds` como predicados opcionales dentro de la
 query, con el mismo patrón de Criteria API que ya usa `TicketService.listForAdmin`.
 
-## [ ] DB-06 — `PrecioService.listVigentes()` trae la tabla entera y filtra en memoria
+## [x] DB-06 — `PrecioService.listVigentes()` trae la tabla entera y filtra en memoria
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/service/PrecioService.java:23-27`
 
@@ -625,7 +631,7 @@ CREATE INDEX CONCURRENTLY precios_vigente_general_idx
     ON precios (fecha_hasta) WHERE fecha_hasta IS NULL;
 ```
 
-## [ ] DB-07 — Carga masiva del padrón: 2N viajes a la base
+## [x] DB-07 — Carga masiva del padrón: 2N viajes a la base
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/service/HabilitadoService.java:154-167`
 
@@ -636,7 +642,7 @@ una operación cuyo propósito declarado es "cargar la nómina de una sola vez".
 **Arreglo:** un `findByDocumentoIn(List<String>)` para traer los existentes, filtrar en
 memoria contra ese set, y un `saveAll(...)` único.
 
-## [ ] DB-08 — `EmpleadoService.desactivar()` hace N updates
+## [x] DB-08 — `EmpleadoService.desactivar()` hace N updates
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/service/EmpleadoService.java:113-119`
 
@@ -684,7 +690,7 @@ no una decisión.
 `MinioClient.Builder.httpClient(...)`) con timeouts, espejando `MistralConfig`. Es parte
 del arreglo de TX-01.
 
-## [ ] WEB-01 — Verbo HTTP incorrecto devuelve 500 en vez de 405
+## [x] WEB-01 — Verbo HTTP incorrecto devuelve 500 en vez de 405
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/exception/GlobalExceptionHandler.java:170`
 (`handleUnexpected`)
@@ -745,7 +751,7 @@ ajeno a su cambio. Falla con CVSS ≥ 7.
 **Queda sin hacer:** SpotBugs/Error Prone y Spotless. No entraron en esta fase para no meter
 un formateador que reescriba archivos en medio de una serie de cambios en revisión.
 
-## [ ] INF-01 — `dockerfile` sin `HEALTHCHECK`
+## [x] INF-01 — `dockerfile` sin `HEALTHCHECK`
 
 **Ubicación:** `backend/dockerfile:1-26`
 
@@ -821,7 +827,7 @@ comentario para que el próximo que lo lea no lo "arregle" rompiendo la preceden
 
 # BAJAS
 
-## [ ] DB-10 — Código muerto: 6 métodos de repositorio y 1 DTO sin uso
+## [x] DB-10 — Código muerto: 6 métodos de repositorio y 1 DTO sin uso
 
 **Ubicación:**
 - `backend/src/main/java/com/retrorental/backend/repository/TicketRepository.java:33`
@@ -900,7 +906,7 @@ unificar esos.
 
 **Arreglo:** extraer un helper compartido solo para los dos casos idénticos.
 
-## [ ] SVC-06 — `StatsService.consumoDelPeriodo` dispara un SELECT lazy evitable
+## [x] SVC-06 — `StatsService.consumoDelPeriodo` dispara un SELECT lazy evitable
 
 **Ubicación:** `backend/src/main/java/com/retrorental/backend/service/StatsService.java:224`
 
@@ -1050,18 +1056,38 @@ test de `AdminHabilitadoController` lo destapó en el primer intento.
 de la semana que viene, y ese número ya sirvió para encontrar una clase al 23,7% que nadie
 sabía que estaba ahí.
 
-## Fase 4 — Eficiencia y limpieza
+## ~~Fase 4 — Eficiencia y limpieza~~ ✅ COMPLETADA
 
-10. **Proyección + índice cubridor en el recálculo de consumo** (ver DB-03). Medido: de
-    2.074 buffers y 1,53 ms a 16 buffers y 0,19 ms, en el camino de escritura que corre en
-    cada carga de combustible. Es el mejor retorno que queda sobre la mesa. Requiere cambiar
-    `TicketRepository` a una proyección `(uso_acumulado, litros)` y adaptar
-    `ConsumoCalculator`, más la migración con el índice `INCLUDE (litros)`.
-11. **SVC-02**, **DB-06**, **DB-07**, **DB-08** (filtrar en la base, no en memoria)
-12. **Paginar el listado del padrón** (resto de DB-05)
-13. **DB-10** (borrar el código muerto)
-14. **WEB-01**, **INF-01** (405 correcto, healthcheck)
+10. ~~**Proyección + índice cubridor**~~ (V11) — medido: **2.069 buffers / 2,389 ms →
+    17 buffers / 0,210 ms**, con `Heap Fetches: 0` y sin `Sort`, en el camino que corre en
+    cada carga de combustible.
+
+    **Apareció una condición que la medición de la Fase 1 no había mostrado:** el Index Only
+    Scan solo evita el heap si el *visibility map* está poblado, y eso lo mantiene `VACUUM`,
+    **no `ANALYZE`**. Recién insertadas las filas, el planner prefiere el bitmap scan y el
+    índice queda sin usar. En operación normal autovacuum se encarga; después de una
+    importación masiva conviene un `VACUUM ANALYZE tickets` explícito. Quedó anotado en la
+    migración. (La medición original había dado el número bueno porque autovacuum ya había
+    pasado — o sea que la Fase 1 tuvo suerte, no razón.)
+
+11. ~~**SVC-02**, **SVC-06**, **DB-06**, **DB-07**, **DB-08**~~ — filtrar en la base.
+    **DB-07 arregló de paso un bug que no estaba reportado**: un documento repetido *dentro
+    del mismo lote* rompía la carga masiva entera contra la constraint UNIQUE. Al chequear
+    fila por fila contra la base, el segundo duplicado pasaba el chequeo (todavía no estaba
+    insertado) y explotaba al hacer flush. Es un caso real: el admin sube una planilla y
+    alguien figura dos veces.
+12. ~~**DB-10**~~ — siete símbolos muertos, **uno más de los seis reportados**.
+13. ~~**WEB-01**, **INF-01**~~ — 405 con header `Allow`, y healthcheck.
+14. **Paginar el listado del padrón** (resto de DB-05) — **sigue pendiente**.
 15. El resto de las bajas, por goteo.
+
+**Lo que dejó esta fase, además del rendimiento:** una regla de trabajo que se repitió tres
+veces. Cada vez que una regla de negocio se movió de Java a SQL, el test unitario que la
+cubría **dejó de poder observarla**. En los tres casos (`StatsService`, `EmpleadoService`,
+`HabilitadoService`) se reescribió el test unitario para verificar la *delegación*, y el
+comportamiento real se cubrió contra Postgres. Dejarlos como estaban los habría convertido
+en verificaciones de que un mock devuelve lo que se le dijo que devuelva — verdes, inútiles
+y peligrosos, porque dan la sensación de que algo está probado.
 
 ## Fase 5 — Aparte, con su propia rama
 
