@@ -2,6 +2,7 @@ package com.retrorental.backend.exception;
 
 import com.retrorental.backend.dto.response.ApiError;
 import com.retrorental.backend.dto.response.ApiFieldError;
+import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -97,6 +98,56 @@ public class GlobalExceptionHandler {
         String annotation = fe.getCode(); // "NotBlank", "Email", "Size", ...
         String code = FIELD_CODES.getOrDefault(annotation, "INVALID");
         return new ApiFieldError(fe.getField(), code, fe.getDefaultMessage());
+    }
+
+    // ---------------------------------------------------------------------
+    // Validacion a nivel de METODO: las restricciones puestas directamente
+    // sobre un parametro del controller en una clase @Validated, como el
+    // @NotEmpty + @Size(max = 500) del alta masiva del padron
+    // (AdminHabilitadoController.crearMasivo).
+    //
+    // Esas NO pasan por BindException: Bean Validation lanza
+    // ConstraintViolationException, que no extiende de aquella. Sin este
+    // handler caia en el catch-all y devolvia 500 "Ocurrio un error
+    // inesperado", tirando a la basura el mensaje que SI explicaba el
+    // problema: el admin que subia una nomina de 600 no tenia forma de
+    // enterarse de que el tope son 500, reintentaba y volvia a fallar.
+    // Ademas ensuciaba el log de errores como si fuera una falla del servidor.
+    //
+    // El nombre de la propiedad viene como ruta completa del metodo
+    // ("crearMasivo.requests[1].documento"); se recorta al ultimo tramo para
+    // que el cliente reciba el nombre del campo, igual que en handleValidation.
+    // ---------------------------------------------------------------------
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(ConstraintViolationException ex) {
+        List<ApiFieldError> fieldErrors = ex.getConstraintViolations().stream()
+            .map(v -> new ApiFieldError(
+                nombreDeCampo(v.getPropertyPath().toString()),
+                FIELD_CODES.getOrDefault(
+                    v.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName(),
+                    "INVALID"),
+                v.getMessage()))
+            .toList();
+
+        String message = fieldErrors.stream()
+            .map(ApiFieldError::message)
+            .reduce((a, b) -> a + "; " + b)
+            .orElse("Datos invalidos");
+        String field = fieldErrors.isEmpty() ? null : fieldErrors.get(0).field();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiError(
+            HttpStatus.BAD_REQUEST.value(),
+            ErrorCode.VALIDATION_ERROR.name(),
+            message,
+            field,
+            fieldErrors));
+    }
+
+    // "crearMasivo.requests[1].documento" -> "documento"
+    // "crearMasivo.requests"              -> "requests"
+    private String nombreDeCampo(String propertyPath) {
+        int ultimoPunto = propertyPath.lastIndexOf('.');
+        return ultimoPunto < 0 ? propertyPath : propertyPath.substring(ultimoPunto + 1);
     }
 
     // ---------------------------------------------------------------------
