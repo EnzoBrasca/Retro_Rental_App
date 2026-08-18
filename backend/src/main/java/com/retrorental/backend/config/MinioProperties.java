@@ -31,6 +31,23 @@ public class MinioProperties {
     // Validez de las URLs presignadas, en segundos (por defecto 1 hora).
     private int presignedExpirySeconds = 3600;
 
+    /**
+     * Timeout de conexion y de lectura/escritura contra MinIO, en segundos.
+     *
+     * Sin esto, el SDK usa los defaults de OkHttp y un MinIO que no responde
+     * bloquea la subida INDEFINIDAMENTE. Como la subida ocurre durante el alta
+     * de un ticket, ese bloqueo se lleva puesto un hilo de Tomcat por cada
+     * empleado que este cargando (ver docs/BACKEND-AUDIT.md, SVC-03 y TX-01).
+     *
+     * MistralConfig ya configuraba los suyos; esta era la asimetria que delataba
+     * que aca fue un olvido y no una decision.
+     *
+     * 10 segundos es holgado para una foto de ticket en la red interna y corto
+     * para no dejar a nadie esperando: si MinIO tarda mas que eso, algo esta mal
+     * y es mejor fallar rapido con un error claro.
+     */
+    private int timeoutSeconds = 10;
+
     public String resolvePublicEndpoint() {
         return (publicEndpoint == null || publicEndpoint.isBlank()) ? endpoint : publicEndpoint;
     }
