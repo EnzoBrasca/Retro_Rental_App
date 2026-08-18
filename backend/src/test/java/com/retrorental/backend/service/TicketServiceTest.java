@@ -466,11 +466,28 @@ class TicketServiceTest {
         return t;
     }
 
-    /** Deja al repo devolviendo `vigentes` como las cargas que sobreviven. */
+    /**
+     * Deja al repo devolviendo `vigentes` como las cargas que sobreviven.
+     *
+     * El recálculo consume una PROYECCIÓN de (usoAcumulado, litros), no
+     * entidades (ver TicketRepository.findCargasParaConsumo). Los tests se
+     * siguen escribiendo con `Ticket` porque es más legible; acá se convierten.
+     */
     private void cargasVigentes(Ticket... vigentes) {
-        when(ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(5))
-            .thenReturn(List.of(vigentes));
+        List<TicketRepository.CargaParaConsumo> proyectadas = List.of(vigentes).stream()
+            .map(t -> (TicketRepository.CargaParaConsumo) new TicketRepository.CargaParaConsumo() {
+                @Override
+                public Integer getUsoAcumulado() {
+                    return t.getUsoAcumulado();
+                }
+
+                @Override
+                public Double getLitros() {
+                    return t.getLitros();
+                }
+            })
+            .toList();
+        when(ticketRepository.findCargasParaConsumo(5)).thenReturn(proyectadas);
     }
 
     private Administrador admin() {

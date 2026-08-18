@@ -69,20 +69,23 @@ public class StatsService {
                                          Integer vehiculoId, List<Integer> empleadoIds) {
         LocalDateTime desde = desdeInclusive.atStartOfDay();
         LocalDateTime hasta = hastaExclusive.atStartOfDay();
-        List<Ticket> tickets = ticketRepository.findForStats(desde, hasta);
 
-        if (vehiculoId != null) {
-            // Filtrar por vehiculo excluye de por si los tickets de
-            // herramienta (getVehiculo() es null para esos).
-            tickets = tickets.stream()
-                .filter(t -> t.getVehiculo() != null && t.getVehiculo().getId().equals(vehiculoId))
-                .toList();
-        }
-        if (empleadoIds != null && !empleadoIds.isEmpty()) {
-            tickets = tickets.stream()
-                .filter(t -> empleadoIds.contains(t.getPersona().getId()))
-                .toList();
-        }
+        // Los dos filtros opcionales viajan a la CONSULTA. Antes se traia el
+        // rango entero —con precio, vehiculo, herramienta, persona y proveedor
+        // por cada fila— y se descartaba en memoria lo que no correspondia. Para
+        // un mes de una flota grande eso hidrata muchisimas mas filas de las que
+        // el resultado necesita (ver docs/BACKEND-AUDIT.md, SVC-02).
+        //
+        // La consulta exige una lista no nula, asi que se normaliza aca. El
+        // valor de relleno no se usa nunca: cuando filtrarPorEmpleado es false,
+        // el predicado del IN ni se evalua.
+        boolean filtrarPorEmpleado = empleadoIds != null && !empleadoIds.isEmpty();
+        List<Integer> idsParaLaConsulta = filtrarPorEmpleado ? empleadoIds : List.of(-1);
+
+        // Filtrar por vehiculo excluye de por si los tickets de herramienta
+        // (id_vehiculo es null para esos), igual que antes.
+        List<Ticket> tickets = ticketRepository.findForStats(
+            desde, hasta, vehiculoId, filtrarPorEmpleado, idsParaLaConsulta);
 
         double totalLitros = 0d;
         // Litros cargados a VEHICULOS unicamente. Va aparte de totalLitros
@@ -195,15 +198,20 @@ public class StatsService {
         // orden de lectura. Las lecturas son monótonas (una carga que retrocede
         // el contador se rechaza al crearse), así que ese orden es también el
         // cronológico.
-        List<Ticket> cargasDelVehiculo = ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculoId);
+        // Proyeccion de cuatro columnas, no entidades: el calculo solo necesita
+        // lectura, litros, fecha y el tipo del vehiculo. El tipo viene en la
+        // misma consulta, lo que ademas elimina el SELECT lazy que antes
+        // disparaba `cargas.get(0).getVehiculo()` (ver docs/BACKEND-AUDIT.md,
+        // SVC-06).
+        List<TicketRepository.CargaParaStats> cargasDelVehiculo =
+            ticketRepository.findCargasParaStats(vehiculoId);
         if (cargasDelVehiculo.isEmpty()) {
             return Consumo.SIN_DATO;
         }
 
-        Ticket lineaBase = null;
-        List<Ticket> delPeriodo = new ArrayList<>();
-        for (Ticket t : cargasDelVehiculo) {
+        TicketRepository.CargaParaStats lineaBase = null;
+        List<TicketRepository.CargaParaStats> delPeriodo = new ArrayList<>();
+        for (TicketRepository.CargaParaStats t : cargasDelVehiculo) {
             if (t.getFechaCarga().isBefore(desde)) {
                 lineaBase = t; // se queda la última previa al rango
             } else if (t.getFechaCarga().isBefore(hasta)) {
@@ -217,11 +225,11 @@ public class StatsService {
         if (lineaBase != null) {
             cargas.add(new ConsumoCalculator.Carga(lineaBase.getUsoAcumulado(), lineaBase.getLitros()));
         }
-        for (Ticket t : delPeriodo) {
+        for (TicketRepository.CargaParaStats t : delPeriodo) {
             cargas.add(new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()));
         }
 
-        UnidadUso unidad = cargasDelVehiculo.get(0).getVehiculo().getTipoVehiculo().unidadUso();
+        UnidadUso unidad = cargasDelVehiculo.get(0).getTipoVehiculo().unidadUso();
         // La ventana del consumo "reciente" no interesa acá: el período ya ES la
         // ventana. Pasando el total de cargas, reciente == histórico y se ignora.
         BigDecimal valor = ConsumoCalculator.calcular(cargas, unidad, cargas.size()).historico();

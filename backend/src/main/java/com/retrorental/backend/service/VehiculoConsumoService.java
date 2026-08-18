@@ -1,6 +1,5 @@
 package com.retrorental.backend.service;
 
-import com.retrorental.backend.model.Ticket;
 import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.repository.TicketRepository;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +58,7 @@ public class VehiculoConsumoService {
     public void recalcularConsumo(Vehiculo vehiculo) {
         List<ConsumoCalculator.Carga> cargas = cargasConLectura(vehiculo)
             .stream()
-            .map(t -> new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()))
+            .map(c -> new ConsumoCalculator.Carga(c.getUsoAcumulado(), c.getLitros()))
             .toList();
 
         ConsumoCalculator.Consumo consumo = ConsumoCalculator.calcular(
@@ -89,7 +88,7 @@ public class VehiculoConsumoService {
     public void recalcularUsoAcumulado(Vehiculo vehiculo) {
         cargasConLectura(vehiculo)
             .stream()
-            .map(Ticket::getUsoAcumulado)
+            .map(TicketRepository.CargaParaConsumo::getUsoAcumulado)
             .max(Integer::compareTo)
             .ifPresent(vehiculo::setUsoAcumulado);
     }
@@ -97,9 +96,11 @@ public class VehiculoConsumoService {
     // Cargas del vehiculo que sirven para los dos calculos: vigentes y con
     // lectura del contador. Las anteriores a esa feature quedan afuera porque no
     // aportan intervalo.
-    private List<Ticket> cargasConLectura(Vehiculo vehiculo) {
-        return ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(
-                vehiculo.getId());
+    //
+    // Devuelve una PROYECCION de (usoAcumulado, litros), no entidades: es lo que
+    // permite que la consulta se responda entera desde el indice cubridor de
+    // V11 sin tocar la tabla. Ver TicketRepository.findCargasParaConsumo.
+    private List<TicketRepository.CargaParaConsumo> cargasConLectura(Vehiculo vehiculo) {
+        return ticketRepository.findCargasParaConsumo(vehiculo.getId());
     }
 }
