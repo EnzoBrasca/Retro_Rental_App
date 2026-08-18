@@ -48,8 +48,11 @@ exposición acotada y el motivo documentado en el propio hallazgo.
 **Fase 3 completada**: TST-01, WEB-00 (bug nuevo), INF-02, BLD-01.
 **Fase 4 completada**: SVC-02, SVC-06, DB-06, DB-07, DB-08, DB-10, WEB-01, INF-01, más el
 índice cubridor que había quedado pendiente de DB-03.
+**Fase 5 completada**: DB-04 (`litros` a `BigDecimal`), en su propia rama
+`refactor/db-04-litros-a-bigdecimal`. Además se cubrió `JwtUtil`, que estaba al 4,3%.
 
-Rama `perf/fase-1-indices-y-fetch-joins`, suite en **292/292** (eran 204 al empezar).
+Rama `perf/fase-1-indices-y-fetch-joins` hasta la Fase 4, suite en **292/292**.
+Con `JwtUtil` y la Fase 5, **304/304** (eran 204 al empezar).
 
 **Cobertura:** 78,1% de instrucciones, 70,9% de ramas.
 La línea de base al instalar JaCoCo fue 75,4% / 64,6%.
@@ -434,7 +437,7 @@ Mientras se traiga la entidad entera, Postgres tiene que ir al heap sí o sí y 
 cada carga de combustible). Los dos cambios tienen que viajar juntos: el índice sin la
 proyección queda sin usar. Ver el nuevo ítem en la Fase 4.
 
-## [ ] DB-04 — `litros` es `Double`/`double precision` y entra en cálculos de plata
+## [x] DB-04 — `litros` es `Double`/`double precision` y entra en cálculos de plata
 
 **Ubicación:**
 - `backend/src/main/java/com/retrorental/backend/model/Ticket.java:20-21`
@@ -470,6 +473,15 @@ ALTER TABLE tickets ALTER COLUMN litros TYPE numeric(10,2) USING litros::numeric
 Y cambiar `Ticket.litros` a `BigDecimal`, propagando por `ConsumoCalculator`, `StatsService`
 y los DTOs. Es el arreglo más invasivo de toda esta auditoría: merece su propia rama y su
 propio ciclo de tests.
+
+**Arreglado** en la Fase 5, rama `refactor/db-04-litros-a-bigdecimal`. Migración
+`V12__litros_a_numeric.sql` con `numeric(10,2)`, y `BigDecimal` desde el borde de entrada
+(`CreateTicketRequest`, y `asDecimal` en el OCR) hasta el de salida, sin ningún salto por
+`double` en el medio. `ConsumoCalculator` acumula con `BigDecimal.add`, que era donde el
+error se sumaba vuelta a vuelta.
+
+Contra lo previsto, **no tocó `mobile/`**: `BigDecimal` viaja en JSON como número y la app
+ya lo consumía como `number`. Ver la nota en el plan de Fase 5.
 
 ## [x] DB-05 — N+1 en el listado del padrón
 
@@ -1089,12 +1101,39 @@ comportamiento real se cubrió contra Postgres. Dejarlos como estaban los habrí
 en verificaciones de que un mock devuelve lo que se le dijo que devuelva — verdes, inútiles
 y peligrosos, porque dan la sensación de que algo está probado.
 
-## Fase 5 — Aparte, con su propia rama
+## ~~Fase 5 — Aparte, con su propia rama~~ ✅ COMPLETADA
 
-14. **DB-04** (`litros` a `BigDecimal`) — es el único cambio que toca schema, entidad,
-    servicios, DTOs y el contrato con `mobile/` de una sola vez. Merece su propia rama, su
-    propio ciclo de tests y su propia ventana de despliegue. No lo metas de arrastre en
-    otro PR.
+15. ~~**DB-04** (`litros` a `BigDecimal`)~~ — hecho en `refactor/db-04-litros-a-bigdecimal`,
+    ramificada desde `perf/fase-1-indices-y-fetch-joins` y **no** desde `main`: las
+    proyecciones `CargaParaConsumo`/`CargaParaStats` de la Fase 4 exponen `getLitros()`, así
+    que salir de `main` habría chocado de frente con ellas.
+
+    **Se hizo AHORA a propósito.** Producción tiene del orden de 3 tickets, así que el
+    `ALTER TABLE` que reescribe la tabla es gratis. La ventana barata para este cambio era
+    esta; con volumen real habría sido una ventana de mantenimiento.
+
+    **La predicción sobre `mobile/` resultó FALSA, y vale registrar por qué.** El plan
+    asumía que tocaba el contrato con la app. No lo toca: `BigDecimal` se serializa a JSON
+    como número, y el mobile ya tipa `litros` como `number` y lo envía como string en un
+    campo multipart. Cero cambios en `mobile/`, cero APK nuevo por este motivo. El error de
+    estimación estuvo en confundir "cambia el tipo en Java" con "cambia el contrato HTTP".
+
+    Alcance real: 29 archivos de backend. Migración `V12__litros_a_numeric.sql`
+    (`numeric(10,2)`), `Ticket.litros`, `CreateTicketRequest`, las dos proyecciones,
+    `ConsumoCalculator.Carga`, `StatsService` (acumuladores y promedio), los 6 DTOs de
+    respuesta y el borde del OCR (`asDecimal` en `MistralTicketAnalysisService`).
+
+    **Dos cosas que aprendió la suite al migrar:**
+    - `BigDecimal.equals` compara **también la escala**: `50.0` no es igual a `50.00`. Dos
+      tests fallaron por eso, no por lógica. Para afirmar valor va `compareTo` (o
+      `isEqualByComparingTo` en AssertJ); `equals` se reserva para cuando la escala TAMBIÉN
+      es parte de lo que se afirma.
+    - `mvn -q test-compile` incremental puede no recompilar y dar un verde falso. Hace falta
+      `clean` para ver los errores de tipos reales.
+
+    Quedan dos tests nuevos en `TicketPersistenciaTest` que prueban contra Postgres real lo
+    que la migración compra: round-trip exacto de `45.67` (con `equals`, para exigir la
+    escala) y que `0,10 + 0,20` da exactamente `0,30`.
 
 ---
 
