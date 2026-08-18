@@ -5,14 +5,17 @@ import com.retrorental.backend.dto.response.ApiFieldError;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -158,6 +161,37 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException ex) {
         return build(ErrorCode.MALFORMED_REQUEST,
             "El cuerpo de la peticion es invalido o esta mal formado", null);
+    }
+
+    // ---------------------------------------------------------------------
+    // Ruta valida, verbo equivocado (ej. PATCH /tickets) -> 405.
+    //
+    // Sin este handler la excepcion caia en el catch-all: devolvia 500 con
+    // "Ocurrio un error inesperado" y quedaba logueada como falla del servidor
+    // (ver docs/BACKEND-AUDIT.md, WEB-01). Doble costo: el cliente movil recibia
+    // un codigo que no describe el problema, y el log de errores se llenaba de
+    // falsas alarmas. Un log lleno de ruido es un log que nadie mira.
+    //
+    // El header `Allow` va porque es parte del contrato de un 405: le dice al
+    // cliente que verbos SI acepta esa ruta.
+    // ---------------------------------------------------------------------
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex) {
+        String message = "El metodo %s no esta permitido en esta ruta".formatted(ex.getMethod());
+        ResponseEntity.BodyBuilder respuesta =
+            ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus());
+
+        Set<HttpMethod> permitidos = ex.getSupportedHttpMethods();
+        if (permitidos != null && !permitidos.isEmpty()) {
+            respuesta.allow(permitidos.toArray(new HttpMethod[0]));
+        }
+
+        return respuesta.body(new ApiError(
+            ErrorCode.METHOD_NOT_ALLOWED.getStatus().value(),
+            ErrorCode.METHOD_NOT_ALLOWED.name(),
+            message,
+            null));
     }
 
     // ---------------------------------------------------------------------

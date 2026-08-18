@@ -95,6 +95,10 @@ public enum ErrorCode {
     MALFORMED_REQUEST(HttpStatus.BAD_REQUEST),
     INVALID_PARAMETER(HttpStatus.BAD_REQUEST),
     MISSING_PARAMETER(HttpStatus.BAD_REQUEST),
+    // Ruta valida, verbo equivocado (por ejemplo PATCH /tickets). Sin este
+    // codigo caia en el catch-all y devolvia un 500 que ademas quedaba logueado
+    // como falla del servidor (ver docs/BACKEND-AUDIT.md, WEB-01).
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED),
 
     // --- Seguridad ---
     UNAUTHENTICATED(HttpStatus.UNAUTHORIZED),
