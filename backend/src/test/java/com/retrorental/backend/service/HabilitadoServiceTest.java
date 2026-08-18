@@ -217,7 +217,7 @@ class HabilitadoServiceTest {
     void createBulk_salteaLosRepetidosEnLugarDeAbortarTodo() {
         when(habilitadoRepository.existsByDocumento("30111222")).thenReturn(true);
         when(habilitadoRepository.existsByDocumento("30555666")).thenReturn(false);
-        when(habilitadoRepository.findAllByOrderByFechaAltaDesc()).thenReturn(List.of());
+        when(habilitadoRepository.findAllConPersona()).thenReturn(List.of());
 
         CreateHabilitadoRequest repetido = new CreateHabilitadoRequest();
         repetido.setDocumento("30111222");
@@ -280,7 +280,7 @@ class HabilitadoServiceTest {
         persona.setUsername("jperez");
         usada.setPersona(persona);
 
-        when(habilitadoRepository.findAllByOrderByFechaAltaDesc())
+        when(habilitadoRepository.findAllConPersona())
             .thenReturn(List.of(libre, usada));
 
         List<HabilitadoResponse> resultado = service.listAll();

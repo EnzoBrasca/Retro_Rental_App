@@ -124,7 +124,7 @@ public class HabilitadoService {
 
     @Transactional(readOnly = true)
     public List<HabilitadoResponse> listAll() {
-        return habilitadoRepository.findAllByOrderByFechaAltaDesc().stream()
+        return habilitadoRepository.findAllConPersona().stream()
             .map(this::toResponse)
             .toList();
     }
