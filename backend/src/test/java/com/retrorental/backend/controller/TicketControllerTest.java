@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -297,5 +299,32 @@ class TicketControllerTest extends AbstractControllerTest {
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"))
             .andExpect(jsonPath("$.field").value("id"));
+    }
+
+    /**
+     * Ruta valida con el verbo equivocado: 405, no 500.
+     *
+     * Antes esto caia en el catch-all del GlobalExceptionHandler y devolvia un
+     * 500 generico que ademas quedaba logueado como falla del servidor (ver
+     * docs/BACKEND-AUDIT.md, WEB-01). Doble costo: el cliente movil recibia un
+     * codigo que no describe el problema, y el log de errores se llenaba de
+     * falsas alarmas que no eran errores del servidor.
+     */
+    @Test
+    @WithMockUser(roles = "EMPLEADO")
+    void verboNoSoportado_devuelve405YNoUn500() throws Exception {
+        mockMvc.perform(patch("/tickets"))
+            .andExpect(status().isMethodNotAllowed())
+            .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    }
+
+    /** El 405 tiene que declarar en `Allow` que verbos SI acepta la ruta. */
+    @Test
+    @WithMockUser(roles = "EMPLEADO")
+    void verboNoSoportado_declaraLosVerbosPermitidos() throws Exception {
+        mockMvc.perform(patch("/tickets"))
+            .andExpect(status().isMethodNotAllowed())
+            .andExpect(header().exists("Allow"))
+            .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("POST")));
     }
 }
