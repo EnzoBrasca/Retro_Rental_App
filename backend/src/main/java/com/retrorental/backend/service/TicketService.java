@@ -25,6 +25,7 @@ import com.retrorental.backend.repository.ProveedorRepository;
 import com.retrorental.backend.repository.TicketRepository;
 import com.retrorental.backend.repository.VehiculoRepository;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -562,16 +563,24 @@ public class TicketService {
         // vez de un ":param IS NULL OR ..." (que en Postgres rompe con
         // "could not determine data type" al pasar un timestamp null).
         Specification<Ticket> spec = (root, query, cb) -> {
-            // Evita el N+1: trae empleado, proveedor y precio en la MISMA query
-            // (JOIN FETCH). Solo en la query de datos, no en la de count — un
-            // fetch en el count rompe. Son todos @ManyToOne (single-valued), así
-            // que el fetch join es seguro con paginación.
+            // Evita el N+1: trae empleado, proveedor, precio, vehiculo y
+            // herramienta en la MISMA query (JOIN FETCH). Solo en la query de
+            // datos, no en la de count — un fetch en el count rompe. Son todos
+            // @ManyToOne (single-valued), así que el fetch join es seguro con
+            // paginación.
+            //
+            // vehiculo y herramienta van con JoinType.LEFT EXPLÍCITO. root.fetch()
+            // sin JoinType hace INNER JOIN, y como un ticket tiene vehiculo O
+            // herramienta (nunca los dos), un INNER sobre vehiculo BORRA del
+            // listado todos los tickets de herramienta. Mismo razonamiento que
+            // TicketRepository.findForStats, donde ya está documentado.
             if (query != null && query.getResultType() != Long.class
                     && query.getResultType() != long.class) {
                 root.fetch("persona");
                 root.fetch("proveedor");
                 root.fetch("precio");
-                root.fetch("vehiculo");
+                root.fetch("vehiculo", JoinType.LEFT);
+                root.fetch("herramienta", JoinType.LEFT);
             }
 
             List<Predicate> predicates = new ArrayList<>();
@@ -667,12 +676,21 @@ public class TicketService {
      * Tickets del empleado autenticado, más recientes primero. Alimenta la
      * pestaña "Historial" de la app del empleado. El empleado sale del JWT, no
      * de un parámetro, para que solo pueda ver los suyos.
+     *
+     * PAGINADO: el historial crece con cada carga y no se borra nunca, así que
+     * devolverlo entero era una lista sin techo sobre la conexión del teléfono.
+     * Mismo contrato que listForAdmin (PagedModel).
+     *
+     * El mapeo a TicketResponse ocurre dentro de la transacción para que las
+     * asociaciones LAZY se resuelvan con la sesión abierta.
      */
     @Transactional(readOnly = true)
-    public List<TicketResponse> listMine(String empleadoUsername) {
+    public PagedModel<TicketResponse> listMine(String empleadoUsername, Pageable pageable) {
         Persona persona = resolvePersona(empleadoUsername);
-        return ticketRepository.findByPersonaIdAndFechaAnulacionIsNullOrderByFechaCargaDesc(persona.getId())
-            .stream().map(this::toResponse).toList();
+        return new PagedModel<>(
+            ticketRepository.findVigentesDePersona(persona.getId(), pageable)
+                .map(this::toResponse)
+        );
     }
 
     private Persona resolvePersona(String username) {

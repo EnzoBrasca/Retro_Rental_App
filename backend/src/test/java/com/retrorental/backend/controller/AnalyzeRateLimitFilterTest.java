@@ -124,7 +124,9 @@ class AnalyzeRateLimitFilterTest extends AbstractControllerTest {
         // /tickets/analyze ya esta cortado para esa cuenta, pero el historial
         // del MISMO usuario sigue respondiendo: el freno es de ese endpoint, no
         // de la sesion.
-        when(ticketService.listMine(any())).thenReturn(java.util.List.of());
+        when(ticketService.listMine(any(), any())).thenReturn(
+            new org.springframework.data.web.PagedModel<>(
+                new org.springframework.data.domain.PageImpl<>(java.util.List.of())));
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .get("/tickets/me").with(usuario("solo-analyze")))
             .andExpect(status().isOk());
