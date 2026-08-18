@@ -37,17 +37,20 @@ levantar el segundo piso y hacerlo después.
 | Severidad | Total | Resueltas | Parciales | Pendientes |
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 2 | 1 | 0 |
-| Alta | 5 | 3 | 0 | 2 |
-| Media | 11 | 3 | 0 | 8 |
+| Alta | 6 | 5 | 0 | 1 |
+| Media | 12 | 5 | 0 | 7 |
 | Baja | 11 | 0 | 0 | 11 |
 
 **Fase 1 completada**: DB-00, DB-01, DB-02, DB-03, DB-05.
 **Fase 2 completada**: SVC-01, SVC-03, DB-09, y TX-01 **parcial** (`[~]`) — resuelto el
 camino del OCR, que era el grave; los uploads de `create()` quedan pendientes con la
 exposición acotada y el motivo documentado en el propio hallazgo.
+**Fase 3 completada**: TST-01, WEB-00 (bug nuevo), INF-02, BLD-01.
 
-Rama `perf/fase-1-indices-y-fetch-joins`, suite en **209/209**, con 5 tests nuevos: 3
-contra Postgres real y 2 que vigilan fronteras transaccionales.
+Rama `perf/fase-1-indices-y-fetch-joins`, suite en **280/280** (eran 204 al empezar).
+
+**Cobertura, medida por primera vez:** 77,7% de instrucciones, 70,9% de ramas.
+La línea de base al instalar JaCoCo fue 75,4% / 64,6%.
 
 ## Lo que ya está bien (no tocar)
 
@@ -297,6 +300,46 @@ actualizaron en el mismo cambio, con scroll incremental (`onEndReached`, 30 por 
 
 # ALTAS
 
+## [x] WEB-00 — La validación del alta masiva del padrón devolvía 500 en vez de 400
+
+> **Hallazgo POSTERIOR a la auditoría**, igual que DB-00. Y con el mismo origen: no salió
+> de leer código, salió de **escribir el test que faltaba**. Apareció en el primer intento
+> de `AdminHabilitadoControllerTest`.
+
+**Ubicación:** `backend/src/main/java/com/retrorental/backend/exception/GlobalExceptionHandler.java`
+(faltaba el handler), disparado desde `AdminHabilitadoController.crearMasivo`.
+
+**Descripción:** las restricciones puestas sobre un **parámetro** del controller en una
+clase `@Validated` —el `@NotEmpty` y el `@Size(max = 500)` del alta masiva— lanzan
+`ConstraintViolationException`. Esa excepción **no extiende de `BindException`**, así que
+el handler de validación no la agarraba y caía en el catch-all.
+
+**Lo peor es que la validación funcionaba.** El mensaje correcto se generaba:
+
+```
+Lanzado:   "No se pueden cargar más de 500 documentos por vez"
+Devuelto:  500 "Ocurrio un error inesperado. Intenta nuevamente mas tarde"
+```
+
+**Impacto:** el administrador que sube una nómina de 600 documentos recibe un error opaco,
+reintenta con el mismo archivo, y vuelve a fallar. **La explicación existía y se tiraba a
+la basura.** Además cada intento quedaba logueado como falla del servidor, contaminando el
+log de errores con algo que era un request mal formado — la misma familia que WEB-01.
+
+Y no es un caso de laboratorio: el padrón existe justamente para cargar la nómina de una
+empresa de una sola vez, así que superar el tope es el escenario esperado, no el raro.
+
+**Mitigación aplicada:** handler de `ConstraintViolationException` que devuelve 400 con el
+mismo formato de campos que el resto. El nombre de la propiedad llega como ruta del método
+(`crearMasivo.requests[1].documento`) y se recorta al último tramo para que el cliente
+reciba el nombre del campo.
+
+**Cobertura agregada:** 17 tests sobre el gate de rol (un `EMPLEADO` no puede habilitar
+documentos), el tope del lote con su borde exacto en 500, y la validación de los elementos
+**de adentro** de la lista — que es la trampa clásica de Spring: si alguien saca el
+`@Validated` de la clase o cambia el `List<@Valid ...>` por un `List<...>`, la colección
+deja de validarse **sin ningún error visible** y el endpoint pasa a aceptar lotes sin techo.
+
 ## [x] DB-02 — Lombok `@Data` sobre relaciones bidireccionales: `StackOverflowError` latente
 
 **Ubicación:**
@@ -440,7 +483,7 @@ listado. (Sí, el mismo error que DB-00 — por eso se puso explícito y comenta
 **Pendiente:** la paginación de este listado. No entró en la Fase 1 porque el padrón crece
 por altas manuales del admin, no por operación diaria como los tickets. Queda en Fase 4.
 
-## [ ] TST-01 — Vacíos de cobertura en las tres clases con más lógica cruzada
+## [x] TST-01 — Vacíos de cobertura en las tres clases con más lógica cruzada
 
 **Ubicación:**
 - `backend/src/main/java/com/retrorental/backend/controller/AdminHabilitadoController.java`
@@ -473,14 +516,40 @@ Hay más clases sin test (`UsernameGenerator`, `MinioStorageService`,
 services triviales de `Precio`/`Proveedor`/`Persona`), pero esas tres son las que
 justifican la severidad alta: **son las que pueden corromper datos en silencio.**
 
-**Arreglo:**
-1. `AdminHabilitadoControllerTest` espejando el patrón de `AdminHerramientaControllerTest`
-   (401/403/200/400/409, más un caso de bulk por encima de 500).
-2. `VehiculoServiceTest`: re-toma idempotente, conflicto por toma ajena, conflicto por
-   estado no disponible, `liberar()` por quien no es el dueño, colisión de identificador.
-3. `EmpleadoServiceTest`: cascada de desasignación y el efecto sobre el padrón.
-4. Taggear las clases nuevas y agregar los dominios faltantes a `domain-tags.conf`
-   (ver INF-02) — hoy esos dominios ni siquiera existen en el mapa.
+**Mitigación aplicada — 71 tests nuevos:**
+
+| Clase | Tests | Cobertura antes → después |
+| --- | --- | --- |
+| `AdminHabilitadoController` | 17 | 0% → cubierto |
+| `VehiculoService` | 23 | 0% → 92,1% |
+| `EmpleadoService` | 16 | 0% → **100%** |
+| `CatalogoOcrResolver` | 15 | 23,7% → 95,8% |
+
+**Los dos primeros archivos encontraron bugs apenas se escribieron**, que es exactamente
+para lo que sirve escribir tests sobre código que nunca los tuvo:
+
+- `AdminHabilitadoControllerTest` destapó WEB-00 en su primer intento: la validación del
+  alta masiva devolvía 500 en vez de 400.
+- `VehiculoServiceTest` no encontró un bug de producción, pero sí confirmó que las reglas
+  de la máquina de estados eran las documentadas — incluida la idempotencia del re-toma,
+  que la app necesita porque reintenta con mala señal.
+
+**`CatalogoOcrResolver` no estaba en la lista original de este hallazgo.** Apareció al
+medir cobertura por primera vez, al 23,7%: la peor de todas las clases con lógica de
+negocio real. Estuvo tapada durante toda la auditoría porque vivía adentro de
+`TicketService`, donde el número global la disimulaba; recién al extraerla (Fase 2) quedó a
+la vista. **Es exactamente lo que se esperaba de tener medición**, y llegó en la primera
+corrida.
+
+Lo que cubre importa: ese código da de alta proveedores y **pisa precios del catálogo** a
+partir de lo que un modelo de OCR creyó leer en una foto sacada en el yacimiento. El test
+principal es el freno a las alucinaciones — un 2.086 leído como 20.860 es un error de una
+coma — que es lo único que evita que una lectura dudosa quede como precio vigente para
+todos los empleados.
+
+**Sigue pendiente** el resto de la lista larga (`JwtUtil` al 4,3%, `MistralTicketAnalysisService`
+al 31,3%, `MinioStorageService` y `UsernameGenerator` en 0%). `JwtUtil` es el que más
+incomoda de los que quedan, por lo que hace. Ver Fase 4.
 
 ---
 
@@ -632,7 +701,7 @@ servidor. Un log lleno de ruido es un log que nadie mira.
 
 **Arreglo:** agregar el handler devolviendo 405 con su `ErrorCode` correspondiente.
 
-## [ ] BLD-01 — Sin JaCoCo, sin chequeo de dependencias, sin análisis estático
+## [x] BLD-01 — Sin JaCoCo, sin chequeo de dependencias, sin análisis estático
 
 **Ubicación:** `backend/pom.xml`
 
@@ -647,9 +716,34 @@ Las consecuencias son concretas y no teóricas:
   tres dependencias con versión fijada a mano (ver BLD-02) en una app que maneja auth, JWT,
   subida de archivos y rate limiting.
 
-**Arreglo:** agregar `jacoco-maven-plugin` atado a `verify` (aunque sea con un umbral
-blando al principio, para tener la línea de base) y `org.owasp:dependency-check-maven`. El
-proyecto tiene pocas dependencias, así que el scan no va a pesar en el build.
+**Mitigación aplicada:**
+
+**JaCoCo**, con reporte en cada `mvn test` (`target/site/jacoco/index.html`) y **sin umbral
+que rompa el build**. Es deliberado: un umbral duro puesto de entrada sobre un proyecto con
+agujeros conocidos obliga a elegir entre bajarlo hasta que no signifique nada o bloquear a
+todo el mundo. Primero la línea de base, el umbral después y a conciencia.
+
+La versión del plugin va **fijada**. El parent de Spring Boot no gestiona
+`jacoco-maven-plugin`, así que sin eso Maven resuelve la última publicada y la misma cabeza
+de git puede medir distinto la semana que viene — el mismo problema de reproducibilidad que
+señala INF-04. (Se detectó por el warning de Maven en la primera corrida; se pineó antes de
+commitear.)
+
+**dependency-check** va en un perfil **opt-in**, no en el build de siempre:
+
+```
+./mvnw verify -Pseguridad -DnvdApiKey=<key>
+```
+
+Descarga la base del NVD, tarda varios minutos la primera vez y desde 2023 pide API key.
+Atado a `verify` dejaría a cualquiera que clone el repo con un build lento o roto por algo
+ajeno a su cambio. Falla con CVSS ≥ 7.
+
+**Lo que la medición devolvió de entrada** ya justificó el plugin: `CatalogoOcrResolver` al
+23,7%, invisible hasta ese momento (ver TST-01).
+
+**Queda sin hacer:** SpotBugs/Error Prone y Spotless. No entraron en esta fase para no meter
+un formateador que reescriba archivos en medio de una serie de cambios en revisión.
 
 ## [ ] INF-01 — `dockerfile` sin `HEALTHCHECK`
 
@@ -666,7 +760,7 @@ una línea:
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/health || exit 1
 ```
 
-## [ ] INF-02 — `domain-tags.conf` no mapea `empleado`, `precio` ni `proveedor`
+## [x] INF-02 — `domain-tags.conf` no mapea `empleado`, `precio` ni `proveedor`
 
 **Ubicación:** `backend/scripts/domain-tags.conf`
 
@@ -679,10 +773,32 @@ El fallback es **seguro** (así está diseñado, y está bien), pero significa q
 optimización nunca aplica para esos dominios — que son justo los que TST-01 marca como sin
 tests. El script está optimizando todo menos donde más falta hace.
 
-**Arreglo:** agregar los tres mapeos. Cuidado con el de `precio`: la cadena `Precio`
-aparece también dentro de `TicketService` y `ConsumoCalculator`, así que hay que verificar
-que el regex no genere colisiones de tag falsas. Y agregar los `@Tag` correspondientes
-cuando se escriban los tests de TST-01.
+**Mitigación aplicada — se agregó UNO de los tres mapeos, y dos que no estaban previstos.**
+
+**`Empleado=empleado`** entra ahora que `EmpleadoServiceTest` lo respalda.
+
+**`Precio` y `Proveedor` NO se mapearon**, a propósito. `PrecioService` y `ProveedorService`
+siguen sin tests propios, así que el tag estaría vacío. Y eso es **peor que no tener la
+entrada**: cambia un fallback honesto ("no sé qué cubre esto, corro todo") por un falso
+verde ("corrí el dominio", que no tenía nada adentro). Quedó escrita la regla en el propio
+archivo para quien agregue entradas después.
+
+**Lo que no estaba previsto y resultó más grave**: los tres servicios extraídos en la Fase 2
+tienen su cobertura en `TicketServiceTest`, no donde sugiere su nombre. `VehiculoConsumoService`
+matchea `Vehiculo` y por lo tanto **corría el dominio `vehiculo`, que no lo cubre**. Eso no
+es un fallback: es un **miss** — daba verde habiendo corrido los tests equivocados, que es
+el único error que este script no puede permitirse. Se mapearon explícitamente los tres a
+`ticket`.
+
+Verificado ejecutando el matcher contra los archivos reales:
+
+```
+EmpleadoService.java         -> empleado
+VehiculoConsumoService.java  -> vehiculo ticket
+PrecioCatalogoService.java   -> ticket
+CatalogoOcrResolver.java     -> ticket
+PrecioService.java           -> FALLBACK suite completa   (correcto: no tiene tests)
+```
 
 ## [ ] SVC-04 — El validador de origen de carga reporta un solo error por request
 
@@ -916,15 +1032,23 @@ una regresión (alguien vuelve a anotar `analyze`, o mueve el resolver adentro d
 `TicketService` y lo convierte en una self-invocation) pasaría entera. Ahora hay una red
 para eso, con un mensaje de fallo que explica qué revisar.
 
-## Fase 3 — Red de seguridad antes de seguir tocando
+## ~~Fase 3 — Red de seguridad antes de seguir tocando~~ ✅ COMPLETADA
 
-Esta fase no agrega ninguna funcionalidad, y por eso es la que se saltea siempre. No la
-saltees. Las dos fases anteriores acaban de mover código en `TicketService`, `VehiculoService`
-y `EmpleadoService`, que son **exactamente** las clases sin tests.
+Esta fase no agrega ninguna funcionalidad, y por eso es la que se saltea siempre.
 
-7. **TST-01** (tests de `AdminHabilitadoController`, `VehiculoService`, `EmpleadoService`)
-8. **INF-02** (mapear los dominios faltantes en `domain-tags.conf`, ya con los tags nuevos)
-9. **BLD-01** (JaCoCo + OWASP, para tener línea de base medible de acá en adelante)
+Valió la pena, y no por la cobertura: **de las tres fases, esta es la que encontró el bug
+más barato de arreglar y más caro de descubrir en producción** (WEB-00). Escribir el primer
+test de `AdminHabilitadoController` lo destapó en el primer intento.
+
+7. ~~**TST-01**~~ — 71 tests nuevos. Incluyó `CatalogoOcrResolver`, que no estaba en la
+   lista: apareció al medir cobertura.
+8. ~~**INF-02**~~ — se mapeó `empleado`; se dejaron sin mapear `precio` y `proveedor` a
+   propósito; y se corrigió un **miss** en los servicios de la Fase 2.
+9. ~~**BLD-01**~~ — JaCoCo (línea de base 75,4% / 64,6%) y dependency-check opt-in.
+
+**Lo que dejó esta fase:** medición. Ahora existe un número que se puede comparar contra el
+de la semana que viene, y ese número ya sirvió para encontrar una clase al 23,7% que nadie
+sabía que estaba ahí.
 
 ## Fase 4 — Eficiencia y limpieza
 
@@ -975,9 +1099,19 @@ un problema de consistencia al replicar. Eso se arregla con checklist y con revi
 más estudio. Cuando arregles cada uno de estos, la pregunta que vale es: *"¿dónde más hice
 esto mismo?"*
 
-Y una advertencia sobre este mismo documento, porque también es la lección de la Fase 1:
-**una auditoría estática encontró 29 hallazgos y se le pasó el único que ya estaba
-rompiendo datos en producción** (DB-00). Apareció recién al abrir el archivo para tocarlo,
-y se confirmó con datos reales en una base real. Leer código encuentra mucho; ejecutarlo
-contra Postgres con volumen encuentra lo otro. Las dos cosas hacen falta, y este documento
-solo hizo la primera.
+Y una advertencia sobre este mismo documento. La auditoría estática encontró 29 hallazgos,
+pero **los dos bugs que ya estaban rompiendo cosas en producción no salieron de leer
+código**:
+
+| Bug | Cómo apareció |
+| --- | --- |
+| **DB-00** — el admin no veía ninguna carga de herramienta | Abriendo `listForAdmin` para copiarle un patrón, y confirmado ejecutando SQL contra 200.000 filas |
+| **WEB-00** — el alta masiva del padrón devolvía 500 en vez de 400 | Escribiendo el primer test del controller |
+
+Y un tercero, que no era un bug pero sí un agujero que nadie veía: `CatalogoOcrResolver` al
+23,7% de cobertura, que apareció **la primera vez que se midió**.
+
+Leer código encuentra mucho: encontró las 29. Pero ejecutarlo —contra una base con volumen,
+contra un test que todavía no existe, contra un medidor— encuentra otra clase de cosas, y
+son justo las que ya están costando plata. Las dos prácticas hacen falta. Este documento,
+tal como nació, solo hacía la primera.
