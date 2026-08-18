@@ -95,7 +95,7 @@ class StatsServiceTest {
             }
 
             @Override
-            public Double getLitros() {
+            public BigDecimal getLitros() {
                 return t.getLitros();
             }
 
@@ -140,7 +140,7 @@ class StatsServiceTest {
         empleado.setRol(Rol.EMPLEADO);
 
         Ticket t = new Ticket();
-        t.setLitros(litros);
+        t.setLitros(BigDecimal.valueOf(litros));
         t.setPrecio(precio);
         t.setProveedor(proveedor);
         t.setPersona(empleado);
@@ -198,7 +198,11 @@ class StatsServiceTest {
         // El promedio es POR VEHICULO: su denominador cuenta solo vehiculos, asi
         // que el numerador tampoco puede incluir los litros de la herramienta.
         // Con un unico vehiculo que cargo 50 L, el promedio es 50, no 50.3.
-        assertEquals(50.0, resp.promedioLitrosPorVehiculo());
+        //
+        // compareTo y no equals: BigDecimal.equals compara TAMBIEN la escala, asi
+        // que 50.00 no seria igual a 50 aunque valgan lo mismo. Lo que este test
+        // afirma es el VALOR; la escala la fija redondear() y se verifica aparte.
+        assertEquals(0, new BigDecimal("50").compareTo(resp.promedioLitrosPorVehiculo()));
     }
 
     /**

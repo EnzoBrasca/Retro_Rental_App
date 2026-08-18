@@ -91,7 +91,7 @@ class AnalyzeSinTransaccionTest {
     @Test
     void laResolucionContraElCatalogo_siCorreEnTransaccion() {
         var ocr = new TicketAnalysisResult(
-            10.0, LocalDateTime.now(), 1000.0, 100.0, null, null, TipoCombustible.GASOIL_GRADO_2);
+            new java.math.BigDecimal("10.0"), LocalDateTime.now(), 1000.0, 100.0, null, null, TipoCombustible.GASOIL_GRADO_2);
 
         // Se resuelve con estacion null: no da de alta nada, pero igual entra al
         // metodo transaccional, que es lo que se quiere observar.
@@ -117,7 +117,7 @@ class AnalyzeSinTransaccionTest {
             llamado.set(true);
             transaccionAbierta.set(TransactionSynchronizationManager.isActualTransactionActive());
             return new TicketAnalysisResult(
-                20.0, LocalDateTime.now(), 2000.0, 100.0, null, null, null);
+                new java.math.BigDecimal("20.0"), LocalDateTime.now(), 2000.0, 100.0, null, null, null);
         }
 
         boolean fueLlamado() {

@@ -15,11 +15,11 @@ import java.util.List;
 public record StatsResponse(
     LocalDate desde,
     LocalDate hasta,
-    double totalLitros,
+    BigDecimal totalLitros,
     BigDecimal gastoTotal,
     long cantidadRegistros,
     int vehiculosActivos,
-    double promedioLitrosPorVehiculo,
+    BigDecimal promedioLitrosPorVehiculo,
 
     /**
      * Consumo real del vehículo filtrado durante el período, en la unidad que

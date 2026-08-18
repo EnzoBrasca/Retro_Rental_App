@@ -46,7 +46,7 @@ class AdminTicketControllerTest extends AbstractControllerTest {
     private TicketService ticketService;
 
     private PagedModel<TicketResponse> samplePage() {
-        TicketResponse t = new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1, null,
+        TicketResponse t = new TicketResponse(1, new BigDecimal("42.5"), LocalDateTime.now(), 1, 1, 1, null,
             "emp@example.com", 84300, UnidadUso.KM, new BigDecimal("2086.00"),
             "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2", null, null);

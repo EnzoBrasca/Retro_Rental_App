@@ -159,7 +159,7 @@ class TicketServiceTest {
 
     private CreateTicketRequest request(BigDecimal precioUnitario, Integer usoAcumulado) {
         CreateTicketRequest req = new CreateTicketRequest();
-        req.setLitros(50.0);
+        req.setLitros(new BigDecimal("50.0"));
         req.setIdPrecio(10);
         req.setIdProveedor(1);
         req.setIdVehiculo(5);
@@ -170,7 +170,7 @@ class TicketServiceTest {
 
     private CreateTicketRequest requestHerramienta(BigDecimal precioUnitario) {
         CreateTicketRequest req = new CreateTicketRequest();
-        req.setLitros(0.3);
+        req.setLitros(new BigDecimal("0.3"));
         req.setIdPrecio(10);
         req.setIdProveedor(1);
         req.setIdHerramienta(7);
@@ -183,7 +183,7 @@ class TicketServiceTest {
     private CreateTicketRequest requestHerramientaConCombustible(
             TipoCombustible tipoCombustible, BigDecimal precioUnitario) {
         CreateTicketRequest req = new CreateTicketRequest();
-        req.setLitros(0.3);
+        req.setLitros(new BigDecimal("0.3"));
         req.setTipoCombustible(tipoCombustible);
         req.setIdProveedor(1);
         req.setIdHerramienta(7);
@@ -461,7 +461,7 @@ class TicketServiceTest {
         Ticket t = new Ticket();
         t.setId(id);
         t.setUsoAcumulado(uso);
-        t.setLitros(litros);
+        t.setLitros(BigDecimal.valueOf(litros));
         t.setVehiculo(vehiculo);
         return t;
     }
@@ -482,7 +482,7 @@ class TicketServiceTest {
                 }
 
                 @Override
-                public Double getLitros() {
+                public BigDecimal getLitros() {
                     return t.getLitros();
                 }
             })
