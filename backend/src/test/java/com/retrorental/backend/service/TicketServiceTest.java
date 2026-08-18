@@ -78,7 +78,7 @@ class TicketServiceTest {
     @Mock private ObjectProvider<TicketAnalysisService> analysisProvider;
     @Mock private ImageValidator imageValidator;
 
-    @InjectMocks private TicketService service;
+    private TicketService service;
 
     private Proveedor proveedor;
     private Precio vigente;
@@ -89,8 +89,29 @@ class TicketServiceTest {
 
     @BeforeEach
     void setUp() {
-        // El margen se inyecta con @Value; en un test unitario se setea a mano.
-        ReflectionTestUtils.setField(service, "margenMaximo", new BigDecimal("30"));
+        // Los colaboradores extraidos de TicketService (ver docs/BACKEND-AUDIT.md,
+        // SVC-01) se arman REALES, no como mocks, y sobre los mismos repositorios
+        // mockeados. Es deliberado: estos tests verifican reglas de negocio como
+        // "corregir el precio actualiza el catalogo" o "anular devuelve el consumo
+        // al del alta". Esa logica se mudo de archivo pero sigue siendo la misma, y
+        // mockear los colaboradores convertiria esos tests en verificaciones vacias
+        // de que un mock devuelve lo que se le dijo que devuelva.
+        //
+        // La frontera de mockeo sigue estando donde tiene que estar: los
+        // repositorios y los servicios de I/O (storage, OCR).
+        PrecioCatalogoService precioCatalogo = new PrecioCatalogoService(precioRepository);
+        ReflectionTestUtils.setField(precioCatalogo, "margenMaximo", new BigDecimal("30"));
+
+        VehiculoConsumoService vehiculoConsumo = new VehiculoConsumoService(ticketRepository);
+        ReflectionTestUtils.setField(vehiculoConsumo, "ventanaConsumo", 10);
+
+        CatalogoOcrResolver catalogoOcrResolver =
+            new CatalogoOcrResolver(proveedorRepository, precioCatalogo);
+
+        service = new TicketService(
+            ticketRepository, proveedorRepository, vehiculoRepository, herramientaRepository,
+            personaRepository, storageService, imageValidator,
+            precioCatalogo, vehiculoConsumo, catalogoOcrResolver, analysisProvider);
 
         proveedor = new Proveedor();
         proveedor.setId(1);
