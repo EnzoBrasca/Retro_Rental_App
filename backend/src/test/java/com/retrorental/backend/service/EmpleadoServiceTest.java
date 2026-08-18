@@ -100,23 +100,24 @@ class EmpleadoServiceTest {
     // ------------------------------------------------------------------
 
     /**
-     * EL test que justifica este archivo. Dar de baja al empleado tiene que
-     * soltar TODOS sus vehículos, no solo el primero.
+     * EL test que justifica este archivo: dar de baja al empleado tiene que
+     * soltar sus vehículos.
+     *
+     * La liberación ahora es UNA sentencia UPDATE en la base y no un bucle de
+     * save() en memoria (ver docs/BACKEND-AUDIT.md, DB-08), así que acá se
+     * verifica que el servicio la DELEGUE con el empleado correcto. Que el SQL
+     * efectivamente ponga en NULL las filas que corresponden —y solo esas— se
+     * prueba contra una base real en EmpleadoPersistenciaTest.
+     *
+     * Este test antes assertaba sobre las entidades en memoria. Se reescribió a
+     * propósito: con la lógica movida a SQL, esa aserción ya no podía observar
+     * nada real.
      */
     @Test
-    void desactivar_liberaTodosLosVehiculosAsignados() {
-        Vehiculo uno = vehiculoDe(10, empleado);
-        Vehiculo dos = vehiculoDe(11, empleado);
-        Vehiculo tres = vehiculoDe(12, empleado);
-        empleado.setVehiculos(new ArrayList<>(List.of(uno, dos, tres)));
-
+    void desactivar_delegaLaLiberacionDeVehiculosALaBase() {
         service.desactivar(1);
 
-        assertThat(uno.getOperario()).isNull();
-        assertThat(dos.getOperario()).isNull();
-        assertThat(tres.getOperario())
-            .as("el ultimo de la lista tambien tiene que quedar libre")
-            .isNull();
+        verify(vehiculoRepository).desasignarTodosDe(1);
         assertThat(empleado.getFechaBaja()).isNotNull();
     }
 
@@ -127,7 +128,6 @@ class EmpleadoServiceTest {
         service.desactivar(1);
 
         assertThat(empleado.getFechaBaja()).isNotNull();
-        verify(vehiculoRepository, never()).save(any());
     }
 
     @Test
@@ -146,15 +146,12 @@ class EmpleadoServiceTest {
      */
     @Test
     void desactivar_dosVeces_noLiberaVehiculosEnElSegundoIntento() {
-        Vehiculo v = vehiculoDe(10, empleado);
-        empleado.setVehiculos(new ArrayList<>(List.of(v)));
         empleado.setFechaBaja(LocalDate.now().minusDays(1));
 
         assertThatThrownBy(() -> service.desactivar(1))
             .isInstanceOf(ConflictException.class);
 
-        assertThat(v.getOperario()).isEqualTo(empleado);
-        verify(vehiculoRepository, never()).save(any());
+        verify(vehiculoRepository, never()).desasignarTodosDe(any());
     }
 
     @Test
