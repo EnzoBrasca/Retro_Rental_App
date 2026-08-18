@@ -17,9 +17,13 @@ import java.time.LocalDateTime;
 @OrigenCargaCoherente
 public class CreateTicketRequest implements CargaOrigen {
 
+    // BigDecimal desde el BORDE de entrada, no convertido mas adentro: si se
+    // recibiera como Double, el valor ya llegaria con error de representacion y
+    // convertirlo despues no lo recupera (ver docs/BACKEND-AUDIT.md, DB-04).
+    // Jackson parsea el numero del JSON directo a BigDecimal, exacto.
     @NotNull(message = "Los litros son obligatorios")
     @Positive(message = "Los litros deben ser mayores a cero")
-    private Double litros;
+    private BigDecimal litros;
 
     // Opcional: si no viene, el backend usa el momento actual. No puede ser futura.
     @PastOrPresent(message = "La fecha de carga no puede ser futura")

@@ -18,6 +18,14 @@ class ConsumoCalculatorTest {
 
     private static final int VENTANA = 10;
 
+    // Los litros de una Carga son BigDecimal (ver docs/BACKEND-AUDIT.md, DB-04).
+    // Este helper deja los casos de prueba legibles —carga(1000, 50) en vez de
+    // new Carga(1000, BigDecimal.valueOf(50))— sin que el tipo del dominio se
+    // relaje para acomodar a los tests.
+    private static Carga carga(int uso, double litros) {
+        return new Carga(uso, BigDecimal.valueOf(litros));
+    }
+
     private static Consumo calcularKm(List<Carga> cargas) {
         return ConsumoCalculator.calcular(cargas, UnidadUso.KM, VENTANA);
     }
@@ -34,7 +42,7 @@ class ConsumoCalculatorTest {
     @Test
     void unaSolaCarga_noHayConsumo() {
         // La primera carga solo fija la linea base: no genera intervalo.
-        Consumo c = calcularKm(List.of(new Carga(1000, 50)));
+        Consumo c = calcularKm(List.of(carga(1000, 50)));
         assertNull(c.historico());
         assertNull(c.reciente());
     }
@@ -43,7 +51,7 @@ class ConsumoCalculatorTest {
     void lecturasIguales_noHayConsumo() {
         // Sin uso entre cargas no hay de que derivar un consumo (y evita
         // dividir por cero).
-        Consumo c = calcularKm(List.of(new Carga(1000, 50), new Carga(1000, 40)));
+        Consumo c = calcularKm(List.of(carga(1000, 50), carga(1000, 40)));
         assertNull(c.historico());
     }
 
@@ -53,7 +61,7 @@ class ConsumoCalculatorTest {
     void dosCargas_usaSoloLosLitrosDeLaSegunda() {
         // 100 km recorridos, 10 L repuestos -> 10 L/100km. Los 50 L de la
         // primera carga NO entran: son la linea base.
-        Consumo c = calcularKm(List.of(new Carga(1000, 50), new Carga(1100, 10)));
+        Consumo c = calcularKm(List.of(carga(1000, 50), carga(1100, 10)));
         assertEquals(new BigDecimal("10.00"), c.historico());
     }
 
@@ -61,7 +69,7 @@ class ConsumoCalculatorTest {
     void maquina_seExpresaEnLitrosPorHora() {
         // 20 horas de uso, 40 L -> 2 L/h. Sin multiplicar por 100.
         Consumo c = ConsumoCalculator.calcular(
-            List.of(new Carga(100, 60), new Carga(120, 40)), UnidadUso.HORAS, VENTANA);
+            List.of(carga(100, 60), carga(120, 40)), UnidadUso.HORAS, VENTANA);
         assertEquals(new BigDecimal("2.00"), c.historico());
     }
 
@@ -73,9 +81,9 @@ class ConsumoCalculatorTest {
     @Test
     void acumulaTotales_noPromediaLosConsumosDeCadaIntervalo() {
         List<Carga> cargas = List.of(
-            new Carga(0, 30),     // linea base
-            new Carga(100, 20),   // 100 km con 20 L -> 20 L/100km
-            new Carga(110, 5));   // 10 km con 5 L  -> 50 L/100km
+            carga(0, 30),     // linea base
+            carga(100, 20),   // 100 km con 20 L -> 20 L/100km
+            carga(110, 5));   // 10 km con 5 L  -> 50 L/100km
 
         // Total: 25 L en 110 km = 22.73 L/100km.
         Consumo c = calcularKm(cargas);
@@ -91,9 +99,9 @@ class ConsumoCalculatorTest {
         // entre los dos intervalos: el historico no cambia. Es lo que hace al
         // metodo robusto frente a quien no llena el tanque.
         Consumo parejo = calcularKm(List.of(
-            new Carga(0, 40), new Carga(100, 10), new Carga(200, 10)));
+            carga(0, 40), carga(100, 10), carga(200, 10)));
         Consumo desparejo = calcularKm(List.of(
-            new Carga(0, 40), new Carga(100, 3), new Carga(200, 17)));
+            carga(0, 40), carga(100, 3), carga(200, 17)));
 
         assertEquals(parejo.historico(), desparejo.historico());
     }
@@ -103,7 +111,7 @@ class ConsumoCalculatorTest {
     @Test
     void conMenosIntervalosQueLaVentana_recienteIgualaAlHistorico() {
         Consumo c = calcularKm(List.of(
-            new Carga(0, 30), new Carga(100, 10), new Carga(200, 10)));
+            carga(0, 30), carga(100, 10), carga(200, 10)));
         assertEquals(c.historico(), c.reciente());
     }
 
@@ -112,11 +120,11 @@ class ConsumoCalculatorTest {
         // Ventana de 2 intervalos. El vehiculo empeora al final: el historico se
         // queda a mitad de camino y el reciente muestra el deterioro.
         List<Carga> cargas = List.of(
-            new Carga(0, 100),
-            new Carga(100, 10),   // 10 L/100km
-            new Carga(200, 10),   // 10 L/100km
-            new Carga(300, 30),   // 30 L/100km
-            new Carga(400, 30));  // 30 L/100km
+            carga(0, 100),
+            carga(100, 10),   // 10 L/100km
+            carga(200, 10),   // 10 L/100km
+            carga(300, 30),   // 30 L/100km
+            carga(400, 30));  // 30 L/100km
 
         Consumo c = ConsumoCalculator.calcular(cargas, UnidadUso.KM, 2);
 

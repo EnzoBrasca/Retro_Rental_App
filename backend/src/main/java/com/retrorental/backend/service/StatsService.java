@@ -29,8 +29,13 @@ import java.util.Objects;
  * Estadísticas de consumo de combustible por período. Diario, semanal y mensual
  * comparten TODA la lógica: solo cambian los límites del rango. El gasto se
  * calcula por ticket como litros × precioUnitario (el precio vigente que quedó
- * asociado al ticket), y se agrega en memoria — el volumen por período es chico
- * y evita mezclar Double (litros) con BigDecimal (precio) en un SUM de JPQL.
+ * asociado al ticket), y se agrega en memoria — el volumen por período es chico.
+ *
+ * Todo el dinero y todos los litros se acumulan en BigDecimal. Antes los litros
+ * eran Double y el argumento para dejarlos así era evitar mezclar tipos en un
+ * SUM de JPQL; ese argumento cayó cuando se vio que el operando ya entraba
+ * contaminado por el error de representación binaria y que multiplicarlo por un
+ * BigDecimal no lo recuperaba (ver docs/BACKEND-AUDIT.md, DB-04).
  */
 @Service
 @RequiredArgsConstructor
@@ -87,12 +92,12 @@ public class StatsService {
         List<Ticket> tickets = ticketRepository.findForStats(
             desde, hasta, vehiculoId, filtrarPorEmpleado, idsParaLaConsulta);
 
-        double totalLitros = 0d;
+        BigDecimal totalLitros = BigDecimal.ZERO;
         // Litros cargados a VEHICULOS unicamente. Va aparte de totalLitros
         // porque es el numerador de promedioLitrosPorVehiculo, cuyo denominador
         // (vehiculosActivos) tampoco cuenta herramientas: mezclarlos inflaria el
         // promedio de cada vehiculo con la nafta de las motosierras y bidones.
-        double litrosDeVehiculos = 0d;
+        BigDecimal litrosDeVehiculos = BigDecimal.ZERO;
         BigDecimal gastoTotal = BigDecimal.ZERO;
         // LinkedHashMap: acumula preservando orden de aparición (el orden
         // final lo define el sort por gasto, esto es solo estable).
@@ -100,13 +105,16 @@ public class StatsService {
         Map<Integer, Acumulador> porEmpleado = new LinkedHashMap<>();
 
         for (Ticket t : tickets) {
-            double litros = t.getLitros();
-            BigDecimal gasto = t.getPrecio().getPrecioUnitario()
-                .multiply(BigDecimal.valueOf(litros));
+            BigDecimal litros = t.getLitros();
+            // Multiplicacion EXACTA: los dos operandos son BigDecimal. Antes
+            // litros entraba como double y ya venia contaminado, asi que el
+            // BigDecimal del precio no alcanzaba (ver docs/BACKEND-AUDIT.md,
+            // DB-04).
+            BigDecimal gasto = t.getPrecio().getPrecioUnitario().multiply(litros);
 
-            totalLitros += litros;
+            totalLitros = totalLitros.add(litros);
             if (t.getVehiculo() != null) {
-                litrosDeVehiculos += litros;
+                litrosDeVehiculos = litrosDeVehiculos.add(litros);
             }
             gastoTotal = gastoTotal.add(gasto);
 
@@ -123,13 +131,13 @@ public class StatsService {
 
         List<ProveedorConsumo> desglosePorProveedor = new ArrayList<>();
         porProveedor.forEach((id, acc) -> desglosePorProveedor.add(new ProveedorConsumo(
-            id, acc.etiqueta, redondearLitros(acc.litros), redondear(acc.gasto))));
+            id, acc.etiqueta, redondear(acc.litros), redondear(acc.gasto))));
         // Top proveedores: mayor gasto primero.
         desglosePorProveedor.sort(Comparator.comparing(ProveedorConsumo::gasto, Comparator.reverseOrder()));
 
         List<EmpleadoConsumo> desglosePorEmpleado = new ArrayList<>();
         porEmpleado.forEach((id, acc) -> desglosePorEmpleado.add(new EmpleadoConsumo(
-            id, acc.etiqueta, redondearLitros(acc.litros), redondear(acc.gasto))));
+            id, acc.etiqueta, redondear(acc.litros), redondear(acc.gasto))));
         // Top consumidores: mayor gasto primero.
         desglosePorEmpleado.sort(Comparator.comparing(EmpleadoConsumo::gasto, Comparator.reverseOrder()));
 
@@ -143,18 +151,23 @@ public class StatsService {
             .map(Vehiculo::getId)
             .distinct()
             .count();
-        double promedio = vehiculosActivos == 0 ? 0d : litrosDeVehiculos / vehiculosActivos;
+        // La division SIEMPRE lleva escala y modo de redondeo explicitos: sin
+        // ellos, BigDecimal.divide tira ArithmeticException cuando el resultado
+        // es periodico (ej. 10 L / 3 vehiculos).
+        BigDecimal promedio = vehiculosActivos == 0
+            ? BigDecimal.ZERO
+            : litrosDeVehiculos.divide(BigDecimal.valueOf(vehiculosActivos), 2, RoundingMode.HALF_UP);
 
         Consumo consumo = consumoDelPeriodo(vehiculoId, desde, hasta);
 
         return new StatsResponse(
             desdeInclusive,
             hastaExclusive.minusDays(1), // se expone el último día INCLUIDO
-            redondearLitros(totalLitros),
+            redondear(totalLitros),
             redondear(gastoTotal),
             tickets.size(),
             vehiculosActivos,
-            redondearLitros(promedio),
+            redondear(promedio),
             consumo.valor(),
             consumo.unidad(),
             desglosePorProveedor,
@@ -243,22 +256,18 @@ public class StatsService {
         return valor.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private static double redondearLitros(double litros) {
-        return BigDecimal.valueOf(litros).setScale(2, RoundingMode.HALF_UP).doubleValue();
-    }
-
     // Acumulador mutable por proveedor/empleado (solo dentro del cálculo).
     private static final class Acumulador {
         private final String etiqueta;
-        private double litros = 0d;
+        private BigDecimal litros = BigDecimal.ZERO;
         private BigDecimal gasto = BigDecimal.ZERO;
 
         private Acumulador(String etiqueta) {
             this.etiqueta = etiqueta;
         }
 
-        private void add(double litros, BigDecimal gasto) {
-            this.litros += litros;
+        private void add(BigDecimal litros, BigDecimal gasto) {
+            this.litros = this.litros.add(litros);
             this.gasto = this.gasto.add(gasto);
         }
     }

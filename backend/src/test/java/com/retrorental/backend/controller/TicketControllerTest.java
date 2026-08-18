@@ -44,7 +44,7 @@ class TicketControllerTest extends AbstractControllerTest {
     private TicketService ticketService;
 
     private TicketResponse sampleTicket() {
-        return new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1, null,
+        return new TicketResponse(1, new BigDecimal("42.5"), LocalDateTime.now(), 1, 1, 1, null,
             "juanperez", 1250, UnidadUso.HORAS, new BigDecimal("2086.00"),
             "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2", null, null);
@@ -255,7 +255,7 @@ class TicketControllerTest extends AbstractControllerTest {
     @WithMockUser(roles = "EMPLEADO")
     void analyze_conFoto_devuelve200() throws Exception {
         when(ticketService.analyze(any())).thenReturn(new TicketAnalysisResponse(
-            50.0, LocalDateTime.now(), 100000.0, 2000.0, "YPF",
+            new java.math.BigDecimal("50.0"), LocalDateTime.now(), 100000.0, 2000.0, "YPF",
             com.retrorental.backend.model.enums.TipoCombustible.NAFTA_SUPER, 3, "YPF Centro",
             5, new java.math.BigDecimal("2000")));
 

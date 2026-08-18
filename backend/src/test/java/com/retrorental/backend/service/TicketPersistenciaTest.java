@@ -20,6 +20,8 @@ import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
 import com.retrorental.backend.repository.TicketRepository;
 import com.retrorental.backend.repository.VehiculoRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -71,6 +73,9 @@ class TicketPersistenciaTest {
     @Autowired private PrecioRepository precioRepository;
     @Autowired private VehiculoRepository vehiculoRepository;
     @Autowired private HerramientaRepository herramientaRepository;
+    // Para vaciar el contexto de persistencia y forzar que la lectura vaya de
+    // verdad a la base (ver litros_seGuardanYSeLeenExactos).
+    @PersistenceContext private EntityManager entityManager;
 
     // toResponse pide URLs presignadas; sin MinIO levantado el mock alcanza y
     // mantiene el test enfocado en el SQL.
@@ -240,6 +245,66 @@ class TicketPersistenciaTest {
             .hasSize(2);
     }
 
+    /**
+     * DB-04: los litros se guardan EXACTOS, no aproximados.
+     *
+     * Este test corre contra Postgres real a proposito: lo que se verifica es el
+     * comportamiento de la COLUMNA. Con `double precision` un valor como 45.67 no
+     * tiene representacion binaria exacta y lo que vuelve de la base no es
+     * identico a lo que se guardo; con `numeric(10,2)` (migracion V12) si lo es.
+     *
+     * Se compara con equals y no con compareTo justamente para exigir que
+     * coincida TAMBIEN la escala: es la forma de afirmar que el valor no fue
+     * reinterpretado en el camino de ida y vuelta.
+     */
+    @Test
+    void litros_seGuardanYSeLeenExactos() {
+        Proveedor proveedor = proveedorGuardado();
+        Precio precio = precioGuardado(proveedor);
+        Ticket ticket = crearTicketDeVehiculo(proveedor, precio);
+
+        ticket.setLitros(new BigDecimal("45.67"));
+        ticketRepository.saveAndFlush(ticket);
+        // Sin el clear, el read podria devolver la MISMA instancia en memoria y
+        // el test pasaria sin haber tocado la base.
+        entityManager.clear();
+
+        Ticket leido = ticketRepository.findById(ticket.getId()).orElseThrow();
+
+        assertThat(leido.getLitros()).isEqualTo(new BigDecimal("45.67"));
+    }
+
+    /**
+     * DB-04, la otra mitad: la SUMA de muchos litros no acumula deriva.
+     *
+     * Es el escenario que describe la auditoria — el error de punto flotante se
+     * suma vuelta a vuelta— llevado al caso canonico: 0,1 + 0,2 no da 0,3 en
+     * binario. Sobre `numeric` la suma es exacta y da 0.30 sin sorpresas.
+     */
+    @Test
+    void laSumaDeLitrosNoAcumulaErrorDePuntoFlotante() {
+        Proveedor proveedor = proveedorGuardado();
+        Precio precio = precioGuardado(proveedor);
+
+        Ticket unDecimo = crearTicketDeVehiculo(proveedor, precio);
+        unDecimo.setLitros(new BigDecimal("0.10"));
+        ticketRepository.saveAndFlush(unDecimo);
+
+        Ticket dosDecimos = crearTicketDeHerramienta(proveedor, precio);
+        dosDecimos.setLitros(new BigDecimal("0.20"));
+        ticketRepository.saveAndFlush(dosDecimos);
+        entityManager.clear();
+
+        BigDecimal total = ticketRepository.findForStats(
+                LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1),
+                null, false, List.of(-1))
+            .stream()
+            .map(Ticket::getLitros)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        assertThat(total).isEqualByComparingTo("0.30");
+    }
+
     /** Un ticket anulado nunca entra en las estadísticas. */
     @Test
     void findForStats_ignoraLosAnulados() {
@@ -293,7 +358,7 @@ class TicketPersistenciaTest {
         vehiculo = vehiculoRepository.save(vehiculo);
 
         Ticket ticket = new Ticket();
-        ticket.setLitros(50.0);
+        ticket.setLitros(new BigDecimal("50.0"));
         ticket.setFechaCarga(LocalDateTime.now().minusHours(1));
         ticket.setUsoAcumulado(1100);
         ticket.setPrecio(precio);
@@ -310,7 +375,7 @@ class TicketPersistenciaTest {
         herramienta = herramientaRepository.save(herramienta);
 
         Ticket ticket = new Ticket();
-        ticket.setLitros(3.5);
+        ticket.setLitros(new BigDecimal("3.5"));
         ticket.setFechaCarga(LocalDateTime.now());
         ticket.setPrecio(precio);
         ticket.setProveedor(proveedor);

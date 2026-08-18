@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -62,7 +63,7 @@ public interface TicketRepository
     interface CargaParaConsumo {
         Integer getUsoAcumulado();
 
-        Double getLitros();
+        BigDecimal getLitros();
     }
 
     /**
@@ -95,7 +96,7 @@ public interface TicketRepository
     interface CargaParaStats {
         Integer getUsoAcumulado();
 
-        Double getLitros();
+        BigDecimal getLitros();
 
         LocalDateTime getFechaCarga();
 

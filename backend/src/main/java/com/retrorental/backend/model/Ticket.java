@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -17,8 +18,14 @@ public class Ticket {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
-    @Column(name = "litros", nullable = false)
-    private Double litros;
+    // BigDecimal y no Double: estos litros se multiplican por el precio unitario
+    // para calcular plata. Con double el operando entraba contaminado por el
+    // error de representacion binaria y usar BigDecimal del otro lado no salvaba
+    // nada (ver docs/BACKEND-AUDIT.md, DB-04, y la migracion V12).
+    //
+    // precision/scale deben coincidir con numeric(10,2) de V12.
+    @Column(name = "litros", nullable = false, precision = 10, scale = 2)
+    private BigDecimal litros;
 
     @Column(name = "fecha_carga", nullable = false)
     private LocalDateTime fechaCarga;

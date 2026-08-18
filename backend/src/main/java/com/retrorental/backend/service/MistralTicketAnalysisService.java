@@ -6,6 +6,7 @@ import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.TicketAnalysisException;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -242,7 +243,7 @@ public class MistralTicketAnalysisService implements TicketAnalysisService {
         }
 
         return new TicketAnalysisResult(
-            asDouble(data, "litros"),
+            asDecimal(data, "litros"),
             asDateTime(data, "fechaCarga"),
             asDouble(data, "importeTotal"),
             asDouble(data, "precioPorLitro"),
@@ -269,6 +270,16 @@ public class MistralTicketAnalysisService implements TicketAnalysisService {
     private Double asDouble(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value != null && value.isNumber() ? value.asDouble() : null;
+    }
+
+    // Los litros del OCR entran como BigDecimal desde el borde, sin pasar por
+    // double: `decimalValue()` lee el numero del JSON tal cual viene, mientras
+    // que `asDouble()` lo haria pasar por punto flotante binario y le meteria
+    // error de representacion antes de que nadie lo use (ver
+    // docs/BACKEND-AUDIT.md, DB-04).
+    private BigDecimal asDecimal(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value != null && value.isNumber() ? value.decimalValue() : null;
     }
 
     private String asText(JsonNode node, String field) {

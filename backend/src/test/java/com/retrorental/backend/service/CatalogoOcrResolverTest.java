@@ -281,7 +281,7 @@ class CatalogoOcrResolverTest {
         when(proveedorRepository.findByServicio(Servicio.COMBUSTIBLE)).thenReturn(List.of(ypf));
 
         TicketAnalysisResponse res = resolver.resolver(new TicketAnalysisResult(
-            50.0, LocalDateTime.now(), 104300.0, 2086.0, "YPF En Ruta", null, null));
+            new BigDecimal("50.0"), LocalDateTime.now(), 104300.0, 2086.0, "YPF En Ruta", null, null));
 
         assertThat(res.idProveedor()).isEqualTo(1);
         assertThat(res.idPrecio()).isNull();
@@ -292,7 +292,7 @@ class CatalogoOcrResolverTest {
         when(proveedorRepository.findByServicio(Servicio.COMBUSTIBLE)).thenReturn(List.of(ypf));
 
         TicketAnalysisResponse res = resolver.resolver(new TicketAnalysisResult(
-            50.0, LocalDateTime.now(), null, null, "YPF En Ruta", null,
+            new BigDecimal("50.0"), LocalDateTime.now(), null, null, "YPF En Ruta", null,
             TipoCombustible.GASOIL_GRADO_2));
 
         assertThat(res.idPrecio()).isNull();
@@ -305,10 +305,13 @@ class CatalogoOcrResolverTest {
         LocalDateTime fecha = LocalDateTime.of(2026, 8, 14, 10, 30);
 
         TicketAnalysisResponse res = resolver.resolver(new TicketAnalysisResult(
-            50.0, fecha, 104300.0, 2086.0, "YPF En Ruta", null,
+            new BigDecimal("50.0"), fecha, 104300.0, 2086.0, "YPF En Ruta", null,
             TipoCombustible.GASOIL_GRADO_2));
 
-        assertThat(res.litros()).isEqualTo(50.0);
+        // isEqualByComparingTo y no isEqualTo: en BigDecimal, isEqualTo exige que
+        // coincida la escala ademas del valor. Lo que interesa aca es que el dato
+        // del OCR viaje SIN MODIFICAR, no con que escala se lo represente.
+        assertThat(res.litros()).isEqualByComparingTo("50.0");
         assertThat(res.fechaCarga()).isEqualTo(fecha);
         assertThat(res.importeTotal()).isEqualTo(104300.0);
         assertThat(res.estacion()).isEqualTo("YPF En Ruta");
@@ -331,13 +334,13 @@ class CatalogoOcrResolverTest {
 
     private TicketAnalysisResult ocr(String estacion, double precioPorLitro) {
         return new TicketAnalysisResult(
-            50.0, LocalDateTime.now(), 104300.0, precioPorLitro, estacion, null,
+            new BigDecimal("50.0"), LocalDateTime.now(), 104300.0, precioPorLitro, estacion, null,
             TipoCombustible.GASOIL_GRADO_2);
     }
 
     private TicketAnalysisResult ocrConCuit(String estacion, String cuit, double precioPorLitro) {
         return new TicketAnalysisResult(
-            50.0, LocalDateTime.now(), 104300.0, precioPorLitro, estacion, cuit,
+            new BigDecimal("50.0"), LocalDateTime.now(), 104300.0, precioPorLitro, estacion, cuit,
             TipoCombustible.GASOIL_GRADO_2);
     }
 }
