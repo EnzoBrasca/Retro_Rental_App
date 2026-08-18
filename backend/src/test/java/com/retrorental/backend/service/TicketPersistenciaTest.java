@@ -177,6 +177,87 @@ class TicketPersistenciaTest {
     }
 
     // ------------------------------------------------------------------
+    // findForStats: los filtros opcionales viven en el SQL, no en memoria
+    // ------------------------------------------------------------------
+
+    /**
+     * Los filtros de `findForStats` se movieron del servicio a la consulta (ver
+     * docs/BACKEND-AUDIT.md, SVC-02), así que hay que probarlos contra una base
+     * real: un test con el repositorio mockeado no ejerce el SQL.
+     */
+    @Test
+    void findForStats_sinFiltros_traeLosDosOrigenesDeCarga() {
+        Proveedor proveedor = proveedorGuardado();
+        Precio precio = precioGuardado(proveedor);
+        crearTicketDeVehiculo(proveedor, precio);
+        crearTicketDeHerramienta(proveedor, precio);
+
+        List<Ticket> encontrados = ticketRepository.findForStats(
+            LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1),
+            null, false, List.of(-1));
+
+        assertThat(encontrados).hasSize(2);
+    }
+
+    /**
+     * Filtrar por vehículo excluye de por sí los tickets de herramienta, porque
+     * esos tienen id_vehiculo en NULL. Es la propiedad en la que se apoyaba el
+     * filtrado en memoria que se eliminó.
+     */
+    @Test
+    void findForStats_filtradoPorVehiculo_dejaAfueraLasCargasDeHerramienta() {
+        Proveedor proveedor = proveedorGuardado();
+        Precio precio = precioGuardado(proveedor);
+        Ticket delVehiculo = crearTicketDeVehiculo(proveedor, precio);
+        crearTicketDeHerramienta(proveedor, precio);
+
+        List<Ticket> encontrados = ticketRepository.findForStats(
+            LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1),
+            delVehiculo.getVehiculo().getId(), false, List.of(-1));
+
+        assertThat(encontrados)
+            .extracting(Ticket::getId)
+            .containsExactly(delVehiculo.getId());
+    }
+
+    @Test
+    void findForStats_filtradoPorEmpleado_soloTraeLosDeEseEmpleado() {
+        Proveedor proveedor = proveedorGuardado();
+        Precio precio = precioGuardado(proveedor);
+        crearTicketDeVehiculo(proveedor, precio);
+        crearTicketDeHerramienta(proveedor, precio);
+
+        // Con el flag encendido y un id que no existe, no tiene que traer nada.
+        assertThat(ticketRepository.findForStats(
+            LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1),
+            null, true, List.of(-999)))
+            .isEmpty();
+
+        // Con el id real, los dos tickets del empleado.
+        assertThat(ticketRepository.findForStats(
+            LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1),
+            null, true, List.of(empleado.getId())))
+            .hasSize(2);
+    }
+
+    /** Un ticket anulado nunca entra en las estadísticas. */
+    @Test
+    void findForStats_ignoraLosAnulados() {
+        Proveedor proveedor = proveedorGuardado();
+        Precio precio = precioGuardado(proveedor);
+        Ticket vigente = crearTicketDeVehiculo(proveedor, precio);
+        Ticket anulado = crearTicketDeHerramienta(proveedor, precio);
+        anulado.setFechaAnulacion(LocalDateTime.now());
+        ticketRepository.save(anulado);
+
+        assertThat(ticketRepository.findForStats(
+            LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1),
+            null, false, List.of(-1)))
+            .extracting(Ticket::getId)
+            .containsExactly(vigente.getId());
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
