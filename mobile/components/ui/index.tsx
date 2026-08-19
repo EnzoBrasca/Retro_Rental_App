@@ -71,6 +71,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignSelf: 'flex-start',
   },
-  track: { height: 9, backgroundColor: '#151719', borderRadius: 6, overflow: 'hidden' },
+  track: { height: 9, backgroundColor: colors.trackBg, borderRadius: 6, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 6 },
 });

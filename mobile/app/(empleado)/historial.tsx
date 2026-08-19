@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   h1: { fontFamily: fonts.displayBold, fontSize: 26, color: colors.text, marginBottom: 4 },
   subtitle: { fontSize: 12, color: colors.textFaint, marginBottom: 16, fontFamily: fonts.sans },
   chip: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     paddingHorizontal: 14,
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
   chipText: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.sans },
   chipTextActive: { color: colors.bgDeep, fontFamily: fonts.sansSemi },
   card: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 13,

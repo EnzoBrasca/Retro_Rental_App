@@ -72,7 +72,13 @@ const RANGES: { key: StatsRange; label: string }[] = [
   { key: 'monthly', label: 'Mensual' },
 ];
 
-const CHART_COLORS = ['#F5C518', '#ffd94d', '#c99a00', '#8a7220', '#5f5220'];
+const CHART_COLORS = [
+  colors.primary,
+  colors.primaryLight,
+  colors.primaryDark,
+  colors.primaryDeep,
+  colors.primaryDeepest,
+];
 
 const estadoStyle: Record<Estado, { bg: string; color: string }> = {
   DISPONIBLE: { bg: colors.greenBg, color: colors.greenText },
@@ -836,7 +842,7 @@ function VehiclesABM() {
             </Text>
           </Pressable>
           <Pressable
-            style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]}
+            style={[styles.abmBtn, { backgroundColor: colors.surfaceMuted }]}
             onPress={() => setEditing(null)}
             disabled={saving}
           >
@@ -1235,7 +1241,7 @@ function EmpleadosList() {
             </Text>
           </Pressable>
           <Pressable
-            style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]}
+            style={[styles.abmBtn, { backgroundColor: colors.surfaceMuted }]}
             onPress={() => setEditing(null)}
             disabled={saving}
           >
@@ -1452,7 +1458,7 @@ function HabilitadosList() {
             </Text>
           </Pressable>
           <Pressable
-            style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]}
+            style={[styles.abmBtn, { backgroundColor: colors.surfaceMuted }]}
             onPress={() => setCreando(false)}
             disabled={saving}
           >
@@ -1572,7 +1578,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sans,
   },
   panel: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 13,
@@ -1643,7 +1649,7 @@ const styles = StyleSheet.create({
   kpi: {
     width: '47.8%',
     flexGrow: 1,
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 13,
@@ -1662,7 +1668,7 @@ const styles = StyleSheet.create({
   kpiValue: { fontFamily: fonts.mono, fontSize: 20, color: colors.text, marginTop: 6 },
   kpiDelta: { fontSize: 10.5, marginTop: 4, fontFamily: fonts.sans },
   chartCard: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
@@ -1674,7 +1680,7 @@ const styles = StyleSheet.create({
 
   topTabs: {
     flexDirection: 'row',
-    backgroundColor: '#1b1d20',
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 9,
     padding: 4,
     marginBottom: 20,
@@ -1696,7 +1702,7 @@ const styles = StyleSheet.create({
   },
   addBtnText: { color: colors.bgDeep, fontFamily: fonts.displayBold, letterSpacing: 1 },
   abmCard: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 12,
