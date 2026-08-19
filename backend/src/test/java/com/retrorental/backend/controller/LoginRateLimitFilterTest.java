@@ -14,6 +14,7 @@ import com.retrorental.backend.config.SecurityConfig;
 import com.retrorental.backend.dto.request.LoginRequest;
 import com.retrorental.backend.exception.InvalidCredentialsException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.AuthService;
 import org.junit.jupiter.api.Tag;
@@ -33,7 +34,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
  * el contador se reiniciaria y el resultado dependeria del reloj.
  */
 @WebMvcTest(controllers = AuthController.class)
-@Import({SecurityConfig.class, JwtFilter.class, LoginRateLimitFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, LoginRateLimitFilter.class, SecurityEventLogger.class})
 @TestPropertySource(properties = {
     "app.rate-limit.login.max-attempts=3",
     "app.rate-limit.login.window-seconds=600"

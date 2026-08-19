@@ -13,6 +13,7 @@ import com.retrorental.backend.config.SecurityConfig;
 import com.retrorental.backend.dto.response.TicketAnalysisResponse;
 import com.retrorental.backend.security.AnalyzeRateLimitFilter;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.TicketService;
 import org.junit.jupiter.api.Tag;
@@ -41,7 +42,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
  */
 @WebMvcTest(controllers = TicketController.class)
 @Import({SecurityConfig.class, JwtFilter.class, LoginRateLimitFilter.class,
-         AnalyzeRateLimitFilter.class})
+         AnalyzeRateLimitFilter.class, SecurityEventLogger.class})
 @TestPropertySource(properties = {
     "app.rate-limit.analyze.max-attempts=3",
     "app.rate-limit.analyze.window-seconds=600"

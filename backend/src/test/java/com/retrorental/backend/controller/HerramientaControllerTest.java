@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.retrorental.backend.config.SecurityConfig;
 import com.retrorental.backend.dto.response.HerramientaResponse;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.HerramientaService;
 import java.math.BigDecimal;
 import java.util.List;
@@ -24,7 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * ACTIVAS: la baja se filtra en el service.
  */
 @WebMvcTest(controllers = HerramientaController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("herramienta")
 class HerramientaControllerTest extends AbstractControllerTest {
 
