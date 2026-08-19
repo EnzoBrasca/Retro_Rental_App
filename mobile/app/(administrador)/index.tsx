@@ -64,6 +64,7 @@ import {
   parseEntero,
   parseNumero,
 } from '../../constants/labels';
+import { documentoInvalido, fechaISOInvalida, passwordInvalida } from '../../constants/validation';
 
 const RANGES: { key: StatsRange; label: string }[] = [
   { key: 'daily', label: 'Diario' },
@@ -609,6 +610,12 @@ function VehiclesABM() {
     if (!(capacidad > 0)) return setFormError('Capacidad de tanque inválida.');
     if (!(uso >= 0)) return setFormError(`${etiquetaUso(form.tipoVehiculo)} inválido.`);
     if (!(consumo > 0)) return setFormError('Consumo promedio inválido.');
+    // La fecha era el único campo del formulario que NO se validaba: viajaba tal
+    // cual se hubiera tipeado. "2026-13-45" cumple el formato y no existe, y
+    // "05/08/2026" es lo que un argentino escribe por reflejo. En el mejor caso
+    // volvía un 400 sin contexto.
+    const errorFecha = fechaISOInvalida(form.fechaUltimoMantenimiento);
+    if (errorFecha) return setFormError(`Último mantenimiento: ${errorFecha}`);
 
     const payload = {
       identificador: form.identificador.trim(),
@@ -806,6 +813,12 @@ function VehiclesABM() {
               style={styles.abmInput}
               value={form.fechaUltimoMantenimiento}
               onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })}
+              // El teclado numérico con puntuación evita la mitad de los errores
+              // de tipeo. La validación de que la fecha EXISTA está en save().
+              keyboardType="numbers-and-punctuation"
+              placeholder="2026-08-19"
+              placeholderTextColor={colors.textDim}
+              accessibilityLabel="Fecha del último mantenimiento, formato año-mes-día"
             />
           </>
         )}
@@ -991,8 +1004,6 @@ function VehiclesABM() {
   );
 }
 
-const DOCUMENTO_REGEX = /^\d{7,9}$/;
-
 type EmpleadoFormState = {
   nombre: string;
   apellido: string;
@@ -1083,11 +1094,11 @@ function EmpleadosList() {
     setFormError(null);
     if (!form.nombre.trim()) return setFormError('Ingresá el nombre.');
     if (!form.apellido.trim()) return setFormError('Ingresá el apellido.');
-    if (editing === 'new' && !DOCUMENTO_REGEX.test(form.documento.trim())) {
-      return setFormError('El documento debe tener entre 7 y 9 dígitos.');
-    }
-    if (editing === 'new' && form.password.length < 8) {
-      return setFormError('La contraseña debe tener al menos 8 caracteres.');
+    if (editing === 'new') {
+      const errorDocumento = documentoInvalido(form.documento);
+      if (errorDocumento) return setFormError(errorDocumento);
+      const errorPassword = passwordInvalida(form.password);
+      if (errorPassword) return setFormError(errorPassword);
     }
     if (!form.codigoArea.trim() || !form.telefonoNumero.trim()) {
       return setFormError('Completá el teléfono.');
@@ -1347,9 +1358,8 @@ function HabilitadosList() {
 
   const guardar = async () => {
     setFormError(null);
-    if (!DOCUMENTO_REGEX.test(documento.trim())) {
-      return setFormError('El documento debe tener entre 7 y 9 dígitos.');
-    }
+    const errorDocumento = documentoInvalido(documento);
+    if (errorDocumento) return setFormError(errorDocumento);
     if (!apellido.trim()) {
       return setFormError('Ingresá el apellido.');
     }

@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { registerRequest } from '../../services/auth';
+import { documentoInvalido, passwordInvalida } from '../../constants/validation';
 import { colors, fonts, radius } from '../../constants/theme';
 import { Logo, Wordmark } from '../../components/ui';
 
@@ -64,6 +65,15 @@ export default function RegisterScreen() {
       setError('Completá todos los campos.');
       return;
     }
+
+    // Las mismas reglas que el alta del admin. Este camino es el que usa
+    // cualquiera con la URL de la API y era el MENOS exigente de los dos:
+    // aceptaba un documento "1" y una contraseña de un caracter, y el rechazo
+    // llegaba recién del backend, después del round-trip.
+    const errorDocumento = documentoInvalido(documento);
+    if (errorDocumento) return setError(errorDocumento);
+    const errorPassword = passwordInvalida(password);
+    if (errorPassword) return setError(errorPassword);
 
     try {
       setLoading(true);
