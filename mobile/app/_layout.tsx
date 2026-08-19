@@ -56,7 +56,7 @@ function RootLayoutNav() {
       // en (empleado) sin ser expulsado).
       router.replace('/(administrador)');
     }
-  }, [user, segments, isLoading]);
+  }, [user, segments, isLoading, router]);
 
   // <Slot /> renderiza la pantalla hija que corresponda a la ruta actual.
   return <Slot />;

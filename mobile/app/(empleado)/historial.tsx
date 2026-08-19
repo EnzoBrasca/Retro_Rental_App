@@ -6,34 +6,36 @@ import { colors, fonts } from '../../constants/theme';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { LoadDetailModal } from '../../components/fuel/LoadDetailModal';
 import { useFetch } from '../../hooks/useFetch';
-import { getMisTickets, HISTORIAL_PAGE_SIZE, Ticket } from '../../services/tickets';
-import { getVehiculos, tituloVehiculo, Vehiculo, TipoCombustible } from '../../services/vehiculos';
+import { getMisTickets, Ticket } from '../../services/tickets';
+import { getVehiculos, tituloVehiculo, Vehiculo } from '../../services/vehiculos';
 import { getHerramientas, Herramienta } from '../../services/herramientas';
 import { getProveedores, Proveedor } from '../../services/catalogos';
 import { formatFecha, formatMoney } from '../../constants/labels';
+// El tipo de la fila vive en LoadDetailModal, que es quien la consume. Se
+// reexporta para no romper a quien la importe desde acá.
+import type { Row } from '../../components/fuel/LoadDetailModal';
+
+export type { Row };
 
 type Filtro = 'Todos' | 'Esta semana' | 'Este mes';
 const FILTERS: Filtro[] = ['Todos', 'Esta semana', 'Este mes'];
 
-// El tipo de la fila vive en LoadDetailModal, que es quien la consume. Se
-// reexporta para no romper a quien la importe desde acá.
-import type { Row } from '../../components/fuel/LoadDetailModal';
-export type { Row };
-
 // Card colapsada: solo litros e importe total. El detalle (proveedor, fecha,
 // combustible, precio/L y la foto del ticket) se abre al tocarla.
-const LoadRow = memo(({ item, onPress }: { item: Row; onPress: (r: Row) => void }) => (
-  <Pressable style={styles.card} onPress={() => onPress(item)}>
-    <View style={styles.litrosBox}>
-      <Text style={styles.litros}>{item.litros}</Text>
-      <Text style={styles.litrosUnit}>L</Text>
-    </View>
-    <View style={styles.costWrap}>
-      <Text style={styles.cost}>{formatMoney(item.costo)}</Text>
-      <Text style={styles.chevron}>›</Text>
-    </View>
-  </Pressable>
-));
+const LoadRow = memo(function LoadRow({ item, onPress }: { item: Row; onPress: (r: Row) => void }) {
+  return (
+    <Pressable style={styles.card} onPress={() => onPress(item)}>
+      <View style={styles.litrosBox}>
+        <Text style={styles.litros}>{item.litros}</Text>
+        <Text style={styles.litrosUnit}>L</Text>
+      </View>
+      <View style={styles.costWrap}>
+        <Text style={styles.cost}>{formatMoney(item.costo)}</Text>
+        <Text style={styles.chevron}>›</Text>
+      </View>
+    </Pressable>
+  );
+});
 
 export default function HistorialScreen() {
   const [activeFilter, setActiveFilter] = useState<Filtro>('Todos');

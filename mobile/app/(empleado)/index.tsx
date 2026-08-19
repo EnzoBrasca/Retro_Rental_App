@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { colors, fonts, radius } from '../../constants/theme';
+import { colors, fonts } from '../../constants/theme';
 import { Badge } from '../../components/ui';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { useTutorial } from '../../context/TutorialContext';
@@ -92,7 +92,13 @@ function FilterRow<T extends string>({
 // Card de un vehículo del pool. Toda la card abre el escaneo con ese vehículo ya
 // fijado, salvo que esté en mantenimiento (el backend rechaza la carga, así que
 // no dejamos entrar). Muestra el operario que lo usó por última vez.
-const VehiculoCard = memo(({ item, onOpen }: { item: Vehiculo; onOpen: (id: number) => void }) => {
+const VehiculoCard = memo(function VehiculoCard({
+  item,
+  onOpen,
+}: {
+  item: Vehiculo;
+  onOpen: (id: number) => void;
+}) {
   const Icon = iconForTipoVehiculo(item.tipoVehiculo);
   const est = estadoStyle[item.estado];
   const enMantenimiento = item.estado === 'EN_MANTENIMIENTO';
@@ -138,8 +144,14 @@ const VehiculoCard = memo(({ item, onOpen }: { item: Vehiculo; onOpen: (id: numb
 // Card de una herramienta. No tiene estado ni operario asignado (no hay
 // contador ni asignación como en un vehículo), así que solo muestra nombre y
 // capacidad, y siempre está disponible para cargarle combustible.
-const HerramientaCard = memo(
-  ({ item, onOpen }: { item: Herramienta; onOpen: (id: number) => void }) => (
+const HerramientaCard = memo(function HerramientaCard({
+  item,
+  onOpen,
+}: {
+  item: Herramienta;
+  onOpen: (id: number) => void;
+}) {
+  return (
     <Pressable style={styles.card} onPress={() => onOpen(item.id)}>
       <View style={styles.cardTop}>
         <View style={styles.cardIcon}>
@@ -160,8 +172,8 @@ const HerramientaCard = memo(
         <Text style={styles.cardHint}>Registrar carga →</Text>
       </View>
     </Pressable>
-  ),
-);
+  );
+});
 
 function Stat({ value, label, color }: { value: string; label: string; color: string }) {
   return (
@@ -179,7 +191,6 @@ export default function FlotaScreen() {
   const userName = user ? user.nombre : 'Operario';
 
   const [search, setSearch] = useState('');
-  const [estadoF, setEstadoF] = useState<Estado | null>(null);
   const [tipoF, setTipoF] = useState<TipoFiltro | null>(null);
   const [combF, setCombF] = useState<TipoCombustible | null>(null);
 
@@ -229,11 +240,10 @@ export default function FlotaScreen() {
     return activos.filter(
       (v) =>
         (needle === '' || textoBusquedaVehiculo(v).includes(needle)) &&
-        (estadoF === null || v.estado === estadoF) &&
         (tipoF === null || v.tipoVehiculo === tipoF) &&
         (combF === null || v.tipoCombustible === combF),
     );
-  }, [activos, search, estadoF, tipoF, combF]);
+  }, [activos, search, tipoF, combF]);
 
   // Las herramientas solo se muestran con "Todos" o con el filtro de tipo
   // "Herramientas": un filtro de tipo de vehículo o de combustible las excluye,

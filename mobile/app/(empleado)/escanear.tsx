@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useRef } from 'react';
 import { colors, fonts, radius } from '../../constants/theme';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { OptionChips } from '../../components/fuel/OptionChips';
@@ -28,7 +27,7 @@ import {
   tituloVehiculo,
   TipoCombustible,
 } from '../../services/vehiculos';
-import { getHerramientas, Herramienta } from '../../services/herramientas';
+import { getHerramientas } from '../../services/herramientas';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
 import { combustibleLabel, formatMoney } from '../../constants/labels';
