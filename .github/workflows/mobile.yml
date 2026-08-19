@@ -1,0 +1,64 @@
+name: mobile
+
+# Primer CI del repo. Corre la verificacion del cliente movil en cada push y en
+# cada PR que toque mobile/.
+#
+# El backend todavia no tiene workflow propio, aunque si tiene 305 tests y
+# JaCoCo: agregarlo es el siguiente paso obvio, fuera del alcance de la
+# auditoria de front-end.
+on:
+  push:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/mobile.yml'
+
+# Un push nuevo sobre la misma rama cancela la corrida anterior: no tiene
+# sentido pagar minutos por verificar un commit que ya quedo atras.
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22 es el LTS que documenta Expo SDK 54. En las maquinas de
+          # desarrollo puede haber una version mas nueva: se fija la mas baja
+          # soportada a proposito, porque lo que pasa en 22 pasa en 26 y no al
+          # reves.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # Los cuatro chequeos corren por separado, no via `npm run verify`, para
+      # que el resumen del job diga CUAL fallo sin tener que abrir el log. El
+      # `if: always()` hace que una falla de tipos no oculte una de tests.
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Lint
+        if: '!cancelled()'
+        run: npm run lint
+
+      - name: Formato
+        if: '!cancelled()'
+        run: npm run format:check
+
+      - name: Tests
+        if: '!cancelled()'
+        run: npm test -- --ci
