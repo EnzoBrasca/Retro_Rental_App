@@ -108,6 +108,13 @@ export default function EscanearScreen() {
       setIdProveedor(null);
       setLitros('');
       setTipoCombustibleHerramienta(null);
+      // Imprescindible: la pantalla es un Tabs.Screen con href:null, así que
+      // queda MONTADA entre entradas. Sin este reset, la lectura del odómetro
+      // del vehículo anterior se envía como la del nuevo y el backend calcula
+      // el consumo real contra un delta inventado. El precio no necesita
+      // limpiarse acá: setIdProveedor(null) deja precioBase en undefined y el
+      // efecto de más abajo ya vacía el campo y su ref.
+      setUsoAcumulado('');
     }, [paramVehiculoId, paramHerramientaId]),
   );
 
