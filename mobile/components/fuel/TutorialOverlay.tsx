@@ -1,6 +1,6 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '../../constants/theme';
-import { TUTORIAL_STEPS } from '../../data/mock';
+import { TUTORIAL_STEPS } from '../../constants/tutorial';
 
 interface Props {
   visible: boolean;

@@ -1,9 +1,9 @@
 /**
- * Dark "FuelTrack" design tokens ported from the FrontEnd prototype.
+ * Design tokens de la app. Única fuente de color, tipografía y radios.
  *
- * Kept as a separate module from `Colors.ts` (which holds the older light
- * palette). Every ported screen themes from here so the whole app shares one
- * dark, IMDb-style yellow look.
+ * Toda la app es oscura y se tematiza desde acá. Si un color hace falta y no
+ * está, se agrega un token: escribirlo a mano en un StyleSheet lo vuelve
+ * imposible de cambiar después sin buscarlo por todo el proyecto.
  */
 export const colors = {
   bg: '#16181B',

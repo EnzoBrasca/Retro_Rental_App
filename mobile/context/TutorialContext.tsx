@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { TUTORIAL_STEPS } from '../data/mock';
+import { TUTORIAL_STEPS } from '../constants/tutorial';
 import { TutorialOverlay } from '../components/fuel/TutorialOverlay';
 
 /**
