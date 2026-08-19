@@ -9,7 +9,7 @@ import { useFetch } from '../../hooks/useFetch';
 import { getMisTickets, HISTORIAL_PAGE_SIZE, Ticket } from '../../services/tickets';
 import { getVehiculos, tituloVehiculo, Vehiculo, TipoCombustible } from '../../services/vehiculos';
 import { getHerramientas, Herramienta } from '../../services/herramientas';
-import { getProveedores, getPrecios, Proveedor, Precio } from '../../services/catalogos';
+import { getProveedores, Proveedor } from '../../services/catalogos';
 import { formatFecha, formatMoney } from '../../constants/labels';
 
 type Filtro = 'Todos' | 'Esta semana' | 'Este mes';
@@ -43,14 +43,13 @@ export default function HistorialScreen() {
   // junto con los catálogos; las siguientes se van agregando al llegar al final
   // de la lista (ver cargarMas). Los catálogos no se vuelven a pedir.
   const { data, loading, error, refetch } = useFetch(async () => {
-    const [pagina, vehiculos, herramientas, proveedores, precios] = await Promise.all([
+    const [pagina, vehiculos, herramientas, proveedores] = await Promise.all([
       getMisTickets(0),
       getVehiculos(),
       getHerramientas(),
       getProveedores(),
-      getPrecios(),
     ]);
-    return { pagina, vehiculos, herramientas, proveedores, precios };
+    return { pagina, vehiculos, herramientas, proveedores };
   });
 
   // Tickets acumulados de todas las páginas traídas hasta ahora.
@@ -114,14 +113,11 @@ export default function HistorialScreen() {
     const vById = new Map<number, Vehiculo>(data.vehiculos.map((v) => [v.id, v]));
     const hById = new Map<number, Herramienta>(data.herramientas.map((h) => [h.id, h]));
     const pById = new Map<number, Proveedor>(data.proveedores.map((p) => [p.id, p]));
-    const precioById = new Map<number, Precio>(data.precios.map((p) => [p.id, p]));
 
     return tickets.map((t: Ticket) => {
       // Exactamente uno de los dos viene con valor (ver services/tickets.ts).
       const v = t.idVehiculo != null ? vById.get(t.idVehiculo) : undefined;
       const h = t.idHerramienta != null ? hById.get(t.idHerramienta) : undefined;
-      const precio = precioById.get(t.idPrecio);
-      const unitario = precio ? precio.precioUnitario : 0;
       return {
         id: t.id,
         identificador: v
@@ -140,8 +136,13 @@ export default function HistorialScreen() {
         fechaCarga: t.fechaCarga,
         proveedor: pById.get(t.idProveedor)?.nombre ?? `Proveedor #${t.idProveedor}`,
         litros: t.litros,
-        precioUnitario: unitario,
-        costo: t.litros * unitario,
+        // El precio SALE DEL TICKET, no del catálogo de precios: GET /precios
+        // devuelve solo los vigentes, así que resolver t.idPrecio contra él
+        // daba 0 en toda carga anterior al último cambio de precio. Además el
+        // ticket es el único que conoce la corrección que hizo el empleado
+        // cuando el surtidor cobró otra cosa.
+        precioUnitario: t.precioUnitario,
+        costo: t.litros * t.precioUnitario,
         ticketFotoUrl: t.ticketFotoUrl,
       };
     });
