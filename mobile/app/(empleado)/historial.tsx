@@ -223,7 +223,18 @@ export default function HistorialScreen() {
         keyExtractor={(r) => String(r.id)}
         renderItem={renderItem}
         ListHeaderComponent={header}
-        ListEmptyComponent={<EmptyState message="Todavía no registraste cargas." />}
+        // Dos situaciones distintas necesitan dos mensajes distintos: con
+        // "Esta semana" puesto, un operario que cargó cuarenta tickets el mes
+        // pasado leía que nunca había registrado nada.
+        ListEmptyComponent={
+          <EmptyState
+            message={
+              activeFilter === 'Todos'
+                ? 'Todavía no registraste cargas.'
+                : 'No hay cargas en este período.'
+            }
+          />
+        }
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
         // Trae la página siguiente al acercarse al final. Con el filtro activo
