@@ -15,6 +15,67 @@
 #   files.${APP_DOMAIN} -> minio:9000    (descarga de fotos via URLs presignadas)
 
 # ---------------------------------------------------------------------------
+# Limites de peticiones (SEC-07)
+#
+# El unico freno que habia estaba DENTRO de la aplicacion (LoginRateLimitFilter):
+# se reinicia con el contenedor y solo cubre dos rutas. Una inundacion llegaba
+# entera a Spring y consumia hilos y conexiones a base antes de que nada la
+# frenara. Estas zonas cortan ANTES de que la peticion cueste recursos de
+# aplicacion. No reemplazan al filtro: son la capa de afuera.
+#
+# Las zonas viven en el contexto http (este archivo se incluye dentro de el).
+# 10m alcanza para ~160.000 IPs distintas; de sobra para una flota.
+#
+# CUIDADO CON EL NAT DE LAS OPERADORAS MOVILES. Los empleados cargan desde el
+# celular en el campo, y el CGNAT puede poner a MUCHOS atras de la MISMA IP
+# publica. Por eso los limites son deliberadamente holgados: el objetivo es
+# frenar una inundacion, no hacer control fino de abuso —de eso ya se encarga
+# el filtro de la app, que si distingue por usuario.
+limit_req_zone $binary_remote_addr zone=api_general:10m rate=30r/s;
+
+# Zona mas estricta para /auth/: login y registro son los caminos que un ataque
+# de fuerza bruta recorre. Aun asi se deja margen para un turno entrante donde
+# varios empleados logueen a la vez desde la misma IP de la operadora.
+limit_req_zone $binary_remote_addr zone=api_auth:10m rate=30r/m;
+
+# Tope de conexiones simultaneas por IP. Frena el agotamiento por conexiones
+# abiertas y ociosas (slowloris) que el limite por tasa no ve.
+limit_conn_zone $binary_remote_addr zone=conexiones:10m;
+
+# No publicar la version de nginx en las cabeceras ni en las paginas de error
+# (SEC-08): es informacion gratis para elegir un exploit.
+server_tokens off;
+
+# Que un rechazo por limite se vea como 429 y no como el 503 por defecto. 503
+# dice "el servidor esta caido"; 429 dice "bajá el ritmo", que es lo que pasa.
+limit_req_status 429;
+limit_conn_status 429;
+
+# ---------------------------------------------------------------------------
+# Servidor por defecto: corta cualquier Host desconocido (SEC-08)
+#
+# Sin esto, el PRIMER server block del archivo atiende todo lo que llegue con un
+# Host que no matchee ningun server_name. O sea: cualquier dominio que alguien
+# apunte a la IP de este servidor entraba por la API.
+#
+# 444 es un codigo propio de nginx: cierra la conexion SIN responder nada. No
+# confirma que haya algo escuchando, que es justo lo que un escaneo busca.
+#
+# En 443 se usa ssl_reject_handshake en vez de un certificado de descarte:
+# rechaza el handshake TLS antes de negociar, asi que este bloque no necesita
+# ningun certificado (nginx >= 1.19.4; la imagen es 1.27).
+# ---------------------------------------------------------------------------
+server {
+    listen 80 default_server;
+    listen 443 ssl default_server;
+    server_name _;
+
+    ssl_reject_handshake on;
+
+    return 444;
+}
+
+# ---------------------------------------------------------------------------
 # HTTP: validacion de Let's Encrypt + redirect a HTTPS
 #
 # El orden importa. La validacion ACME http-01 llega por HTTP PLANO al path
@@ -56,7 +117,56 @@ server {
     # application.yml). Dejamos margen para no cortar uploads legitimos.
     client_max_body_size 25m;
 
+    # ---- Cabeceras de seguridad (SEC-08) ----
+    #
+    # "always" en todas: sin el, add_header no se aplica a las respuestas de
+    # error, que es justo donde mas importa.
+    #
+    # HSTS: el cliente recuerda por un año que este host es solo HTTPS, asi que
+    # un downgrade a HTTP plano no llega a viajar. NO se pone `preload`: eso
+    # implica mandar el dominio a la lista de los navegadores y sacarlo despues
+    # es lento y molesto. Es una decision de dominio, no de config.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # La API responde JSON. Que el navegador no adivine el tipo por contenido.
+    add_header X-Content-Type-Options "nosniff" always;
+    # No hay UI que deba embeberse en un frame: la API la consume el mobile.
+    add_header X-Frame-Options "DENY" always;
+    # Sin esto, al navegar a otro sitio se filtraria la URL completa —con sus
+    # query params— en el Referer.
+    add_header Referrer-Policy "no-referrer" always;
+
+    # Tope de conexiones simultaneas por IP (ver la zona arriba).
+    limit_conn conexiones 50;
+
+    # ---- Zona estricta para autenticacion (SEC-07) ----
+    #
+    # Va ANTES del location / porque un prefijo mas largo gana en nginx: las
+    # peticiones a /auth/... entran aca y no en el general.
+    #
+    # burst=10 con nodelay: se toleran diez peticiones de golpe (varios empleados
+    # logueando al inicio del turno detras del mismo NAT) y recien despues se
+    # rechaza. Sin nodelay, esas diez se encolarian y el login se sentiria lento
+    # en vez de fallar rapido.
+    location /auth/ {
+        limit_req zone=api_auth burst=10 nodelay;
+
+        proxy_pass http://backend:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout    300s;
+        proxy_send_timeout    300s;
+    }
+
     location / {
+        # burst alto a proposito: una pantalla del panel del admin dispara
+        # varias llamadas juntas, y subir un ticket con dos fotos tambien. El
+        # limite existe para cortar inundaciones, no para castigar el uso normal.
+        limit_req zone=api_general burst=60 nodelay;
+
         proxy_pass http://backend:8080;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
@@ -119,6 +229,18 @@ server {
     add_header Content-Disposition "attachment" always;
     add_header X-Content-Type-Options "nosniff" always;
 
+    # ---- Resto de las cabeceras de seguridad (SEC-08) ----
+    #
+    # OJO CON add_header EN NGINX: no se acumula entre niveles, se REEMPLAZA. Si
+    # algun dia se agrega un add_header dentro de un location de este server,
+    # TODAS estas de nivel server dejan de aplicarse en ese location y hay que
+    # repetirlas ahi. Es una de las formas mas silenciosas de perder cabeceras.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+
+    limit_conn conexiones 50;
+
     # ---- Superficie expuesta: SOLO la descarga de fotos ----
     #
     # Antes, un unico "location /" proxeaba TODO minio:9000, es decir la API S3
@@ -143,6 +265,10 @@ server {
         limit_except GET HEAD {
             deny all;
         }
+
+        # Descargar fotos es rafagoso: el panel del admin abre un listado y pide
+        # varias miniaturas de una. burst amplio para no cortar eso.
+        limit_req zone=api_general burst=60 nodelay;
 
         proxy_pass http://minio:9000;
         proxy_http_version 1.1;
