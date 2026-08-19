@@ -1,22 +1,10 @@
 import { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { loginRequest } from '../../services/auth';
 import { getLastUsername } from '../../services/session';
-import { colors, fonts, radius } from '../../constants/theme';
-import { Logo, Wordmark } from '../../components/ui';
+import { colors, fonts } from '../../constants/theme';
+import { AuthShell, authStyles } from '../../components/auth/AuthShell';
 
 /**
  * Pantalla de Login (look FuelTrack sobre la autenticación JWT real).
@@ -34,7 +22,6 @@ import { Logo, Wordmark } from '../../components/ui';
  */
 export default function LoginScreen() {
   const { login } = useAuth();
-  const router = useRouter();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -69,153 +56,80 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <AuthShell
+      modo="login"
+      subtitle="Control de cargas de combustible para flotas y maquinaria vial."
+    >
+      <View style={styles.field}>
+        <Text style={authStyles.fieldLabel}>Usuario</Text>
+        <TextInput
+          style={authStyles.input}
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+          placeholder="Usuario"
+          placeholderTextColor={colors.textDim}
+          editable={!loading}
+          accessibilityLabel="Usuario"
+        />
+      </View>
+
+      <View style={styles.field}>
+        <Text style={authStyles.fieldLabel}>Contraseña</Text>
+        <TextInput
+          style={authStyles.input}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="••••••••"
+          placeholderTextColor={colors.textDim}
+          editable={!loading}
+          accessibilityLabel="Contraseña"
+        />
+      </View>
+
+      {error && <Text style={authStyles.error}>{error}</Text>}
+
+      <Pressable
+        style={[authStyles.cta, loading && authStyles.ctaDisabled]}
+        onPress={handleLogin}
+        disabled={loading}
+        accessibilityRole="button"
+        accessibilityLabel="Ingresar"
+        accessibilityState={{ disabled: loading, busy: loading }}
       >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.brandRow}>
-            <Logo size={46} />
-            <Wordmark size={24} />
-          </View>
-          <Text style={styles.subtitle}>
-            Control de cargas de combustible para flotas y maquinaria vial.
+        {loading ? (
+          <ActivityIndicator color={colors.bgDeep} />
+        ) : (
+          <Text style={authStyles.ctaText}>Ingresar</Text>
+        )}
+      </Pressable>
+      {/* Antes decía "¿Olvidaste tu contraseña?": un Text suelto, sin
+          Pressable y sin destino, justo donde va ese link en todos los
+          logins del mundo. El usuario lo tocaba y no pasaba nada. No hay
+          flujo de recuperación ni en el backend ni acá, así que ahora dice
+          lo único que sí se puede hacer. */}
+      <Text style={styles.forgot}>
+        Si no podés ingresar, pedile al administrador que restablezca tu contraseña.
+      </Text>
+
+      <View style={styles.hint}>
+        <View style={styles.hintIcon} accessibilityElementsHidden importantForAccessibility="no">
+          <Text style={{ fontSize: 16 }}>🪖</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.hintText}>
+            Ingresá con las credenciales que te asignó el administrador de tu obra.
           </Text>
-
-          <View style={styles.tabs}>
-            <View style={[styles.tab, styles.tabActive]}>
-              <Text style={[styles.tabText, styles.tabTextActive]}>Iniciar sesión</Text>
-            </View>
-            <Pressable style={styles.tab} onPress={() => router.replace('/(auth)/register')}>
-              <Text style={styles.tabText}>Registrarse</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Usuario</Text>
-            <TextInput
-              style={styles.input}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              placeholder="Usuario"
-              placeholderTextColor={colors.textDim}
-              editable={!loading}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>Contraseña</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholder="••••••••"
-              placeholderTextColor={colors.textDim}
-              editable={!loading}
-            />
-          </View>
-
-          {error && <Text style={styles.error}>{error}</Text>}
-
-          <Pressable
-            style={[styles.cta, loading && styles.ctaDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.bgDeep} />
-            ) : (
-              <Text style={styles.ctaText}>Ingresar</Text>
-            )}
-          </Pressable>
-          {/* Antes decía "¿Olvidaste tu contraseña?": un Text suelto, sin
-              Pressable y sin destino, justo donde va ese link en todos los
-              logins del mundo. El usuario lo tocaba y no pasaba nada. No hay
-              flujo de recuperación ni en el backend ni acá, así que ahora dice
-              lo único que sí se puede hacer. */}
-          <Text style={styles.forgot}>
-            Si no podés ingresar, pedile al administrador que restablezca tu contraseña.
-          </Text>
-
-          <View style={styles.hint}>
-            <View style={styles.hintIcon}>
-              <Text style={{ fontSize: 16 }}>🪖</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.hintText}>
-                Ingresá con las credenciales que te asignó el administrador de tu obra.
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </View>
+      </View>
+    </AuthShell>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  flex: { flex: 1 },
-  content: { padding: 26, flexGrow: 1 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 8 },
-  subtitle: {
-    fontSize: 13,
-    color: colors.textFaint,
-    marginBottom: 26,
-    lineHeight: 20,
-    fontFamily: fonts.sans,
-  },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: 4,
-    marginBottom: 22,
-  },
-  tab: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
-  tabActive: { backgroundColor: colors.primary },
-  tabText: { fontSize: 13, fontFamily: fonts.sansSemi, color: colors.textMuted },
-  tabTextActive: { color: colors.bgDeep },
+  // Solo lo propio del login. Lo compartido con el registro vive en authStyles.
   field: { marginBottom: 14 },
-  fieldLabel: {
-    fontSize: 11,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    color: colors.textFaint,
-    marginBottom: 7,
-    fontFamily: fonts.sans,
-  },
-  input: {
-    height: 48,
-    backgroundColor: colors.surfaceInput,
-    borderWidth: 1,
-    borderColor: colors.borderInput,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    color: colors.text,
-    fontSize: 15,
-    fontFamily: fonts.sans,
-  },
-  error: { color: colors.danger, fontSize: 13, marginBottom: 12, fontFamily: fonts.sans },
-  cta: {
-    height: 52,
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
-  },
-  ctaDisabled: { opacity: 0.6 },
-  ctaText: {
-    fontFamily: fonts.display,
-    fontSize: 16,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    color: colors.bgDeep,
-  },
   forgot: {
     textAlign: 'center',
     fontSize: 12.5,
