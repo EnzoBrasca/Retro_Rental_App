@@ -77,17 +77,31 @@ export default function RegisterScreen() {
           numero: telefonoNumero.trim(),
         },
       });
+      // A PARTIR DE ACÁ LA CUENTA YA EXISTE en el backend. Ningún fallo
+      // posterior puede reportarse como "no se pudo crear la cuenta": eso
+      // mandaría al usuario a reintentar con un documento que ya está tomado,
+      // que es exactamente el pozo del que trata este arreglo.
+      //
+      // El auto-login va ANTES del Alert, no adentro de su onPress: en Android
+      // el diálogo es cancelable (botón atrás o tocar afuera) y ahí onPress
+      // NUNCA corre. Atada a ese callback, la sesión se perdía con la cuenta ya
+      // creada y el token descartado — y como el username lo genera el servidor
+      // y este Alert era la única vez que se mostraba, el usuario quedaba sin
+      // poder entrar ni volver a registrarse.
+      //
+      // Logueado, el username además queda visible en Perfil, así que deja de
+      // ser un dato de una sola oportunidad.
+      try {
+        await login(res); // auto-login + redirección por rol
+      } catch {
+        // Si no se pudo persistir la sesión, el Alert de abajo sigue siendo la
+        // vía para que se lleve su username y entre a mano.
+      }
       Alert.alert(
         '¡Registro exitoso!',
         `Tu usuario es: ${res.username}\nGuardalo para iniciar sesión.`,
-        [
-          {
-            text: 'Continuar',
-            onPress: () => {
-              void login(res); // auto-login + redirección por rol
-            },
-          },
-        ],
+        [{ text: 'Continuar' }],
+        { cancelable: false },
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo crear la cuenta.');
