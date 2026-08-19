@@ -1,5 +1,13 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  SectionList,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { colors, fonts } from '../../constants/theme';
@@ -39,6 +47,11 @@ const estadoStyle: Record<Estado, { bg: string; color: string }> = {
 // vehículo se ven los vehículos; las herramientas no tienen tipoVehiculo ni
 // combustible fijo, así que solo aparecen bajo "Todos" o bajo su propio filtro.
 type TipoFiltro = TipoVehiculo | typeof TIPO_HERRAMIENTA;
+
+// Fila de la lista unificada de la flota. Vehículos y herramientas son tablas
+// distintas en el backend, así que se representan como una unión discriminada en
+// vez de forzarlas a un mismo shape. Mismo criterio que el ABM del admin.
+type FlotaFila = { kind: 'vehiculo'; v: Vehiculo } | { kind: 'herramienta'; h: Herramienta };
 
 const TIPO_FILTERS: { key: TipoFiltro | null; label: string }[] = [
   { key: null, label: 'Todos' },
@@ -213,12 +226,24 @@ export default function FlotaScreen() {
     }, [refetch]),
   );
 
-  const openScan = (id: number) => {
-    router.push({ pathname: '/(empleado)/escanear', params: { idVehiculo: String(id) } });
-  };
-  const openScanHerramienta = (id: number) => {
-    router.push({ pathname: '/(empleado)/escanear', params: { idHerramienta: String(id) } });
-  };
+  // useCallback no es decoración acá: VehiculoCard y HerramientaCard están
+  // envueltas en `memo`, que compara props por identidad. Con la función
+  // recreada en cada render la comparación fallaba SIEMPRE y el memo no ahorraba
+  // nada — solo agregaba una comparación que nunca daba positivo. Como el
+  // buscador es estado de esta pantalla, eso se pagaba en cada tecla: escribir
+  // "hilux" eran cinco re-renders de la lista entera. `router` es estable.
+  const openScan = useCallback(
+    (id: number) => {
+      router.push({ pathname: '/(empleado)/escanear', params: { idVehiculo: String(id) } });
+    },
+    [router],
+  );
+  const openScanHerramienta = useCallback(
+    (id: number) => {
+      router.push({ pathname: '/(empleado)/escanear', params: { idHerramienta: String(id) } });
+    },
+    [router],
+  );
 
   // Solo activos (los dados de baja no operan). Los filtros se aplican en
   // cliente: ya tenemos todo el catálogo en memoria, es barato.
@@ -257,8 +282,54 @@ export default function FlotaScreen() {
     );
   }, [activasHerramientas, search, tipoF, combF]);
 
-  const operativos = activos.filter((v) => v.estado !== 'EN_MANTENIMIENTO').length;
-  const enTaller = activos.filter((v) => v.estado === 'EN_MANTENIMIENTO').length;
+  // Memoizados como sus vecinos `activos` y `filtrados`: son baratos, pero
+  // recalcularlos en cada tecla del buscador mientras el resto no lo hace es
+  // inconsistencia sin motivo.
+  const operativos = useMemo(
+    () => activos.filter((v) => v.estado !== 'EN_MANTENIMIENTO').length,
+    [activos],
+  );
+  const enTaller = useMemo(
+    () => activos.filter((v) => v.estado === 'EN_MANTENIMIENTO').length,
+    [activos],
+  );
+
+  // La lista se arma como secciones para poder virtualizarla con SectionList.
+  // Antes era un ScrollView con dos .map(): un ScrollView MONTA TODOS sus hijos,
+  // estén o no en pantalla. Cada card son un SVG, un badge, cuatro Text y tres
+  // View, así que con 200 vehículos son ~2.000 vistas nativas montadas de golpe.
+  // Las secciones vacías se incluyen igual: su pie muestra el mensaje de "no hay
+  // nada que coincida", que es información, no ausencia de información.
+  const secciones = useMemo(() => {
+    const s: { title: string; vacio: string; data: FlotaFila[] }[] = [];
+    if (tipoF !== TIPO_HERRAMIENTA) {
+      s.push({
+        title: 'VEHÍCULOS',
+        vacio: 'No hay vehículos que coincidan con los filtros.',
+        data: filtrados.map((v) => ({ kind: 'vehiculo', v }) as const),
+      });
+    }
+    // Con un tipo de vehículo o un combustible puntual elegidos se oculta esta
+    // sección entera: ninguna herramienta los cumple.
+    if ((tipoF === null || tipoF === TIPO_HERRAMIENTA) && combF === null) {
+      s.push({
+        title: 'HERRAMIENTAS',
+        vacio: 'No hay herramientas que coincidan con los filtros.',
+        data: filtradasHerramientas.map((h) => ({ kind: 'herramienta', h }) as const),
+      });
+    }
+    return s;
+  }, [tipoF, combF, filtrados, filtradasHerramientas]);
+
+  const renderFila = useCallback(
+    ({ item }: { item: FlotaFila }) =>
+      item.kind === 'vehiculo' ? (
+        <VehiculoCard item={item.v} onOpen={openScan} />
+      ) : (
+        <HerramientaCard item={item.h} onOpen={openScanHerramienta} />
+      ),
+    [openScan, openScanHerramienta],
+  );
 
   const header = (
     <View style={styles.topRow}>
@@ -302,66 +373,57 @@ export default function FlotaScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView
+      <SectionList
+        sections={secciones}
+        keyExtractor={(item) => (item.kind === 'vehiculo' ? `v-${item.v.id}` : `h-${item.h.id}`)}
+        renderItem={renderFila}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.listHead}>
+            <Text style={styles.sectionTitle} accessibilityRole="header">
+              {section.title}
+            </Text>
+            <Text style={styles.count}>{section.data.length}</Text>
+          </View>
+        )}
+        renderSectionFooter={({ section }) =>
+          section.data.length === 0 ? <EmptyState message={section.vacio} /> : null
+        }
+        // El encabezado va como ELEMENTO, no como componente: pasar una función
+        // acá remonta el subárbol en cada render y el buscador pierde el foco a
+        // la primera tecla.
+        ListHeaderComponent={
+          <View>
+            {header}
+
+            <View style={styles.statsRow}>
+              <Stat value={String(activos.length)} label="Total" color={colors.primary} />
+              <Stat value={String(operativos)} label="Operativos" color={colors.green} />
+              <Stat value={String(enTaller)} label="En taller" color={colors.orange} />
+            </View>
+
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Buscar por patente, modelo o interno…"
+              placeholderTextColor={colors.textDim}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              accessibilityLabel="Buscar por patente, modelo o interno"
+            />
+
+            <FilterRow options={TIPO_FILTERS} value={tipoF} onChange={setTipoF} />
+            <FilterRow options={COMBUSTIBLE_FILTERS} value={combF} onChange={setCombF} />
+          </View>
+        }
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-      >
-        {header}
-
-        <View style={styles.statsRow}>
-          <Stat value={String(activos.length)} label="Total" color={colors.primary} />
-          <Stat value={String(operativos)} label="Operativos" color={colors.green} />
-          <Stat value={String(enTaller)} label="En taller" color={colors.orange} />
-        </View>
-
-        <TextInput
-          style={styles.searchInput}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Buscar por patente, modelo o interno…"
-          placeholderTextColor={colors.textDim}
-          autoCapitalize="characters"
-          autoCorrect={false}
-        />
-
-        <FilterRow options={TIPO_FILTERS} value={tipoF} onChange={setTipoF} />
-        <FilterRow options={COMBUSTIBLE_FILTERS} value={combF} onChange={setCombF} />
-
-        {tipoF !== TIPO_HERRAMIENTA && (
-          <>
-            <View style={styles.listHead}>
-              <Text style={styles.sectionTitle}>VEHÍCULOS</Text>
-              <Text style={styles.count}>{filtrados.length}</Text>
-            </View>
-
-            {filtrados.length === 0 ? (
-              <EmptyState message="No hay vehículos que coincidan con los filtros." />
-            ) : (
-              filtrados.map((v) => <VehiculoCard key={v.id} item={v} onOpen={openScan} />)
-            )}
-          </>
-        )}
-
-        {/* Con un tipo de vehículo o un combustible puntual elegidos, se oculta
-            esta sección: ninguna herramienta la cumple. */}
-        {(tipoF === null || tipoF === TIPO_HERRAMIENTA) && combF === null && (
-          <>
-            <View style={styles.listHead}>
-              <Text style={styles.sectionTitle}>HERRAMIENTAS</Text>
-              <Text style={styles.count}>{filtradasHerramientas.length}</Text>
-            </View>
-
-            {filtradasHerramientas.length === 0 ? (
-              <EmptyState message="No hay herramientas que coincidan con los filtros." />
-            ) : (
-              filtradasHerramientas.map((h) => (
-                <HerramientaCard key={h.id} item={h} onOpen={openScanHerramienta} />
-              ))
-            )}
-          </>
-        )}
-      </ScrollView>
+        stickySectionHeadersEnabled={false}
+        removeClippedSubviews
+        maxToRenderPerBatch={10}
+        windowSize={5}
+      />
     </SafeAreaView>
   );
 }
