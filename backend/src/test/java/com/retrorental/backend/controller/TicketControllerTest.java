@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -17,6 +19,7 @@ import com.retrorental.backend.dto.response.TicketResponse;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.TicketService;
 import java.time.LocalDateTime;
 import com.retrorental.backend.model.enums.UnidadUso;
@@ -34,7 +37,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * estar autenticado. La creacion valida @ModelAttribute + partes multipart.
  */
 @WebMvcTest(controllers = TicketController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("ticket")
 class TicketControllerTest extends AbstractControllerTest {
 
@@ -42,7 +45,7 @@ class TicketControllerTest extends AbstractControllerTest {
     private TicketService ticketService;
 
     private TicketResponse sampleTicket() {
-        return new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1, null,
+        return new TicketResponse(1, new BigDecimal("42.5"), LocalDateTime.now(), 1, 1, 1, null,
             "juanperez", 1250, UnidadUso.HORAS, new BigDecimal("2086.00"),
             "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2", null, null);
@@ -253,7 +256,7 @@ class TicketControllerTest extends AbstractControllerTest {
     @WithMockUser(roles = "EMPLEADO")
     void analyze_conFoto_devuelve200() throws Exception {
         when(ticketService.analyze(any())).thenReturn(new TicketAnalysisResponse(
-            50.0, LocalDateTime.now(), 100000.0, 2000.0, "YPF",
+            new java.math.BigDecimal("50.0"), LocalDateTime.now(), 100000.0, 2000.0, "YPF",
             com.retrorental.backend.model.enums.TipoCombustible.NAFTA_SUPER, 3, "YPF Centro",
             5, new java.math.BigDecimal("2000")));
 
@@ -297,5 +300,32 @@ class TicketControllerTest extends AbstractControllerTest {
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"))
             .andExpect(jsonPath("$.field").value("id"));
+    }
+
+    /**
+     * Ruta valida con el verbo equivocado: 405, no 500.
+     *
+     * Antes esto caia en el catch-all del GlobalExceptionHandler y devolvia un
+     * 500 generico que ademas quedaba logueado como falla del servidor (ver
+     * docs/BACKEND-AUDIT.md, WEB-01). Doble costo: el cliente movil recibia un
+     * codigo que no describe el problema, y el log de errores se llenaba de
+     * falsas alarmas que no eran errores del servidor.
+     */
+    @Test
+    @WithMockUser(roles = "EMPLEADO")
+    void verboNoSoportado_devuelve405YNoUn500() throws Exception {
+        mockMvc.perform(patch("/tickets"))
+            .andExpect(status().isMethodNotAllowed())
+            .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    }
+
+    /** El 405 tiene que declarar en `Allow` que verbos SI acepta la ruta. */
+    @Test
+    @WithMockUser(roles = "EMPLEADO")
+    void verboNoSoportado_declaraLosVerbosPermitidos() throws Exception {
+        mockMvc.perform(patch("/tickets"))
+            .andExpect(status().isMethodNotAllowed())
+            .andExpect(header().exists("Allow"))
+            .andExpect(header().string("Allow", org.hamcrest.Matchers.containsString("POST")));
     }
 }

@@ -20,6 +20,7 @@ import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.TicketService;
 import java.time.LocalDateTime;
 import com.retrorental.backend.model.enums.UnidadUso;
@@ -38,7 +39,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * Tests de /admin/tickets (listado paginado). Reservado a ADMINISTRADOR.
  */
 @WebMvcTest(controllers = AdminTicketController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("ticket")
 class AdminTicketControllerTest extends AbstractControllerTest {
 
@@ -46,7 +47,7 @@ class AdminTicketControllerTest extends AbstractControllerTest {
     private TicketService ticketService;
 
     private PagedModel<TicketResponse> samplePage() {
-        TicketResponse t = new TicketResponse(1, 42.5, LocalDateTime.now(), 1, 1, 1, null,
+        TicketResponse t = new TicketResponse(1, new BigDecimal("42.5"), LocalDateTime.now(), 1, 1, 1, null,
             "emp@example.com", 84300, UnidadUso.KM, new BigDecimal("2086.00"),
             "tickets/k1.jpg", "http://url/1",
             "tableros/k2.jpg", "http://url/2", null, null);

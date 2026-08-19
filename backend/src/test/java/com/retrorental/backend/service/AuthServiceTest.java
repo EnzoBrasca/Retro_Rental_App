@@ -22,6 +22,7 @@ import com.retrorental.backend.model.Persona;
 import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.security.JwtUtil;
+import com.retrorental.backend.security.SecurityEventLogger;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,9 @@ class AuthServiceTest {
     @Mock private JwtUtil jwtUtil;
     @Mock private UsernameGenerator usernameGenerator;
     @Mock private HabilitadoService habilitadoService;
+    // El registro de eventos de seguridad no cambia el resultado del login, pero
+    // sin el mock el servicio explota con NPE al intentar anotar un rechazo.
+    @Mock private SecurityEventLogger securityEventLogger;
 
     @InjectMocks private AuthService service;
 

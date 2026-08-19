@@ -3,6 +3,9 @@ package com.retrorental.backend.service;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.retrorental.backend.dto.response.StatsResponse;
@@ -71,10 +74,41 @@ class StatsServiceTest {
         return t;
     }
 
+    /**
+     * El consumo del período se alimenta de una PROYECCIÓN, no de entidades (ver
+     * TicketRepository.findCargasParaStats). Los tests se siguen escribiendo con
+     * `Ticket` porque es más legible; acá se los convierte al tipo que devuelve
+     * el repositorio.
+     */
     private void cargasDelVehiculo(Ticket... cargas) {
-        when(ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(1))
-            .thenReturn(List.of(cargas));
+        List<TicketRepository.CargaParaStats> proyectadas = List.of(cargas).stream()
+            .map(StatsServiceTest::comoProyeccion)
+            .toList();
+        when(ticketRepository.findCargasParaStats(1)).thenReturn(proyectadas);
+    }
+
+    private static TicketRepository.CargaParaStats comoProyeccion(Ticket t) {
+        return new TicketRepository.CargaParaStats() {
+            @Override
+            public Integer getUsoAcumulado() {
+                return t.getUsoAcumulado();
+            }
+
+            @Override
+            public BigDecimal getLitros() {
+                return t.getLitros();
+            }
+
+            @Override
+            public LocalDateTime getFechaCarga() {
+                return t.getFechaCarga();
+            }
+
+            @Override
+            public TipoVehiculo getTipoVehiculo() {
+                return t.getVehiculo().getTipoVehiculo();
+            }
+        };
     }
 
     private Ticket ticketDeHerramienta(int idHerramienta, double litros, BigDecimal precioUnitario) {
@@ -106,7 +140,7 @@ class StatsServiceTest {
         empleado.setRol(Rol.EMPLEADO);
 
         Ticket t = new Ticket();
-        t.setLitros(litros);
+        t.setLitros(BigDecimal.valueOf(litros));
         t.setPrecio(precio);
         t.setProveedor(proveedor);
         t.setPersona(empleado);
@@ -117,7 +151,7 @@ class StatsServiceTest {
 
     @Test
     void statsConTicketsDeHerramienta_noRompeConNullPointer() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of(
             ticketDeVehiculo(1, 50.0, new BigDecimal("2000")),
             ticketDeHerramienta(7, 0.3, new BigDecimal("2100"))
         ));
@@ -127,7 +161,7 @@ class StatsServiceTest {
 
     @Test
     void statsConTicketsDeHerramienta_sumaElGastoDeAmbosOrigenes() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of(
             ticketDeVehiculo(1, 50.0, new BigDecimal("2000")),
             ticketDeHerramienta(7, 0.3, new BigDecimal("2100"))
         ));
@@ -141,7 +175,7 @@ class StatsServiceTest {
 
     @Test
     void vehiculosActivos_noCuentaLosTicketsDeHerramienta() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of(
             ticketDeVehiculo(1, 50.0, new BigDecimal("2000")),
             ticketDeHerramienta(7, 0.3, new BigDecimal("2100"))
         ));
@@ -154,7 +188,7 @@ class StatsServiceTest {
 
     @Test
     void promedioLitrosPorVehiculo_noIncluyeLosLitrosDeHerramienta() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of(
             ticketDeVehiculo(1, 50.0, new BigDecimal("2000")),
             ticketDeHerramienta(7, 0.3, new BigDecimal("2100"))
         ));
@@ -164,19 +198,69 @@ class StatsServiceTest {
         // El promedio es POR VEHICULO: su denominador cuenta solo vehiculos, asi
         // que el numerador tampoco puede incluir los litros de la herramienta.
         // Con un unico vehiculo que cargo 50 L, el promedio es 50, no 50.3.
-        assertEquals(50.0, resp.promedioLitrosPorVehiculo());
+        //
+        // compareTo y no equals: BigDecimal.equals compara TAMBIEN la escala, asi
+        // que 50.00 no seria igual a 50 aunque valgan lo mismo. Lo que este test
+        // afirma es el VALOR; la escala la fija redondear() y se verifica aparte.
+        assertEquals(0, new BigDecimal("50").compareTo(resp.promedioLitrosPorVehiculo()));
     }
 
+    /**
+     * El filtro por vehiculo ahora lo aplica la CONSULTA, no el servicio (ver
+     * docs/BACKEND-AUDIT.md, SVC-02). Lo que se puede verificar en este nivel es
+     * que el servicio lo DELEGUE bien; que el SQL efectivamente excluya los
+     * tickets de herramienta se prueba contra una base real en
+     * TicketPersistenciaTest.
+     *
+     * Este test antes assertaba sobre el resultado del filtrado en memoria. Se
+     * reescribió a propósito: dejarlo como estaba lo habría convertido en una
+     * verificación de que un mock devuelve lo que se le dijo que devuelva.
+     */
     @Test
-    void filtroPorVehiculoId_excluyeLosTicketsDeHerramienta() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
-            ticketDeVehiculo(1, 50.0, new BigDecimal("2000")),
-            ticketDeHerramienta(7, 0.3, new BigDecimal("2100"))
-        ));
+    void filtroPorVehiculoId_seDelegaALaConsulta() {
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any()))
+            .thenReturn(List.of(ticketDeVehiculo(1, 50.0, new BigDecimal("2000"))));
 
-        StatsResponse resp = service.daily(LocalDate.of(2026, 8, 1), 1, null);
+        service.daily(LocalDate.of(2026, 8, 1), 1, null);
 
-        assertEquals(1, resp.cantidadRegistros());
+        verify(ticketRepository).findForStats(any(), any(), eq(1), eq(false), any());
+    }
+
+    /** Sin filtros, la consulta tiene que recibirlos apagados. */
+    @Test
+    void sinFiltros_laConsultaLosRecibeApagados() {
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any()))
+            .thenReturn(List.of(ticketDeVehiculo(1, 50.0, new BigDecimal("2000"))));
+
+        service.daily(LocalDate.of(2026, 8, 1), null, null);
+
+        verify(ticketRepository).findForStats(any(), any(), eq(null), eq(false), any());
+    }
+
+    /** Con empleados seleccionados, el flag se enciende y viajan los ids. */
+    @Test
+    void filtroPorEmpleados_enciendeElFlagYPasaLosIds() {
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any()))
+            .thenReturn(List.of(ticketDeVehiculo(1, 50.0, new BigDecimal("2000"))));
+
+        service.daily(LocalDate.of(2026, 8, 1), null, List.of(7, 9));
+
+        verify(ticketRepository).findForStats(any(), any(), eq(null), eq(true), eq(List.of(7, 9)));
+    }
+
+    /**
+     * Una lista VACIA de empleados no es un filtro: significa "todos". Si el
+     * flag se encendiera con una lista vacia, el IN no matchearia nada y el
+     * panel quedaria en cero.
+     */
+    @Test
+    void listaDeEmpleadosVacia_noEnciendeElFiltro() {
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any()))
+            .thenReturn(List.of(ticketDeVehiculo(1, 50.0, new BigDecimal("2000"))));
+
+        service.daily(LocalDate.of(2026, 8, 1), null, List.of());
+
+        verify(ticketRepository).findForStats(any(), any(), eq(null), eq(false), any());
     }
 
     // -----------------------------------------------------------------------
@@ -189,7 +273,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_esNullSinVehiculoSeleccionado() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of(
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of(
             ticketDeVehiculo(1, 50.0, new BigDecimal("2000"))
         ));
 
@@ -203,7 +287,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_deMaquinaSeExpresaEnLitrosPorHora() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of());
         cargasDelVehiculo(
             carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
             carga(TipoVehiculo.MAQUINA, 1010, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0))
@@ -219,7 +303,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_deCamionSeExpresaCada100Km() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of());
         cargasDelVehiculo(
             carga(TipoVehiculo.CAMION, 5000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
             carga(TipoVehiculo.CAMION, 5200, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0))
@@ -234,7 +318,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_ignoraLasCargasPosterioresAlRango() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of());
         cargasDelVehiculo(
             carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
             carga(TipoVehiculo.MAQUINA, 1010, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0)),
@@ -250,7 +334,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_conDosCargasDentroDelRangoNoNecesitaLineaBasePrevia() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of());
         cargasDelVehiculo(
             carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 5, 8, 0)),
             carga(TipoVehiculo.MAQUINA, 1020, 50.0, LocalDateTime.of(2026, 8, 5, 18, 0))
@@ -264,7 +348,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_esNullConUnaSolaCargaYSinLineaBase() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of());
         cargasDelVehiculo(
             carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 5, 10, 0))
         );
@@ -278,7 +362,7 @@ class StatsServiceTest {
 
     @Test
     void consumo_ignoraElFiltroDeEmpleado() {
-        when(ticketRepository.findForStats(any(), any())).thenReturn(List.of());
+        when(ticketRepository.findForStats(any(), any(), any(), anyBoolean(), any())).thenReturn(List.of());
         cargasDelVehiculo(
             carga(TipoVehiculo.MAQUINA, 1000, 40.0, LocalDateTime.of(2026, 8, 1, 9, 0)),
             carga(TipoVehiculo.MAQUINA, 1010, 30.0, LocalDateTime.of(2026, 8, 5, 10, 0))

@@ -32,9 +32,32 @@ export interface Ticket {
   anuladoPorUsername: string | null;
 }
 
-// Historial del empleado autenticado (sus tickets vigentes, más recientes primero).
-export function getMisTickets(): Promise<Ticket[]> {
-  return api.get<Ticket[]>('/tickets/me');
+/**
+ * Espejo de PagedModel del backend. Lo comparten el historial del empleado y
+ * el listado del admin.
+ */
+export interface Paged<T> {
+  content: T[];
+  page: { size: number; number: number; totalElements: number; totalPages: number };
+}
+
+/** Cantidad de cargas por página del historial. */
+export const HISTORIAL_PAGE_SIZE = 30;
+
+/**
+ * Historial del empleado autenticado (sus tickets vigentes, más recientes
+ * primero).
+ *
+ * PAGINADO desde el backend. Antes devolvía la lista completa, que crecía con
+ * cada carga y no se borraba nunca: sobre la conexión de un teléfono en el
+ * yacimiento eso no tenía techo. Mismo contrato `Paged<T>` que el listado del
+ * admin.
+ */
+export function getMisTickets(
+  page = 0,
+  size = HISTORIAL_PAGE_SIZE,
+): Promise<Paged<Ticket>> {
+  return api.get<Paged<Ticket>>(`/tickets/me?page=${page}&size=${size}`);
 }
 
 // ---------------------------------------------------------------- admin
@@ -53,12 +76,6 @@ export interface AdminTicketFilters {
   incluirAnulados?: boolean;
   page?: number;
   size?: number;
-}
-
-// Espejo de PagedModel del backend.
-export interface Paged<T> {
-  content: T[];
-  page: { size: number; number: number; totalElements: number; totalPages: number };
 }
 
 /** Listado paginado de tickets para el panel del admin. */
