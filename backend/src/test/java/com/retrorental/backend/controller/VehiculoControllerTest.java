@@ -16,6 +16,7 @@ import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.VehiculoService;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -39,7 +40,8 @@ class VehiculoControllerTest extends AbstractControllerTest {
     private VehiculoResponse sample() {
         return new VehiculoResponse(1, "ABC123", null, TipoVehiculo.CAMION,
             TipoCombustible.GASOIL_GRADO_2, Estado.DISPONIBLE, 60, 15000, UnidadUso.KM,
-            new BigDecimal("8.5"), new BigDecimal("9.1"), null, null, null, null);
+            new BigDecimal("8.5"), new BigDecimal("9.1"), LocalDate.of(2025, 1, 15), null,
+            null, null, null);
     }
 
     @Test

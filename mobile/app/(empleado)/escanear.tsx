@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -16,17 +17,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import { useRef } from 'react';
 import { colors, fonts, radius } from '../../constants/theme';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { OptionChips } from '../../components/fuel/OptionChips';
 import { useAuth } from '../../context/AuthContext';
 import { useFetch } from '../../hooks/useFetch';
-import { getVehiculos, etiquetaLectura, tituloVehiculo, TipoCombustible } from '../../services/vehiculos';
-import { getHerramientas, Herramienta } from '../../services/herramientas';
+import {
+  getVehiculos,
+  etiquetaLectura,
+  tituloVehiculo,
+  TipoCombustible,
+} from '../../services/vehiculos';
+import { getHerramientas } from '../../services/herramientas';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
-import { combustibleLabel, formatMoney } from '../../constants/labels';
+import { comprimirTicket } from '../../services/imagenes';
+import { combustibleLabel, formatMoney, parseEntero, parseNumero } from '../../constants/labels';
 
 // Una herramienta no tiene combustible fijo (a diferencia de un vehículo): se
 // elige carga por carga. Salvo GNC, que no aplica a una herramienta portátil.
@@ -65,7 +71,8 @@ export default function EscanearScreen() {
   const [usoAcumulado, setUsoAcumulado] = useState('');
   // Combustible elegido para la carga. Solo se usa con una herramienta: un
   // vehículo ya tiene su tipoCombustible fijo.
-  const [tipoCombustibleHerramienta, setTipoCombustibleHerramienta] = useState<TipoCombustible | null>(null);
+  const [tipoCombustibleHerramienta, setTipoCombustibleHerramienta] =
+    useState<TipoCombustible | null>(null);
   // Precio por litro editable. Arranca vacío y se prellena con el vigente en
   // cuanto se puede resolver; el empleado puede pisarlo si el surtidor cobró
   // otra cosa. Se guarda como texto para no pelear con comas y decimales
@@ -82,7 +89,12 @@ export default function EscanearScreen() {
   // Pool compartido: cualquier vehículo o herramienta activos se pueden cargar,
   // así que traemos el catálogo completo (no solo los "míos"). El ítem viene
   // fijado por parámetro desde la card, y acá se resuelve contra este catálogo.
-  const { data, loading, error: loadError, refetch } = useFetch(async () => {
+  const {
+    data,
+    loading,
+    error: loadError,
+    refetch,
+  } = useFetch(async () => {
     const [vehiculos, herramientas, proveedores, precios] = await Promise.all([
       getVehiculos(),
       getHerramientas(),
@@ -108,17 +120,52 @@ export default function EscanearScreen() {
       setIdProveedor(null);
       setLitros('');
       setTipoCombustibleHerramienta(null);
+      // Imprescindible: la pantalla es un Tabs.Screen con href:null, así que
+      // queda MONTADA entre entradas. Sin este reset, la lectura del odómetro
+      // del vehículo anterior se envía como la del nuevo y el backend calcula
+      // el consumo real contra un delta inventado. El precio no necesita
+      // limpiarse acá: setIdProveedor(null) deja precioBase en undefined y el
+      // efecto de más abajo ya vacía el campo y su ref.
+      setUsoAcumulado('');
     }, [paramVehiculoId, paramHerramientaId]),
+  );
+
+  // El botón atrás de Android tiene que cerrar la cámara o el análisis, NO la
+  // pantalla entera.
+  //
+  // Cámara y análisis no son rutas: son estado (`stage`). Para el navegador no
+  // existen, así que el atrás hacía pop de `escanear` completa y se llevaba
+  // todo lo que el operario ya había tipeado — litros, lectura, proveedor. El
+  // gesto es reflejo en Android: se abre la cámara, no gusta el encuadre, atrás.
+  // Hay una ✕ para volver, pero compite contra quince años de costumbre.
+  //
+  // VA EN useFocusEffect, NO en useEffect: la pantalla es un Tabs.Screen con
+  // href:null y queda MONTADA entre entradas, así que un listener registrado al
+  // montar seguiría interceptando el botón atrás desde las otras pestañas.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        // En el formulario no se toca: que el sistema haga lo suyo y salga.
+        if (stage === 'form') return false;
+        setStage('form');
+        return true; // consumido
+      });
+      return () => sub.remove();
+    }, [stage]),
   );
 
   // Al capturar/elegir la foto pasamos por la etapa 'analyzing' (overlay) mientras
   // corre el OCR, y al terminar volvemos al formulario. Como ahora el empleado pudo
   // haber tipeado datos ANTES de sacar la foto, el OCR solo autocompleta los campos
   // que están vacíos: nunca pisa lo que el usuario ya cargó a mano (ver runAnalysis).
-  const handlePhoto = (uri: string) => {
-    setFotoUri(uri);
+  const handlePhoto = async (uri: string) => {
     setStage('analyzing');
-    runAnalysis(uri);
+    // Se comprime UNA sola vez, acá, para que las dos subidas —el OCR de
+    // /tickets/analyze y el alta de /tickets— manden el mismo archivo reducido.
+    // Sin esto viajaban 3 a 6 MB por carga sobre la conexión del yacimiento.
+    const comprimida = await comprimirTicket(uri);
+    setFotoUri(comprimida);
+    runAnalysis(comprimida);
   };
 
   // Corre el OCR sobre la foto y pre-carga lo que se pueda, y SOLO al terminar
@@ -176,9 +223,15 @@ export default function EscanearScreen() {
 
   const capture = async () => {
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.6, skipProcessing: true });
+      // El quality de la captura solo ajusta la compresion JPEG, NO la
+      // resolucion: lo que baja el peso de verdad es el resize de
+      // comprimirTicket, que corre despues en handlePhoto.
+      const photo = await cameraRef.current?.takePictureAsync({
+        quality: 0.6,
+        skipProcessing: true,
+      });
       if (photo?.uri) {
-        handlePhoto(photo.uri);
+        void handlePhoto(photo.uri);
         return;
       }
     } catch {
@@ -190,7 +243,7 @@ export default function EscanearScreen() {
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
     if (!result.canceled && result.assets?.length) {
-      handlePhoto(result.assets[0].uri);
+      void handlePhoto(result.assets[0].uri);
     }
   };
 
@@ -220,7 +273,9 @@ export default function EscanearScreen() {
   // resuelto por el catálogo.
   const precioNaftaSuperProveedor =
     idProveedor != null
-      ? data?.precios.find((p) => p.idProveedor === idProveedor && p.tipoCombustible === 'NAFTA_SUPER')
+      ? data?.precios.find(
+          (p) => p.idProveedor === idProveedor && p.tipoCombustible === 'NAFTA_SUPER',
+        )
       : undefined;
   const esMezclaSinPrecioPropio =
     idHerramienta != null && tipoCombustibleSel === 'MEZCLA' && !precioSel;
@@ -230,7 +285,7 @@ export default function EscanearScreen() {
   // referencia cuando es una MEZCLA que el proveedor todavía no tiene cargada.
   const precioBase = precioSel ?? (esMezclaSinPrecioPropio ? precioNaftaSuperProveedor : undefined);
 
-  const litrosNum = parseFloat(litros.replace(',', '.')) || 0;
+  const litrosNum = parseNumero(litros) || 0;
 
   // El precio base prellena el campo apenas se resuelve, y se vuelve a
   // prellenar si cambia el proveedor o el combustible. No se pisa lo que el
@@ -248,18 +303,19 @@ export default function EscanearScreen() {
     }
   }, [precioBase]);
 
-  const precioNum = parseFloat(precioEditado.replace(',', '.')) || 0;
+  const precioNum = parseNumero(precioEditado) || 0;
   // El total sigue al precio que el empleado ve, no al del catálogo.
   const total = precioNum > 0 ? litrosNum * precioNum : 0;
   // Solo se manda si difiere de la base: si es igual, que resuelva el backend.
-  const precioFueCorregido = precioBase != null && precioNum > 0
-    && Math.abs(precioNum - precioBase.precioUnitario) > 0.001;
+  const precioFueCorregido =
+    precioBase != null && precioNum > 0 && Math.abs(precioNum - precioBase.precioUnitario) > 0.001;
 
   const submit = async () => {
     setError(null);
     // La foto NO se valida: es opcional. Se puede confirmar sin comprobante.
     if (!idVehiculo && !idHerramienta) return setError('Elegí el vehículo o la herramienta.');
-    if (idHerramienta && !tipoCombustibleHerramienta) return setError('Elegí el combustible de esta carga.');
+    if (idHerramienta && !tipoCombustibleHerramienta)
+      return setError('Elegí el combustible de esta carga.');
     if (!idProveedor) return setError('Elegí el proveedor.');
     // precioBase cubre los dos casos: el vigente ya resuelto (precioSel), o el
     // de NAFTA_SUPER como referencia inicial de una MEZCLA que el proveedor
@@ -273,7 +329,7 @@ export default function EscanearScreen() {
     // para un vehículo.
     let usoNum: number | undefined;
     if (idVehiculo) {
-      usoNum = parseInt(usoAcumulado, 10);
+      usoNum = parseEntero(usoAcumulado);
       if (!(usoNum >= 0)) {
         return setError(`Ingresá ${etiquetaLectura(vehiculoSel?.tipoVehiculo ?? null)}.`);
       }
@@ -288,7 +344,8 @@ export default function EscanearScreen() {
           // manda tipoCombustible en su lugar; el backend resuelve o crea el
           // precio (ver CreateTicketPayload).
           idPrecio: idVehiculo != null ? precioSel?.id : undefined,
-          tipoCombustible: idHerramienta != null ? tipoCombustibleHerramienta ?? undefined : undefined,
+          tipoCombustible:
+            idHerramienta != null ? (tipoCombustibleHerramienta ?? undefined) : undefined,
           idProveedor,
           idVehiculo: idVehiculo ?? undefined,
           idHerramienta: idHerramienta ?? undefined,
@@ -325,7 +382,9 @@ export default function EscanearScreen() {
         <SafeAreaView style={styles.center}>
           <Text style={{ fontSize: 40, marginBottom: 14 }}>📷</Text>
           <Text style={styles.permTitle}>Necesitamos la cámara</Text>
-          <Text style={styles.permText}>Para fotografiar el ticket de carga hay que permitir el acceso a la cámara.</Text>
+          <Text style={styles.permText}>
+            Para fotografiar el ticket de carga hay que permitir el acceso a la cámara.
+          </Text>
           <Pressable style={styles.permBtn} onPress={requestPermission}>
             <Text style={styles.permBtnText}>Permitir cámara</Text>
           </Pressable>
@@ -342,12 +401,22 @@ export default function EscanearScreen() {
       <View style={styles.cameraWrap}>
         <SafeAreaView style={styles.cameraHeader} edges={['top']}>
           <Text style={styles.cameraTitle}>FOTOGRAFIAR TICKET</Text>
-          <Pressable onPress={() => setStage('form')} hitSlop={10}>
+          <Pressable
+            onPress={() => setStage('form')}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar la cámara y volver al formulario"
+          >
             <Text style={styles.cameraClose}>✕</Text>
           </Pressable>
         </SafeAreaView>
         <View style={styles.viewport}>
-          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" enableTorch={flash} />
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            enableTorch={flash}
+          />
           <Text style={styles.hint}>Alineá el ticket dentro del recuadro</Text>
         </View>
         <SafeAreaView style={styles.controls} edges={['bottom']}>
@@ -355,7 +424,10 @@ export default function EscanearScreen() {
             <Text style={{ fontSize: 18 }}>🖼️</Text>
           </Pressable>
           <Pressable style={styles.shutter} onPress={capture} />
-          <Pressable style={[styles.sideBtn, flash && { backgroundColor: colors.primary }]} onPress={() => setFlash(!flash)}>
+          <Pressable
+            style={[styles.sideBtn, flash && { backgroundColor: colors.primary }]}
+            onPress={() => setFlash(!flash)}
+          >
             <Text style={{ fontSize: 18 }}>⚡</Text>
           </Pressable>
         </SafeAreaView>
@@ -373,7 +445,9 @@ export default function EscanearScreen() {
         {fotoUri && <Image source={{ uri: fotoUri }} style={styles.analyzingPhoto} />}
         <ActivityIndicator color={colors.primary} style={{ marginBottom: 16 }} />
         <Text style={styles.permTitle}>Analizando ticket…</Text>
-        <Text style={styles.permText}>Estamos leyendo los datos de la foto para pre-cargar el formulario.</Text>
+        <Text style={styles.permText}>
+          Estamos leyendo los datos de la foto para pre-cargar el formulario.
+        </Text>
       </SafeAreaView>
     );
   }
@@ -381,8 +455,14 @@ export default function EscanearScreen() {
   // ---- etapa formulario ----
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 30 }} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingBottom: 30 }}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.h1}>REGISTRAR CARGA</Text>
 
           {analysisNote && (
@@ -411,7 +491,9 @@ export default function EscanearScreen() {
                   {vehiculoSel ? tituloVehiculo(vehiculoSel) : herramientaSel!.nombre}
                 </Text>
                 <Text style={styles.vehiculoFijoSub}>
-                  {vehiculoSel ? combustibleLabel[vehiculoSel.tipoCombustible] : `Capacidad ${herramientaSel!.capacidad} L`}
+                  {vehiculoSel
+                    ? combustibleLabel[vehiculoSel.tipoCombustible]
+                    : `Capacidad ${herramientaSel!.capacidad} L`}
                 </Text>
               </View>
 
@@ -439,7 +521,9 @@ export default function EscanearScreen() {
               {!idProveedor ? (
                 <Text style={styles.precioHint}>Elegí el proveedor para ver el precio.</Text>
               ) : !tipoCombustibleSel ? (
-                <Text style={styles.precioHint}>Elegí el combustible de esta carga para ver el precio.</Text>
+                <Text style={styles.precioHint}>
+                  Elegí el combustible de esta carga para ver el precio.
+                </Text>
               ) : precioBase ? (
                 <>
                   <TextInput
@@ -471,8 +555,8 @@ export default function EscanearScreen() {
                 </>
               ) : (
                 <Text style={styles.precioWarn}>
-                  No hay un precio cargado para ese proveedor y combustible. Escaneá un ticket de esa
-                  combinación o pedile al administrador que lo cargue.
+                  No hay un precio cargado para ese proveedor y combustible. Escaneá un ticket de
+                  esa combinación o pedile al administrador que lo cargue.
                 </Text>
               )}
 
@@ -531,14 +615,20 @@ export default function EscanearScreen() {
                   <Text style={styles.attachIcon}>📷</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.attachTitle}>Adjuntar foto del ticket</Text>
-                    <Text style={styles.attachSub}>Opcional · podés registrar la carga sin foto</Text>
+                    <Text style={styles.attachSub}>
+                      Opcional · podés registrar la carga sin foto
+                    </Text>
                   </View>
                 </Pressable>
               )}
 
               {error && <Text style={styles.error}>{error}</Text>}
 
-              <Pressable style={[styles.confirm, submitting && styles.confirmDisabled]} onPress={submit} disabled={submitting}>
+              <Pressable
+                style={[styles.confirm, submitting && styles.confirmDisabled]}
+                onPress={submit}
+                disabled={submitting}
+              >
                 {submitting ? (
                   <ActivityIndicator color={colors.bgDeep} />
                 ) : (
@@ -555,17 +645,63 @@ export default function EscanearScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  center: { flex: 1, backgroundColor: colors.bgBlack, alignItems: 'center', justifyContent: 'center', padding: 30 },
+  center: {
+    flex: 1,
+    backgroundColor: colors.bgBlack,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
   permTitle: { fontFamily: fonts.display, fontSize: 18, color: colors.text, marginBottom: 8 },
-  permText: { fontSize: 13, color: colors.textFaint, textAlign: 'center', lineHeight: 20, marginBottom: 22, fontFamily: fonts.sans },
-  permBtn: { backgroundColor: colors.primary, borderRadius: radius.md, paddingHorizontal: 24, paddingVertical: 14, marginBottom: 10 },
-  permBtnText: { color: colors.bgDeep, fontFamily: fonts.display, fontSize: 15, letterSpacing: 1, textTransform: 'uppercase' },
-  permBtnAlt: { backgroundColor: colors.surfaceInput, borderWidth: 1, borderColor: colors.borderInput },
-  permBtnAltText: { color: colors.text, fontFamily: fonts.sansSemi, fontSize: 14, textAlign: 'center' },
-  permSkip: { color: colors.textFaint, fontFamily: fonts.sans, fontSize: 13, textAlign: 'center', textDecorationLine: 'underline' },
+  permText: {
+    fontSize: 13,
+    color: colors.textFaint,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 22,
+    fontFamily: fonts.sans,
+  },
+  permBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    marginBottom: 10,
+  },
+  permBtnText: {
+    color: colors.bgDeep,
+    fontFamily: fonts.display,
+    fontSize: 15,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  permBtnAlt: {
+    backgroundColor: colors.surfaceInput,
+    borderWidth: 1,
+    borderColor: colors.borderInput,
+  },
+  permBtnAltText: {
+    color: colors.text,
+    fontFamily: fonts.sansSemi,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  permSkip: {
+    color: colors.textFaint,
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+  },
 
   cameraWrap: { flex: 1, backgroundColor: colors.bgBlack },
-  cameraHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
+  cameraHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   cameraTitle: { fontFamily: fonts.display, fontSize: 16, letterSpacing: 1, color: colors.text },
   cameraClose: { color: colors.text, fontSize: 20, paddingHorizontal: 4 },
   viewport: {
@@ -573,9 +709,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: radius.xl,
     overflow: 'hidden',
-    backgroundColor: '#141517',
+    backgroundColor: colors.panel,
     borderWidth: 1,
-    borderColor: '#2c2f33',
+    borderColor: colors.panelBorder,
   },
   hint: {
     position: 'absolute',
@@ -584,12 +720,32 @@ const styles = StyleSheet.create({
     bottom: 14,
     textAlign: 'center',
     fontSize: 11,
-    color: '#cfd3d8',
+    color: colors.textStrong,
     fontFamily: fonts.sans,
   },
-  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingVertical: 22, paddingHorizontal: 16 },
-  sideBtn: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#1b1d20', alignItems: 'center', justifyContent: 'center' },
-  shutter: { width: 74, height: 74, borderRadius: 37, backgroundColor: colors.primary, borderWidth: 5, borderColor: '#2a2c30' },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+  },
+  sideBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutter: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    backgroundColor: colors.primary,
+    borderWidth: 5,
+    borderColor: colors.border,
+  },
 
   h1: { fontFamily: fonts.displayBold, fontSize: 24, color: colors.text, marginBottom: 16 },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
@@ -623,8 +779,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 4,
   },
-  ocrText: { flex: 1, color: colors.textFaint, fontSize: 13, fontFamily: fonts.sans, lineHeight: 18 },
-  analyzingPhoto: { width: 120, height: 120, borderRadius: radius.md, marginBottom: 22, backgroundColor: colors.surfaceInput },
+  ocrText: {
+    flex: 1,
+    color: colors.textFaint,
+    fontSize: 13,
+    fontFamily: fonts.sans,
+    lineHeight: 18,
+  },
+  analyzingPhoto: {
+    width: 120,
+    height: 120,
+    borderRadius: radius.md,
+    marginBottom: 22,
+    backgroundColor: colors.surfaceInput,
+  },
   precioHint: { color: colors.textDim, fontSize: 13, fontFamily: fonts.sans, paddingVertical: 4 },
   precioBox: {
     flexDirection: 'row',
@@ -687,7 +855,7 @@ const styles = StyleSheet.create({
   },
   totalBox: {
     marginTop: 18,
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 13,
@@ -699,7 +867,20 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 12, color: colors.textFaint, letterSpacing: 1, fontFamily: fonts.sans },
   totalValue: { fontFamily: fonts.mono, fontSize: 24, color: colors.primary },
   error: { color: colors.danger, fontSize: 13, marginTop: 14, fontFamily: fonts.sans },
-  confirm: { height: 52, backgroundColor: colors.primary, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', marginTop: 18 },
+  confirm: {
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
   confirmDisabled: { opacity: 0.6 },
-  confirmText: { fontFamily: fonts.display, fontSize: 15, letterSpacing: 1, textTransform: 'uppercase', color: colors.bgDeep },
+  confirmText: {
+    fontFamily: fonts.display,
+    fontSize: 15,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.bgDeep,
+  },
 });

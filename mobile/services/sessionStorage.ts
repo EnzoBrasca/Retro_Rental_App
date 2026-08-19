@@ -111,7 +111,10 @@ export async function saveSession(data: AuthResponse): Promise<void> {
  * sin perfil no permite ni siquiera decidir a qué pantalla ir según el rol.
  */
 export async function readSession(): Promise<Usuario | null> {
-  const [token, perfilCrudo] = await Promise.all([leerTokenCrudo(), AsyncStorage.getItem(PROFILE_KEY)]);
+  const [token, perfilCrudo] = await Promise.all([
+    leerTokenCrudo(),
+    AsyncStorage.getItem(PROFILE_KEY),
+  ]);
 
   if (!token || !perfilCrudo) {
     // Estado inconsistente (por ejemplo, una de las dos escrituras falló):

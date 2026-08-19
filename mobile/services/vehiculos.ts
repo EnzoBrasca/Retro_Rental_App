@@ -67,9 +67,6 @@ export function textoBusquedaVehiculo(v: Vehiculo): string {
   return `${v.identificador} ${v.modelo ?? ''}`.toLowerCase();
 }
 
-// Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
-// Nombra el instrumento a propósito: en el campo se lee un horómetro o un
-// odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
 // Sufijo con el que se muestra un consumo ya calculado, a partir de la unidad
 // que mandó el servidor. Es la forma preferida: no necesita el vehículo entero,
 // solo el `unidadUso` que viaja en la respuesta.
@@ -107,24 +104,20 @@ export function unidadConsumo(tipo: TipoVehiculo | null): string {
   return sufijoConsumo(unidadDeTipo(tipo));
 }
 
+// Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
+// Nombra el instrumento a propósito: en el campo se lee un horómetro o un
+// odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
 export function etiquetaLectura(tipo: TipoVehiculo | null): string {
   return unidadDeTipo(tipo) === 'HORAS' ? 'Horas del horómetro' : 'Kilómetros del odómetro';
 }
 
 export function etiquetaConsumo(tipo: TipoVehiculo | null): string {
-  return unidadDeTipo(tipo) === 'HORAS'
-    ? 'Consumo promedio (L/h)'
-    : 'Consumo promedio (L/100km)';
+  return unidadDeTipo(tipo) === 'HORAS' ? 'Consumo promedio (L/h)' : 'Consumo promedio (L/100km)';
 }
 // MEZCLA es nafta con aceite: solo la usan herramientas como la motosierra, un
 // vehículo nunca la tiene como tipoCombustible fijo.
 export type TipoCombustible =
-  | 'NAFTA_SUPER'
-  | 'NAFTA_PREMIUM'
-  | 'GASOIL_GRADO_2'
-  | 'GASOIL_GRADO_3'
-  | 'GNC'
-  | 'MEZCLA';
+  'NAFTA_SUPER' | 'NAFTA_PREMIUM' | 'GASOIL_GRADO_2' | 'GASOIL_GRADO_3' | 'GNC' | 'MEZCLA';
 
 export interface Vehiculo {
   id: number;
@@ -147,6 +140,9 @@ export interface Vehiculo {
   consumoPromedio: number;
   // Consumo de las últimas cargas. null hasta que haya dos con lectura.
   consumoReciente: number | null;
+  // yyyy-mm-dd. Viaja porque UpdateVehiculoPayload la exige en cada edición:
+  // el formulario del ABM tiene que reenviar la fecha guardada, no una nueva.
+  fechaUltimoMantenimiento: string;
   fechaBaja: string | null;
   // Operario que usó el vehículo por última vez (se actualiza en cada carga).
   // null = sin uso registrado. El nombre/apellido vienen del backend para pintar

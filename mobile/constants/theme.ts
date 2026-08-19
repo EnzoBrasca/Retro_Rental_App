@@ -1,9 +1,9 @@
 /**
- * Dark "FuelTrack" design tokens ported from the FrontEnd prototype.
+ * Design tokens de la app. Única fuente de color, tipografía y radios.
  *
- * Kept as a separate module from `Colors.ts` (which holds the older light
- * palette). Every ported screen themes from here so the whole app shares one
- * dark, IMDb-style yellow look.
+ * Toda la app es oscura y se tematiza desde acá. Si un color hace falta y no
+ * está, se agrega un token: escribirlo a mano en un StyleSheet lo vuelve
+ * imposible de cambiar después sin buscarlo por todo el proyecto.
  */
 export const colors = {
   bg: '#16181B',
@@ -13,6 +13,18 @@ export const colors = {
   surfaceAlt: '#22262b',
   surfaceInput: '#22262b',
   card: '#1B1E22',
+  // Fondo de los botones secundarios del ABM y de los bloques neutros.
+  surfaceMuted: '#1b1d20',
+  // Canaleta de una barra de progreso: más oscura que el fondo para que la
+  // barra se lea aunque esté casi vacía.
+  trackBg: '#151719',
+  // Relleno de una barra sin color propio, sobre trackBg.
+  trackFill: '#3a3f45',
+  // Bloque de aviso/resumen dentro de un formulario, un punto más oscuro que bg.
+  panel: '#141517',
+  panelBorder: '#2c2f33',
+  // Variante del panel para el bloque de ayuda del login.
+  hintBg: '#242a30',
   border: '#2A2F35',
   borderSoft: '#2C3138',
   borderInput: '#2E343B',
@@ -21,8 +33,14 @@ export const colors = {
   primary: '#F5C518',
   primaryLight: '#ffd94d',
   primaryDark: '#c99a00',
+  // Continuación de la escala del amarillo hacia abajo, para las series del
+  // gráfico cuando hay más de tres categorías.
+  primaryDeep: '#8a7220',
+  primaryDeepest: '#5f5220',
 
   text: '#E8E6E1',
+  // Títulos de sección y etiquetas de gráfico: más claro que textMuted.
+  textStrong: '#C9CDD2',
   textMuted: '#9AA0A6',
   textFaint: '#8A9099',
   textDim: '#6E747C',

@@ -1,39 +1,58 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { colors, fonts } from '../../constants/theme';
 import { Loading, ErrorState, EmptyState } from '../../components/fuel/ScreenState';
 import { LoadDetailModal } from '../../components/fuel/LoadDetailModal';
 import { useFetch } from '../../hooks/useFetch';
-import { getMisTickets, HISTORIAL_PAGE_SIZE, Ticket } from '../../services/tickets';
-import { getVehiculos, tituloVehiculo, Vehiculo, TipoCombustible } from '../../services/vehiculos';
+import { getMisTickets, Ticket } from '../../services/tickets';
+import { getVehiculos, tituloVehiculo, Vehiculo } from '../../services/vehiculos';
 import { getHerramientas, Herramienta } from '../../services/herramientas';
-import { getProveedores, getPrecios, Proveedor, Precio } from '../../services/catalogos';
+import { getProveedores, Proveedor } from '../../services/catalogos';
 import { formatFecha, formatMoney } from '../../constants/labels';
+// El tipo de la fila vive en LoadDetailModal, que es quien la consume. Se
+// reexporta para no romper a quien la importe desde acá.
+import type { Row } from '../../components/fuel/LoadDetailModal';
+
+export type { Row };
 
 type Filtro = 'Todos' | 'Esta semana' | 'Este mes';
 const FILTERS: Filtro[] = ['Todos', 'Esta semana', 'Este mes'];
 
-// El tipo de la fila vive en LoadDetailModal, que es quien la consume. Se
-// reexporta para no romper a quien la importe desde acá.
-import type { Row } from '../../components/fuel/LoadDetailModal';
-export type { Row };
-
 // Card colapsada: solo litros e importe total. El detalle (proveedor, fecha,
 // combustible, precio/L y la foto del ticket) se abre al tocarla.
-const LoadRow = memo(({ item, onPress }: { item: Row; onPress: (r: Row) => void }) => (
-  <Pressable style={styles.card} onPress={() => onPress(item)}>
-    <View style={styles.litrosBox}>
-      <Text style={styles.litros}>{item.litros}</Text>
-      <Text style={styles.litrosUnit}>L</Text>
-    </View>
-    <View style={styles.costWrap}>
-      <Text style={styles.cost}>{formatMoney(item.costo)}</Text>
-      <Text style={styles.chevron}>›</Text>
-    </View>
-  </Pressable>
-));
+const LoadRow = memo(function LoadRow({ item, onPress }: { item: Row; onPress: (r: Row) => void }) {
+  return (
+    <Pressable
+      style={styles.card}
+      onPress={() => onPress(item)}
+      accessibilityRole="button"
+      // La card solo muestra litros e importe; el resto (proveedor, fecha,
+      // combustible) está en el detalle que abre. El label dice de qué carga se
+      // trata para no anunciar dos números sueltos sin contexto.
+      accessibilityLabel={`Carga de ${item.litros} litros en ${item.identificador}, ${formatMoney(item.costo)}, ${item.fecha}`}
+      accessibilityHint="Abre el detalle de la carga"
+    >
+      <View style={styles.litrosBox}>
+        <Text style={styles.litros}>{item.litros}</Text>
+        <Text style={styles.litrosUnit}>L</Text>
+      </View>
+      <View style={styles.costWrap}>
+        <Text style={styles.cost}>{formatMoney(item.costo)}</Text>
+        <Text style={styles.chevron}>›</Text>
+      </View>
+    </Pressable>
+  );
+});
 
 export default function HistorialScreen() {
   const [activeFilter, setActiveFilter] = useState<Filtro>('Todos');
@@ -43,14 +62,13 @@ export default function HistorialScreen() {
   // junto con los catálogos; las siguientes se van agregando al llegar al final
   // de la lista (ver cargarMas). Los catálogos no se vuelven a pedir.
   const { data, loading, error, refetch } = useFetch(async () => {
-    const [pagina, vehiculos, herramientas, proveedores, precios] = await Promise.all([
+    const [pagina, vehiculos, herramientas, proveedores] = await Promise.all([
       getMisTickets(0),
       getVehiculos(),
       getHerramientas(),
       getProveedores(),
-      getPrecios(),
     ]);
-    return { pagina, vehiculos, herramientas, proveedores, precios };
+    return { pagina, vehiculos, herramientas, proveedores };
   });
 
   // Tickets acumulados de todas las páginas traídas hasta ahora.
@@ -114,14 +132,11 @@ export default function HistorialScreen() {
     const vById = new Map<number, Vehiculo>(data.vehiculos.map((v) => [v.id, v]));
     const hById = new Map<number, Herramienta>(data.herramientas.map((h) => [h.id, h]));
     const pById = new Map<number, Proveedor>(data.proveedores.map((p) => [p.id, p]));
-    const precioById = new Map<number, Precio>(data.precios.map((p) => [p.id, p]));
 
     return tickets.map((t: Ticket) => {
       // Exactamente uno de los dos viene con valor (ver services/tickets.ts).
       const v = t.idVehiculo != null ? vById.get(t.idVehiculo) : undefined;
       const h = t.idHerramienta != null ? hById.get(t.idHerramienta) : undefined;
-      const precio = precioById.get(t.idPrecio);
-      const unitario = precio ? precio.precioUnitario : 0;
       return {
         id: t.id,
         identificador: v
@@ -140,8 +155,13 @@ export default function HistorialScreen() {
         fechaCarga: t.fechaCarga,
         proveedor: pById.get(t.idProveedor)?.nombre ?? `Proveedor #${t.idProveedor}`,
         litros: t.litros,
-        precioUnitario: unitario,
-        costo: t.litros * unitario,
+        // El precio SALE DEL TICKET, no del catálogo de precios: GET /precios
+        // devuelve solo los vigentes, así que resolver t.idPrecio contra él
+        // daba 0 en toda carga anterior al último cambio de precio. Además el
+        // ticket es el único que conoce la corrección que hizo el empleado
+        // cuando el surtidor cobró otra cosa.
+        precioUnitario: t.precioUnitario,
+        costo: t.litros * t.precioUnitario,
         ticketFotoUrl: t.ticketFotoUrl,
       };
     });
@@ -220,12 +240,33 @@ export default function HistorialScreen() {
         keyExtractor={(r) => String(r.id)}
         renderItem={renderItem}
         ListHeaderComponent={header}
-        ListEmptyComponent={<EmptyState message="Todavía no registraste cargas." />}
+        // Dos situaciones distintas necesitan dos mensajes distintos: con
+        // "Esta semana" puesto, un operario que cargó cuarenta tickets el mes
+        // pasado leía que nunca había registrado nada.
+        ListEmptyComponent={
+          <EmptyState
+            message={
+              activeFilter === 'Todos'
+                ? 'Todavía no registraste cargas.'
+                : 'No hay cargas en este período.'
+            }
+          />
+        }
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
         // Trae la página siguiente al acercarse al final. Con el filtro activo
         // se sigue paginando sobre el historial completo: las filas que el
         // filtro descarta igual cuentan para llegar al final de la lista.
+        // Tirar para actualizar: el gesto que todo el mundo hace cuando algo no
+        // cargó. Antes había que salir de la pestaña y volver.
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={refetch}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         onEndReached={cargarMas}
         onEndReachedThreshold={0.5}
         ListFooterComponent={
@@ -246,7 +287,7 @@ const styles = StyleSheet.create({
   h1: { fontFamily: fonts.displayBold, fontSize: 26, color: colors.text, marginBottom: 4 },
   subtitle: { fontSize: 12, color: colors.textFaint, marginBottom: 16, fontFamily: fonts.sans },
   chip: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     paddingHorizontal: 14,
@@ -257,7 +298,7 @@ const styles = StyleSheet.create({
   chipText: { color: colors.textMuted, fontSize: 12, fontFamily: fonts.sans },
   chipTextActive: { color: colors.bgDeep, fontFamily: fonts.sansSemi },
   card: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 13,
