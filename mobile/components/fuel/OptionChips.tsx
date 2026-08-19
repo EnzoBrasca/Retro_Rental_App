@@ -33,7 +33,11 @@ export function OptionChips<T extends string | number>({
             disabled={disabled}
           >
             <Text
-              style={[styles.chipText, selected && styles.chipTextActive, disabled && styles.chipTextDisabled]}
+              style={[
+                styles.chipText,
+                selected && styles.chipTextActive,
+                disabled && styles.chipTextDisabled,
+              ]}
             >
               {o.label}
             </Text>

@@ -20,9 +20,7 @@ export function ProfileView({ onBack }: { onBack?: () => void }) {
   const { user, logout } = useAuth();
 
   const fullName = user ? `${user.nombre} ${user.apellido}` : 'Juan Pérez';
-  const initials = user
-    ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase()
-    : 'JP';
+  const initials = user ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase() : 'JP';
   const roleLabel = user?.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Operario';
 
   // Edición local (mock): sin persistencia todavía. Se enchufará a un PUT del
@@ -44,7 +42,10 @@ export function ProfileView({ onBack }: { onBack?: () => void }) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         {onBack && (
           <Pressable style={styles.back} onPress={onBack} hitSlop={10}>
             <Text style={styles.backText}>‹ Volver</Text>
@@ -118,9 +119,7 @@ export function ProfileView({ onBack }: { onBack?: () => void }) {
             un número de versión desactualizado en el pie es peor que no
             mostrarlo, porque hace perder tiempo diagnosticando la app
             equivocada. */}
-        <Text style={styles.version}>
-          RetroRental v{Constants.expoConfig?.version ?? '—'}
-        </Text>
+        <Text style={styles.version}>RetroRental v{Constants.expoConfig?.version ?? '—'}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -153,7 +152,13 @@ const styles = StyleSheet.create({
   avatarText: { fontFamily: fonts.displayBold, fontSize: 30, color: colors.bgDeep },
   name: { fontFamily: fonts.display, fontSize: 20, color: colors.text },
   role: { fontSize: 12, color: colors.textFaint, marginTop: 2, fontFamily: fonts.sans },
-  verified: { marginTop: 12, backgroundColor: colors.greenBg, paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20 },
+  verified: {
+    marginTop: 12,
+    backgroundColor: colors.greenBg,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
   verifiedText: { color: colors.greenText, fontSize: 11, fontFamily: fonts.sansSemi },
   section: {
     fontSize: 11,
@@ -204,5 +209,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoutText: { color: colors.danger, fontSize: 14, fontFamily: fonts.sansSemi },
-  version: { textAlign: 'center', fontSize: 11, color: '#4d525a', marginTop: 16, fontFamily: fonts.sans },
+  version: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#4d525a',
+    marginTop: 16,
+    fontFamily: fonts.sans,
+  },
 });

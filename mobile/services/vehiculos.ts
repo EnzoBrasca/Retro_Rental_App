@@ -112,19 +112,12 @@ export function etiquetaLectura(tipo: TipoVehiculo | null): string {
 }
 
 export function etiquetaConsumo(tipo: TipoVehiculo | null): string {
-  return unidadDeTipo(tipo) === 'HORAS'
-    ? 'Consumo promedio (L/h)'
-    : 'Consumo promedio (L/100km)';
+  return unidadDeTipo(tipo) === 'HORAS' ? 'Consumo promedio (L/h)' : 'Consumo promedio (L/100km)';
 }
 // MEZCLA es nafta con aceite: solo la usan herramientas como la motosierra, un
 // vehículo nunca la tiene como tipoCombustible fijo.
 export type TipoCombustible =
-  | 'NAFTA_SUPER'
-  | 'NAFTA_PREMIUM'
-  | 'GASOIL_GRADO_2'
-  | 'GASOIL_GRADO_3'
-  | 'GNC'
-  | 'MEZCLA';
+  'NAFTA_SUPER' | 'NAFTA_PREMIUM' | 'GASOIL_GRADO_2' | 'GASOIL_GRADO_3' | 'GNC' | 'MEZCLA';
 
 export interface Vehiculo {
   id: number;

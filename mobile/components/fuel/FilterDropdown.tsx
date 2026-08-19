@@ -55,7 +55,7 @@ export function FilterDropdown<T extends string | number>(props: FilterDropdownP
 
   const closeDropdown = () => setOpen(false);
 
-  const allLabel = props.mode === 'multi' ? props.allLabel ?? 'Todos' : undefined;
+  const allLabel = props.mode === 'multi' ? (props.allLabel ?? 'Todos') : undefined;
 
   const summary = (() => {
     if (props.mode === 'single') {
@@ -95,13 +95,21 @@ export function FilterDropdown<T extends string | number>(props: FilterDropdownP
             <ScrollView style={styles.optionsList} keyboardShouldPersistTaps="handled">
               {props.mode === 'multi' && (
                 <Pressable style={styles.option} onPress={props.onClear}>
-                  <Text style={[styles.optionText, props.selected.length === 0 && styles.optionTextActive]}>
+                  <Text
+                    style={[
+                      styles.optionText,
+                      props.selected.length === 0 && styles.optionTextActive,
+                    ]}
+                  >
                     {allLabel}
                   </Text>
                 </Pressable>
               )}
               {props.options.map((o) => {
-                const isActive = props.mode === 'single' ? o.key === props.selected : props.selected.includes(o.key);
+                const isActive =
+                  props.mode === 'single'
+                    ? o.key === props.selected
+                    : props.selected.includes(o.key);
                 return (
                   <Pressable
                     key={String(o.key)}
@@ -115,7 +123,9 @@ export function FilterDropdown<T extends string | number>(props: FilterDropdownP
                       }
                     }}
                   >
-                    <Text style={[styles.optionText, isActive && styles.optionTextActive]}>{o.label}</Text>
+                    <Text style={[styles.optionText, isActive && styles.optionTextActive]}>
+                      {o.label}
+                    </Text>
                   </Pressable>
                 );
               })}
@@ -156,7 +166,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   optionsList: { maxHeight: 260 },
-  option: { paddingHorizontal: 13, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.divider },
+  option: {
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
   optionText: { color: colors.textMuted, fontSize: 13, fontFamily: fonts.sansMed },
   optionTextActive: { color: colors.primary, fontFamily: fonts.sansSemi },
   doneBtn: { paddingVertical: 11, alignItems: 'center', backgroundColor: colors.surfaceAlt },

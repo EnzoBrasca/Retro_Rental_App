@@ -83,7 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // El backend puede rechazar el token aunque no haya vencido por reloj (secret
   // rotado, usuario eliminado). El 401 es la señal definitiva: cerramos sesión.
-  useEffect(() => onUnauthorized(() => { void logout(); }), [logout]);
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        void logout();
+      }),
+    [logout],
+  );
 
   // La sesión puede vencer con la app abierta en segundo plano. Al volver a
   // primer plano revisamos el reloj para no mostrar pantallas de un usuario

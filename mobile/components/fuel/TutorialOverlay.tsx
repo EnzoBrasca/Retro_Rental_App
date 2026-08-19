@@ -68,7 +68,12 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   stepLabel: {
     fontSize: 10,
     letterSpacing: 2,
@@ -78,7 +83,13 @@ const styles = StyleSheet.create({
   },
   skip: { fontSize: 11, color: colors.textFaint, fontFamily: fonts.sans },
   title: { fontFamily: fonts.display, fontSize: 22, color: colors.text, marginBottom: 8 },
-  text: { fontSize: 14, color: colors.textMuted, lineHeight: 22, marginBottom: 24, fontFamily: fonts.sans },
+  text: {
+    fontSize: 14,
+    color: colors.textMuted,
+    lineHeight: 22,
+    marginBottom: 24,
+    fontFamily: fonts.sans,
+  },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dots: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   dot: { width: 6, height: 6, borderRadius: 4, backgroundColor: '#4d525a' },

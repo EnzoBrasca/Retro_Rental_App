@@ -20,11 +20,46 @@ export type Machine = {
 };
 
 export let MACHINERY: Machine[] = [
-  { id: 'm0', icon: IconPickup, name: 'Toyota Hilux SRV', operator: 'Juan Pérez', lastRefuel: '05 Jul 14:20', consumption: '11.2 L/100km' },
-  { id: 'm1', icon: IconExcavator, name: 'Retroexcavadora CAT 320', operator: 'Carlos Díaz', lastRefuel: 'Hoy 08:10', consumption: '15.4 L/100km' },
-  { id: 'm2', icon: IconExcavator, name: 'Motoniveladora JD 670G', operator: 'Ana López', lastRefuel: 'Ayer 17:40', consumption: '18.1 L/100km' },
-  { id: 'm3', icon: IconTruck, name: 'Camión Volquete Iveco Trakker', operator: 'Marta Ruiz', lastRefuel: '04 Jul 11:25', consumption: '22.5 L/100km' },
-  { id: 'm4', icon: IconExcavator, name: 'Cargadora Frontal CAT 950', operator: 'Sin asignar', lastRefuel: '02 Jul 09:00', consumption: '16.8 L/100km' },
+  {
+    id: 'm0',
+    icon: IconPickup,
+    name: 'Toyota Hilux SRV',
+    operator: 'Juan Pérez',
+    lastRefuel: '05 Jul 14:20',
+    consumption: '11.2 L/100km',
+  },
+  {
+    id: 'm1',
+    icon: IconExcavator,
+    name: 'Retroexcavadora CAT 320',
+    operator: 'Carlos Díaz',
+    lastRefuel: 'Hoy 08:10',
+    consumption: '15.4 L/100km',
+  },
+  {
+    id: 'm2',
+    icon: IconExcavator,
+    name: 'Motoniveladora JD 670G',
+    operator: 'Ana López',
+    lastRefuel: 'Ayer 17:40',
+    consumption: '18.1 L/100km',
+  },
+  {
+    id: 'm3',
+    icon: IconTruck,
+    name: 'Camión Volquete Iveco Trakker',
+    operator: 'Marta Ruiz',
+    lastRefuel: '04 Jul 11:25',
+    consumption: '22.5 L/100km',
+  },
+  {
+    id: 'm4',
+    icon: IconExcavator,
+    name: 'Cargadora Frontal CAT 950',
+    operator: 'Sin asignar',
+    lastRefuel: '02 Jul 09:00',
+    consumption: '16.8 L/100km',
+  },
 ];
 
 export const updateMachinery = (newMachinery: Machine[]) => {
@@ -43,12 +78,66 @@ export type Load = {
 };
 
 export const HISTORY: Load[] = [
-  { id: 'h1', icon: IconPickup, vehicle: 'Toyota Hilux SRV', date: '05 Jul 2026 · 14:20', provider: 'YPF', liters: '58 L', cost: '$53.070', status: 'Verificado' },
-  { id: 'h2', icon: IconExcavator, vehicle: 'Retroexcavadora CAT 320', date: '05 Jul 2026 · 08:10', provider: 'Shell', liters: '120 L', cost: '$109.800', status: 'Pendiente' },
-  { id: 'h3', icon: IconTruck, vehicle: 'Camión Iveco Trakker', date: '04 Jul 2026 · 11:25', provider: 'Axion', liters: '210 L', cost: '$189.000', status: 'Verificado' },
-  { id: 'h4', icon: IconExcavator, vehicle: 'Motoniveladora JD 670G', date: '03 Jul 2026 · 17:40', provider: 'Puma', liters: '95 L', cost: '$86.450', status: 'Verificado' },
-  { id: 'h5', icon: IconPickup, vehicle: 'Toyota Hilux SRV', date: '02 Jul 2026 · 09:15', provider: 'YPF', liters: '52 L', cost: '$47.580', status: 'Verificado' },
-  { id: 'h6', icon: IconExcavator, vehicle: 'Cargadora CAT 950', date: '01 Jul 2026 · 16:05', provider: 'Petrobras', liters: '140 L', cost: '$127.400', status: 'Pendiente' },
+  {
+    id: 'h1',
+    icon: IconPickup,
+    vehicle: 'Toyota Hilux SRV',
+    date: '05 Jul 2026 · 14:20',
+    provider: 'YPF',
+    liters: '58 L',
+    cost: '$53.070',
+    status: 'Verificado',
+  },
+  {
+    id: 'h2',
+    icon: IconExcavator,
+    vehicle: 'Retroexcavadora CAT 320',
+    date: '05 Jul 2026 · 08:10',
+    provider: 'Shell',
+    liters: '120 L',
+    cost: '$109.800',
+    status: 'Pendiente',
+  },
+  {
+    id: 'h3',
+    icon: IconTruck,
+    vehicle: 'Camión Iveco Trakker',
+    date: '04 Jul 2026 · 11:25',
+    provider: 'Axion',
+    liters: '210 L',
+    cost: '$189.000',
+    status: 'Verificado',
+  },
+  {
+    id: 'h4',
+    icon: IconExcavator,
+    vehicle: 'Motoniveladora JD 670G',
+    date: '03 Jul 2026 · 17:40',
+    provider: 'Puma',
+    liters: '95 L',
+    cost: '$86.450',
+    status: 'Verificado',
+  },
+  {
+    id: 'h5',
+    icon: IconPickup,
+    vehicle: 'Toyota Hilux SRV',
+    date: '02 Jul 2026 · 09:15',
+    provider: 'YPF',
+    liters: '52 L',
+    cost: '$47.580',
+    status: 'Verificado',
+  },
+  {
+    id: 'h6',
+    icon: IconExcavator,
+    vehicle: 'Cargadora CAT 950',
+    date: '01 Jul 2026 · 16:05',
+    provider: 'Petrobras',
+    liters: '140 L',
+    cost: '$127.400',
+    status: 'Pendiente',
+  },
 ];
 
 export const PROFILE_FIELDS = [
@@ -58,10 +147,26 @@ export const PROFILE_FIELDS = [
 ];
 
 export const TUTORIAL_STEPS = [
-  { label: 'Paso 1 de 4', title: 'Tu flota, de un vistazo', text: 'Acá ves tu vehículo asignado, su nivel de combustible y toda la maquinaria a tu cargo.' },
-  { label: 'Paso 2 de 4', title: 'Escaneá el ticket', text: 'Tocá el botón central para fotografiar el ticket de carga. La app extrae los datos automáticamente.' },
-  { label: 'Paso 3 de 4', title: 'Revisá el historial', text: 'Consultá todas las cargas registradas de tu flota, con su estado y monto.' },
-  { label: 'Paso 4 de 4', title: 'Gestioná tu cuenta', text: 'Desde tu perfil editás tus datos, cambiás el idioma y cerrás sesión.' },
+  {
+    label: 'Paso 1 de 4',
+    title: 'Tu flota, de un vistazo',
+    text: 'Acá ves tu vehículo asignado, su nivel de combustible y toda la maquinaria a tu cargo.',
+  },
+  {
+    label: 'Paso 2 de 4',
+    title: 'Escaneá el ticket',
+    text: 'Tocá el botón central para fotografiar el ticket de carga. La app extrae los datos automáticamente.',
+  },
+  {
+    label: 'Paso 3 de 4',
+    title: 'Revisá el historial',
+    text: 'Consultá todas las cargas registradas de tu flota, con su estado y monto.',
+  },
+  {
+    label: 'Paso 4 de 4',
+    title: 'Gestioná tu cuenta',
+    text: 'Desde tu perfil editás tus datos, cambiás el idioma y cerrás sesión.',
+  },
 ];
 
 /** Salida OCR simulada que se muestra tras fotografiar un ticket. */

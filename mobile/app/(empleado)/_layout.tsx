@@ -41,7 +41,11 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           const { Icon, label } = config;
 
           const onPress = () => {
-            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
             if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
           };
 
