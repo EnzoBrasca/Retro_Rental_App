@@ -88,7 +88,12 @@ function DetailSheet({ row, onClose }: { row: Row; onClose: () => void }) {
               <Text style={styles.fecha}>{formatFecha(row.fechaCarga)}</Text>
             </View>
           </View>
-          <Pressable onPress={onClose} hitSlop={12}>
+          <Pressable
+            onPress={onClose}
+            hitSlop={12}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar el detalle de la carga"
+          >
             <Text style={styles.close}>✕</Text>
           </Pressable>
         </View>

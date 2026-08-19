@@ -283,7 +283,12 @@ function Analytics() {
           ))}
         </View>
         <View style={styles.rangeNav}>
-          <Pressable style={styles.rangeArrow} onPress={goPrev}>
+          <Pressable
+            style={styles.rangeArrow}
+            onPress={goPrev}
+            accessibilityRole="button"
+            accessibilityLabel="Período anterior"
+          >
             <Text style={styles.rangeArrowText}>‹</Text>
           </Pressable>
           {stats && (
@@ -295,6 +300,9 @@ function Analytics() {
             style={[styles.rangeArrow, !canGoNext && styles.rangeArrowDisabled]}
             onPress={goNext}
             disabled={!canGoNext}
+            accessibilityRole="button"
+            accessibilityLabel="Período siguiente"
+            accessibilityState={{ disabled: !canGoNext }}
           >
             <Text style={[styles.rangeArrowText, !canGoNext && styles.rangeArrowTextDisabled]}>
               ›
@@ -898,10 +906,24 @@ function VehiclesABM() {
                   </View>
                   {!baja && (
                     <View style={{ flexDirection: 'row', gap: 6 }}>
-                      <Pressable style={styles.iconBtn} onPress={() => openEdit(item)}>
+                      {/* El contenido es un emoji: sin label, un lector de
+                          pantalla anuncia "emoji lápiz" y "emoji tacho" sin
+                          decir sobre qué vehículo actúan. El de baja además es
+                          destructivo. */}
+                      <Pressable
+                        style={styles.iconBtn}
+                        onPress={() => openEdit(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Editar ${tituloVehiculo(v)}`}
+                      >
                         <Text>✏️</Text>
                       </Pressable>
-                      <Pressable style={styles.iconBtn} onPress={() => removeVehiculo(v)}>
+                      <Pressable
+                        style={styles.iconBtn}
+                        onPress={() => removeVehiculo(v)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Dar de baja ${tituloVehiculo(v)}`}
+                      >
                         <Text>🗑️</Text>
                       </Pressable>
                     </View>
@@ -942,10 +964,20 @@ function VehiclesABM() {
                 </View>
                 {!baja && (
                   <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <Pressable style={styles.iconBtn} onPress={() => openEdit(item)}>
+                    <Pressable
+                      style={styles.iconBtn}
+                      onPress={() => openEdit(item)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Editar ${h.nombre}`}
+                    >
                       <Text>✏️</Text>
                     </Pressable>
-                    <Pressable style={styles.iconBtn} onPress={() => removeHerramienta(h)}>
+                    <Pressable
+                      style={styles.iconBtn}
+                      onPress={() => removeHerramienta(h)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Dar de baja ${h.nombre}`}
+                    >
                       <Text>🗑️</Text>
                     </Pressable>
                   </View>
@@ -1256,10 +1288,20 @@ function EmpleadosList() {
                 </View>
                 {!baja && (
                   <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <Pressable style={styles.iconBtn} onPress={() => openEdit(e)}>
+                    <Pressable
+                      style={styles.iconBtn}
+                      onPress={() => openEdit(e)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Editar ${e.nombre} ${e.apellido}`}
+                    >
                       <Text>✏️</Text>
                     </Pressable>
-                    <Pressable style={styles.iconBtn} onPress={() => remove(e)}>
+                    <Pressable
+                      style={styles.iconBtn}
+                      onPress={() => remove(e)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Dar de baja ${e.nombre} ${e.apellido}`}
+                    >
                       <Text>🗑️</Text>
                     </Pressable>
                   </View>
@@ -1444,7 +1486,12 @@ function HabilitadosList() {
                 </Text>
               </View>
               {!h.registrado && (
-                <Pressable style={styles.iconBtn} onPress={() => quitar(h)}>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() => quitar(h)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Quitar de habilitados a ${h.nombre ? `${h.nombre} ${h.apellido}` : h.apellido}`}
+                >
                   <Text>🗑️</Text>
                 </Pressable>
               )}

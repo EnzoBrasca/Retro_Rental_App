@@ -280,7 +280,12 @@ export function TicketsABM() {
               {/* Un ticket anulado no se vuelve a anular: el backend responde
                   409 y el botón no tendría a dónde llevar. */}
               {!anulado && (
-                <Pressable style={styles.iconBtn} onPress={() => anular(fila)}>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() => anular(fila)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Anular la carga de ${fila.litros} litros de ${fila.identificador}`}
+                >
                   <Text style={styles.iconBtnText}>✕</Text>
                 </Pressable>
               )}
