@@ -1,4 +1,4 @@
-import { formatDay, formatFecha, formatMoney } from './labels';
+import { formatDay, formatFecha, formatMoney, parseEntero, parseNumero } from './labels';
 
 /**
  * Formateo de fechas y montos.
@@ -79,5 +79,112 @@ describe('formatMoney', () => {
 
   it('no rompe con un monto de millones', () => {
     expect(formatMoney(1234567)).toBe('$1.234.567');
+  });
+});
+
+/**
+ * Parseo de numeros tipeados por una persona (DATA-02).
+ *
+ * POR QUE ESTE ARCHIVO IMPORTA ACA. La app corre en telefonos con teclado
+ * numerico argentino: punto para miles, coma para decimales. El codigo viejo
+ * hacia `parseFloat(texto.replace(',', '.'))`, que reemplaza SOLO la primera
+ * ocurrencia y no toca los puntos de miles: "12.500,75" daba 12,5 — un error de
+ * mil veces sobre un precio por litro — y `parseInt("1.523")` daba 1.
+ *
+ * Ninguno de esos casos falla con un error: guardan un numero valido y absurdo.
+ */
+describe('parseNumero', () => {
+  it('lee la coma como separador decimal', () => {
+    expect(parseNumero('58,5')).toBe(58.5);
+  });
+
+  // EL CASO QUE ROMPIA. Un precio por litro de $12.500,75 se registraba como 12,5.
+  it('lee punto de miles junto con coma decimal', () => {
+    expect(parseNumero('12.500,75')).toBe(12500.75);
+    expect(parseNumero('1.234,5')).toBe(1234.5);
+  });
+
+  it('lee varios puntos de miles', () => {
+    expect(parseNumero('1.234.567')).toBe(1234567);
+  });
+
+  // Un punto solo es AMBIGUO: "1.234" son 1234 litros y "58.5" son 58,5 litros.
+  // Se resuelve por la forma del grupo: exactamente 3 digitos despues, 1 a 3
+  // antes y sin cero adelante = separador de miles. Cualquier otra cosa, decimal.
+  it('resuelve el punto solo por la forma del grupo de miles', () => {
+    expect(parseNumero('1.234')).toBe(1234);
+    expect(parseNumero('12.500')).toBe(12500);
+    expect(parseNumero('123.456')).toBe(123456);
+  });
+
+  it('trata como decimal el punto que no forma un grupo de miles', () => {
+    expect(parseNumero('58.5')).toBe(58.5);
+    expect(parseNumero('1.25')).toBe(1.25);
+    expect(parseNumero('1.2345')).toBe(1.2345);
+    expect(parseNumero('1234.567')).toBe(1234.567);
+  });
+
+  // "0.500" no puede ser un grupo de miles: nadie escribe cero como millar.
+  it('no confunde un cero adelante con un grupo de miles', () => {
+    expect(parseNumero('0.500')).toBe(0.5);
+  });
+
+  // Convencion inglesa: manda el ULTIMO separador como decimal.
+  it('tambien entiende la convencion inglesa', () => {
+    expect(parseNumero('1,234.5')).toBe(1234.5);
+  });
+
+  it('acepta enteros pelados y el cero', () => {
+    expect(parseNumero('1234')).toBe(1234);
+    expect(parseNumero('0')).toBe(0);
+  });
+
+  it('ignora los espacios de los costados', () => {
+    expect(parseNumero(' 1.500 ')).toBe(1500);
+  });
+
+  it('acepta negativos', () => {
+    expect(parseNumero('-5,5')).toBe(-5.5);
+  });
+
+  // RECHAZA la basura en vez de comersela. parseFloat("152340km") devolvia
+  // 152340 sin chistar; una lectura de contador con unidad pegada tiene que
+  // frenar la validacion, no colarse.
+  it('devuelve NaN con basura, en vez de recortarla', () => {
+    expect(parseNumero('152340km')).toBeNaN();
+    expect(parseNumero('abc')).toBeNaN();
+    expect(parseNumero('12,5,3')).toBeNaN();
+  });
+
+  it('devuelve NaN con vacio o solo espacios', () => {
+    expect(parseNumero('')).toBeNaN();
+    expect(parseNumero('   ')).toBeNaN();
+  });
+});
+
+describe('parseEntero', () => {
+  // EL CASO QUE ROMPIA. parseInt("1.523") devolvia 1: una lectura de odometro
+  // de 1.523 km entraba como 1 km y le destruia el calculo de consumo real al
+  // vehiculo.
+  it('lee el punto de miles en una lectura de contador', () => {
+    expect(parseEntero('1.523')).toBe(1523);
+    expect(parseEntero('152.340')).toBe(152340);
+  });
+
+  it('lee un entero pelado', () => {
+    expect(parseEntero('152340')).toBe(152340);
+    expect(parseEntero('0')).toBe(0);
+  });
+
+  // El backend guarda usoAcumulado como Integer, asi que un decimal no se puede
+  // persistir. Se REDONDEA (no se trunca): 1520,5 -> 1521.
+  it('redondea los decimales en vez de truncarlos', () => {
+    expect(parseEntero('1520,5')).toBe(1521);
+    expect(parseEntero('1520,4')).toBe(1520);
+  });
+
+  it('devuelve NaN con basura', () => {
+    expect(parseEntero('152340km')).toBeNaN();
+    expect(parseEntero('')).toBeNaN();
   });
 });

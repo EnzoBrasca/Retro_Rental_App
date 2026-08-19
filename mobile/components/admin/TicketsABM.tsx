@@ -4,7 +4,7 @@ import { colors, fonts } from '../../constants/theme';
 import { FilterDropdown } from '../fuel/FilterDropdown';
 import { LoadDetailModal, type Row } from '../fuel/LoadDetailModal';
 import { Loading, ErrorState, EmptyState } from '../fuel/ScreenState';
-import { formatFecha, formatMoney } from '../../constants/labels';
+import { formatFecha, formatMoney, parseNumero } from '../../constants/labels';
 import {
   getAdminTickets,
   anularTicket,
@@ -315,7 +315,7 @@ export function TicketsABM() {
 
 // "" y basura no son 0: son "sin filtro". Devolver 0 filtraría por monto cero.
 function parseMonto(texto: string): number | null {
-  const n = parseFloat(texto.replace(',', '.'));
+  const n = parseNumero(texto);
   return Number.isFinite(n) ? n : null;
 }
 
