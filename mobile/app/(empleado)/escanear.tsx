@@ -31,6 +31,7 @@ import {
 import { getHerramientas } from '../../services/herramientas';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
+import { comprimirTicket } from '../../services/imagenes';
 import { combustibleLabel, formatMoney, parseEntero, parseNumero } from '../../constants/labels';
 
 // Una herramienta no tiene combustible fijo (a diferencia de un vehículo): se
@@ -157,10 +158,14 @@ export default function EscanearScreen() {
   // corre el OCR, y al terminar volvemos al formulario. Como ahora el empleado pudo
   // haber tipeado datos ANTES de sacar la foto, el OCR solo autocompleta los campos
   // que están vacíos: nunca pisa lo que el usuario ya cargó a mano (ver runAnalysis).
-  const handlePhoto = (uri: string) => {
-    setFotoUri(uri);
+  const handlePhoto = async (uri: string) => {
     setStage('analyzing');
-    runAnalysis(uri);
+    // Se comprime UNA sola vez, acá, para que las dos subidas —el OCR de
+    // /tickets/analyze y el alta de /tickets— manden el mismo archivo reducido.
+    // Sin esto viajaban 3 a 6 MB por carga sobre la conexión del yacimiento.
+    const comprimida = await comprimirTicket(uri);
+    setFotoUri(comprimida);
+    runAnalysis(comprimida);
   };
 
   // Corre el OCR sobre la foto y pre-carga lo que se pueda, y SOLO al terminar
@@ -218,12 +223,15 @@ export default function EscanearScreen() {
 
   const capture = async () => {
     try {
+      // El quality de la captura solo ajusta la compresion JPEG, NO la
+      // resolucion: lo que baja el peso de verdad es el resize de
+      // comprimirTicket, que corre despues en handlePhoto.
       const photo = await cameraRef.current?.takePictureAsync({
         quality: 0.6,
         skipProcessing: true,
       });
       if (photo?.uri) {
-        handlePhoto(photo.uri);
+        void handlePhoto(photo.uri);
         return;
       }
     } catch {
@@ -235,7 +243,7 @@ export default function EscanearScreen() {
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
     if (!result.canceled && result.assets?.length) {
-      handlePhoto(result.assets[0].uri);
+      void handlePhoto(result.assets[0].uri);
     }
   };
 
