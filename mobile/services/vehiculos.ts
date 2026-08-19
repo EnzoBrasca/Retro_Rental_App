@@ -147,6 +147,9 @@ export interface Vehiculo {
   consumoPromedio: number;
   // Consumo de las últimas cargas. null hasta que haya dos con lectura.
   consumoReciente: number | null;
+  // yyyy-mm-dd. Viaja porque UpdateVehiculoPayload la exige en cada edición:
+  // el formulario del ABM tiene que reenviar la fecha guardada, no una nueva.
+  fechaUltimoMantenimiento: string;
   fechaBaja: string | null;
   // Operario que usó el vehículo por última vez (se actualiza en cada carga).
   // null = sin uso registrado. El nombre/apellido vienen del backend para pintar

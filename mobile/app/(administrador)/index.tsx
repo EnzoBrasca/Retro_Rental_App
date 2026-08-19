@@ -432,7 +432,10 @@ const formFrom = (v: Vehiculo): FormState => ({
   tipoCombustible: v.tipoCombustible,
   capacidadTanque: String(v.capacidadTanque),
   estado: v.estado,
-  fechaUltimoMantenimiento: todayISO(),
+  // La fecha REAL del vehículo, no la de hoy: el payload de edición la exige,
+  // así que inventarla acá le pisaba el mantenimiento registrado a cualquier
+  // vehículo con solo abrirlo y guardar.
+  fechaUltimoMantenimiento: v.fechaUltimoMantenimiento,
   usoAcumulado: String(v.usoAcumulado),
   consumoPromedio: String(v.consumoPromedio),
   nombreHerramienta: '',
