@@ -41,8 +41,9 @@ module.exports = defineConfig([
     },
   },
   {
-    // Los tests corren en Node con los globals de Jest, no en el runtime de la app.
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
+    // Los tests y su andamiaje corren en Node con los globals de Jest, no en el
+    // runtime de la app.
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**', '**/__mocks__/**', 'jest.setup.js'],
     languageOptions: {
       globals: {
         jest: 'readonly',
