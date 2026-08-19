@@ -9,7 +9,9 @@ import java.util.Optional;
 
 @Repository
 public interface ProveedorRepository extends JpaRepository<Proveedor, Integer> {
+    // Idempotencia del alta automatica desde el OCR: si ya hay un proveedor con
+    // ese CUIT se reutiliza en vez de duplicarlo (ver CatalogoOcrResolver).
     Optional<Proveedor> findByCuit(String cuit);
-    boolean existsByCuit(String cuit);
+
     List<Proveedor> findByServicio(Servicio servicio);
 }

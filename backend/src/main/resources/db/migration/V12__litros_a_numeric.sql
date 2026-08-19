@@ -1,0 +1,34 @@
+-- ---------------------------------------------------------------------------
+-- `litros` pasa de double precision a numeric(10,2).
+--
+-- POR QUE. El precio unitario ya era numeric/BigDecimal (bien), pero el gasto
+-- se calcula como litros x precioUnitario. Mientras litros fuera un double, el
+-- operando entraba CONTAMINADO: el punto flotante binario no representa
+-- exactamente la mayoria de los decimales, asi que usar BigDecimal del otro
+-- lado no salvaba nada.
+--
+-- Peor: ConsumoCalculator acumulaba `litros += ...` como double primitivo a lo
+-- largo de muchos intervalos ANTES de envolver el total en BigDecimal. El error
+-- se sumaba vuelta a vuelta. En un sistema que existe para controlar consumo de
+-- combustible, los numeros SON el producto (ver docs/BACKEND-AUDIT.md, DB-04).
+--
+-- ESCALA 2. Los surtidores entregan centesimas de litro (45,67 L). Dos decimales
+-- cubren el dominio real y hacen que la columna sea exacta, no aproximada.
+-- El total de 10 digitos deja 8 para la parte entera: 99.999.999,99 litros en
+-- una sola carga es holgadamente mas de lo que cabe en cualquier tanque.
+--
+-- SOBRE LA CONVERSION. `USING litros::numeric(10,2)` redondea a dos decimales
+-- los valores que hoy tengan mas. Eso es deseado: esos decimales extra son
+-- justamente el ruido de representacion del double, no informacion real. Un
+-- 45.670000000000002 guardado como double se convierte en 45.67, que es el
+-- numero que el operario efectivamente cargo.
+--
+-- MOMENTO. Se hace AHORA a proposito: al escribir esto produccion tiene del
+-- orden de 3 tickets (mismo motivo que se documenta en V10). Un ALTER TABLE que
+-- reescribe la tabla entera es gratis con 3 filas y es una ventana de
+-- mantenimiento con 200.000. Esta es la ventana barata.
+--
+-- NOT NULL se preserva solo: ALTER COLUMN TYPE no toca la nulabilidad.
+-- ---------------------------------------------------------------------------
+ALTER TABLE tickets
+    ALTER COLUMN litros TYPE numeric(10, 2) USING litros::numeric(10, 2);

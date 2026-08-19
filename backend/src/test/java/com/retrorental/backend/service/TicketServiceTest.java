@@ -78,7 +78,7 @@ class TicketServiceTest {
     @Mock private ObjectProvider<TicketAnalysisService> analysisProvider;
     @Mock private ImageValidator imageValidator;
 
-    @InjectMocks private TicketService service;
+    private TicketService service;
 
     private Proveedor proveedor;
     private Precio vigente;
@@ -89,8 +89,29 @@ class TicketServiceTest {
 
     @BeforeEach
     void setUp() {
-        // El margen se inyecta con @Value; en un test unitario se setea a mano.
-        ReflectionTestUtils.setField(service, "margenMaximo", new BigDecimal("30"));
+        // Los colaboradores extraidos de TicketService (ver docs/BACKEND-AUDIT.md,
+        // SVC-01) se arman REALES, no como mocks, y sobre los mismos repositorios
+        // mockeados. Es deliberado: estos tests verifican reglas de negocio como
+        // "corregir el precio actualiza el catalogo" o "anular devuelve el consumo
+        // al del alta". Esa logica se mudo de archivo pero sigue siendo la misma, y
+        // mockear los colaboradores convertiria esos tests en verificaciones vacias
+        // de que un mock devuelve lo que se le dijo que devuelva.
+        //
+        // La frontera de mockeo sigue estando donde tiene que estar: los
+        // repositorios y los servicios de I/O (storage, OCR).
+        PrecioCatalogoService precioCatalogo = new PrecioCatalogoService(precioRepository);
+        ReflectionTestUtils.setField(precioCatalogo, "margenMaximo", new BigDecimal("30"));
+
+        VehiculoConsumoService vehiculoConsumo = new VehiculoConsumoService(ticketRepository);
+        ReflectionTestUtils.setField(vehiculoConsumo, "ventanaConsumo", 10);
+
+        CatalogoOcrResolver catalogoOcrResolver =
+            new CatalogoOcrResolver(proveedorRepository, precioCatalogo);
+
+        service = new TicketService(
+            ticketRepository, proveedorRepository, vehiculoRepository, herramientaRepository,
+            personaRepository, storageService, imageValidator,
+            precioCatalogo, vehiculoConsumo, catalogoOcrResolver, analysisProvider);
 
         proveedor = new Proveedor();
         proveedor.setId(1);
@@ -138,7 +159,7 @@ class TicketServiceTest {
 
     private CreateTicketRequest request(BigDecimal precioUnitario, Integer usoAcumulado) {
         CreateTicketRequest req = new CreateTicketRequest();
-        req.setLitros(50.0);
+        req.setLitros(new BigDecimal("50.0"));
         req.setIdPrecio(10);
         req.setIdProveedor(1);
         req.setIdVehiculo(5);
@@ -149,7 +170,7 @@ class TicketServiceTest {
 
     private CreateTicketRequest requestHerramienta(BigDecimal precioUnitario) {
         CreateTicketRequest req = new CreateTicketRequest();
-        req.setLitros(0.3);
+        req.setLitros(new BigDecimal("0.3"));
         req.setIdPrecio(10);
         req.setIdProveedor(1);
         req.setIdHerramienta(7);
@@ -162,7 +183,7 @@ class TicketServiceTest {
     private CreateTicketRequest requestHerramientaConCombustible(
             TipoCombustible tipoCombustible, BigDecimal precioUnitario) {
         CreateTicketRequest req = new CreateTicketRequest();
-        req.setLitros(0.3);
+        req.setLitros(new BigDecimal("0.3"));
         req.setTipoCombustible(tipoCombustible);
         req.setIdProveedor(1);
         req.setIdHerramienta(7);
@@ -440,16 +461,33 @@ class TicketServiceTest {
         Ticket t = new Ticket();
         t.setId(id);
         t.setUsoAcumulado(uso);
-        t.setLitros(litros);
+        t.setLitros(BigDecimal.valueOf(litros));
         t.setVehiculo(vehiculo);
         return t;
     }
 
-    /** Deja al repo devolviendo `vigentes` como las cargas que sobreviven. */
+    /**
+     * Deja al repo devolviendo `vigentes` como las cargas que sobreviven.
+     *
+     * El recálculo consume una PROYECCIÓN de (usoAcumulado, litros), no
+     * entidades (ver TicketRepository.findCargasParaConsumo). Los tests se
+     * siguen escribiendo con `Ticket` porque es más legible; acá se convierten.
+     */
     private void cargasVigentes(Ticket... vigentes) {
-        when(ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(5))
-            .thenReturn(List.of(vigentes));
+        List<TicketRepository.CargaParaConsumo> proyectadas = List.of(vigentes).stream()
+            .map(t -> (TicketRepository.CargaParaConsumo) new TicketRepository.CargaParaConsumo() {
+                @Override
+                public Integer getUsoAcumulado() {
+                    return t.getUsoAcumulado();
+                }
+
+                @Override
+                public BigDecimal getLitros() {
+                    return t.getLitros();
+                }
+            })
+            .toList();
+        when(ticketRepository.findCargasParaConsumo(5)).thenReturn(proyectadas);
     }
 
     private Administrador admin() {

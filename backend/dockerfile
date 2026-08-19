@@ -23,4 +23,14 @@ COPY --from=build /app/target/*.jar app.jar
 USER spring
 EXPOSE 8080
 
+# Sin HEALTHCHECK, el orquestador solo sabe si el PROCESO esta vivo, no si la
+# aplicacion esta sirviendo. Combinado con el nginx de infra/ como reverse
+# proxy, un backend colgado pero con el proceso arriba seguiria recibiendo
+# trafico (ver docs/BACKEND-AUDIT.md, INF-01).
+#
+# start-period da margen al arranque de Spring + Flyway: sin el, el contenedor
+# se marcaria unhealthy durante los primeros segundos de cada despliegue.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health || exit 1
+
 ENTRYPOINT ["java", "-jar", "app.jar"]

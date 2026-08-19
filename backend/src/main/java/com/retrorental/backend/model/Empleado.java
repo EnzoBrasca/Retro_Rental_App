@@ -21,8 +21,16 @@ public class Empleado extends Persona {
     @Column(name = "fecha_baja")
     private LocalDate fechaBaja;
 
+    // Lado dueño de la relación con el administrador. Se excluye de toString()
+    // y equals()/hashCode() porque Administrador tiene la lista inversa
+    // (`empleados`): sin esta exclusión, empleado.toString() llama a
+    // jefe.toString(), que recorre sus empleados, que vuelven a llamar a
+    // jefe.toString() -> recursión infinita y StackOverflowError. Mismo
+    // motivo que Vehiculo.operario.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "id_administrador")
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private Administrador jefe;
 
     // Vehiculos asignados a este empleado (lado inverso). El dueño de la

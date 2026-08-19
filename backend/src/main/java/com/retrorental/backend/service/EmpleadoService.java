@@ -110,13 +110,12 @@ public class EmpleadoService {
                 ErrorCode.EMPLEADO_ALREADY_INACTIVE, "El empleado ya está dado de baja");
         }
 
-        List<Vehiculo> vehiculos = empleado.getVehiculos();
-        if (vehiculos != null) {
-            for (Vehiculo vehiculo : vehiculos) {
-                vehiculo.setOperario(null);
-                vehiculoRepository.save(vehiculo);
-            }
-        }
+        // UNA sentencia en vez de un UPDATE por vehiculo (ver
+        // docs/BACKEND-AUDIT.md, DB-08). La query de modificacion pasa por
+        // encima del contexto de persistencia, asi que el repositorio la declara
+        // con clearAutomatically para que nadie se quede con un Vehiculo cargado
+        // mostrando el operario viejo.
+        vehiculoRepository.desasignarTodosDe(empleado.getId());
 
         empleado.setFechaBaja(LocalDate.now());
         personaRepository.save(empleado);

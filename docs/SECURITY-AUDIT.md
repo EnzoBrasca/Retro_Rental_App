@@ -17,8 +17,18 @@ el commit o PR donde se resolvió. Lo que sigue sin marcar es lo que falta.
 | --- | --- | --- | --- |
 | Crítica | 2 | 2 | 0 |
 | Alta | 3 | 3 | 0 |
-| Media | 4 | 2 | 2 |
-| Baja | 3 | 1 | 2 |
+| Media | 4 | 4 | 0 |
+| Baja | 3 | 2 | 1 (diferida a conciencia) |
+
+**Estado al 2026-08-18: 11 de 12 hallazgos mitigados.** SEC-01 a SEC-06, SEC-09 y SEC-10 se
+resolvieron en la primera tanda (merge `6651f49`). SEC-07, SEC-08 y SEC-12 en la rama
+`sec/hardening-de-infra`.
+
+El único abierto es **SEC-11** (`mem_limit` en los contenedores), y no es un olvido: se
+decidió no ponerlos sin conocer la RAM real del VPS, porque un límite por debajo del uso
+real hace que el kernel mate el contenedor — el control pensado para contener un incidente
+pasaría a causarlo. El riesgo residual está escrito en el propio hallazgo, junto con el
+único dato que hace falta para cerrarlo.
 
 ## Lo que ya está bien (no tocar)
 
@@ -101,7 +111,7 @@ Archivos:
 Cobertura: `HabilitadoServiceTest` (16 casos) y `AuthServiceTest` (9 casos). Antes de este
 cambio `AuthService` no tenía ningún test: `AuthControllerTest` lo mockea.
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
 ## [x] SEC-02 — `POST /tickets/analyze` sin límite: costo de OCR abierto y agotamiento del pool de hilos
 
@@ -176,7 +186,7 @@ comportamiento del freno de login.
 pedido rechazado no llega a parsear la imagen — pero el cuerpo ya se subió. Para frenar el
 ancho de banda hace falta el límite en nginx (SEC-07).
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
 ---
 
@@ -218,7 +228,7 @@ Cobertura: 5 casos nuevos en `TicketServiceTest` (dueño, empleado ajeno, indist
 404, administrador, inexistente) y `TicketControllerTest` verifica que el controller pase
 el usuario del JWT al service.
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
 ## [x] SEC-04 — Subida de archivos sin validar: XSS almacenado en el dominio de archivos
 
@@ -273,7 +283,7 @@ Verificación de nginx: `nginx -t` sobre la config renderizada con `envsubst` �
 / test is successful*. **Requiere recargar el contenedor de nginx al desplegar**; los tests
 de Java no cubren esa parte.
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
 ## [x] SEC-05 — El token JWT se guarda en AsyncStorage, sin cifrar
 
@@ -325,7 +335,7 @@ fuera del fallback de web.
 es una decisión de release. Al instalar la versión nueva, las sesiones existentes se
 cortan y hay que volver a iniciar sesión una vez.
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
 ---
 
@@ -368,9 +378,9 @@ Cobertura: `JwtFilterTest` (8 casos). **Este filtro no tenía ningún test**: lo
 controller usan `@WithMockUser`, que lo saltea por completo, así que la suite daba verde sin
 ejecutarlo nunca.
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
-## [ ] SEC-07 — El rate limit no existe a nivel de proxy
+## [x] SEC-07 — El rate limit no existe a nivel de proxy
 
 **Ubicación:** `infra/nginx/templates/app.conf.template`;
 `security/LoginRateLimitFilter.java`.
@@ -386,9 +396,23 @@ conexiones a base antes de que nada la frene.
 zona más estricta para `/auth/`, de modo que el corte ocurra antes de que la petición
 cueste recursos de aplicación.
 
-**Resuelto en:** _(pendiente)_
+**Mitigación aplicada:** tres zonas en `app.conf.template`: `api_general` (30r/s,
+burst 60), `api_auth` (30r/m, burst 10) y `conexiones` (50 simultáneas por IP, freno
+contra slowloris). El corte devuelve **429** y no el 503 por defecto: 503 dice "el
+servidor está caído", 429 dice "bajá el ritmo", que es lo que realmente pasa.
 
-## [ ] SEC-08 — nginx sin cabeceras de seguridad ni `default_server`
+**Los límites son deliberadamente holgados y conviene saber por qué.** Los empleados
+cargan desde el celular en el campo, y el CGNAT de las operadoras móviles puede poner a
+muchos detrás de la **misma IP pública**. Un límite estricto por IP no bloquearía a un
+atacante: bloquearía a media cuadrilla. El objetivo de esta capa es frenar una inundación
+antes de que cueste hilos y conexiones; el control fino por usuario ya lo hace
+`LoginRateLimitFilter`, que sí distingue identidades. Son capas complementarias, no
+redundantes.
+
+**Resuelto en:** rama `sec/hardening-de-infra`. Config validada con `nginx -t` contra la
+imagen real `nginx:1.27-alpine`, con `envsubst` aplicado.
+
+## [x] SEC-08 — nginx sin cabeceras de seguridad ni `default_server`
 
 **Ubicación:** `infra/nginx/templates/app.conf.template`.
 
@@ -403,7 +427,24 @@ del servidor entra por el primer server block.
 **Mitigación propuesta:** agregar las cabeceras en ambos server blocks TLS, `server_tokens
 off`, y un server block `default_server` que responda 444.
 
-**Resuelto en:** _(pendiente)_
+**Mitigación aplicada:** `server_tokens off`, y en ambos server blocks TLS
+`Strict-Transport-Security` (1 año, `includeSubDomains`), `X-Content-Type-Options`,
+`X-Frame-Options: DENY` y `Referrer-Policy: no-referrer`, todas con `always` para que
+también cubran las respuestas de error. Más un `default_server` que corta con **444**
+(cierra sin responder, no confirma que haya algo escuchando); en 443 usa
+`ssl_reject_handshake on` en vez de un certificado de descarte, así no necesita ninguno.
+
+**NO se puso `preload` en el HSTS**, a propósito: implica mandar el dominio a la lista
+precargada de los navegadores, y salir de esa lista es lento y molesto. Es una decisión de
+dominio, no de configuración; si se quiere, se toma aparte y a conciencia.
+
+**Trampa registrada para el futuro:** en nginx, `add_header` **no se acumula entre
+niveles, se reemplaza**. El día que alguien agregue un `add_header` dentro de un `location`
+de esos server blocks, TODAS las cabeceras de nivel `server` dejan de aplicarse ahí y hay
+que repetirlas. Es de las formas más silenciosas de perder cabeceras de seguridad. Queda
+comentado en el propio template.
+
+**Resuelto en:** rama `sec/hardening-de-infra`.
 
 ## [x] SEC-09 — La API completa de MinIO queda publicada en `files.${APP_DOMAIN}`
 
@@ -455,7 +496,7 @@ Archivos: `infra/nginx/templates/app.conf.template`, `docker-compose.prod.yml`.
 
 **Requiere recargar nginx al desplegar.**
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
 ---
 
@@ -500,9 +541,9 @@ constante pública compartida).
 Cobertura: test nuevo en `AuthServiceTest` que compara el rechazo del padrón contra el
 rechazo por duplicado y falla si alguien vuelve a diferenciarlos.
 
-**Resuelto en:** _(pendiente de commit)_
+**Resuelto en:** merge `6651f49` (primera tanda de la auditoría de seguridad).
 
-## [ ] SEC-11 — Sin límites de recursos en los contenedores de producción
+## [~] SEC-11 — Sin límites de recursos en los contenedores de producción
 
 **Ubicación:** `docker-compose.prod.yml`, `docker-compose.yml`.
 
@@ -516,9 +557,33 @@ que el backend quedó vivo pero sin responder.
 **Mitigación propuesta:** declarar límites de memoria y CPU por servicio, y un healthcheck
 sobre `/health` para el backend.
 
-**Resuelto en:** _(pendiente)_
+**Parcialmente resuelto — y la parte que falta está DIFERIDA POR DECISIÓN, no olvidada.**
 
-## [ ] SEC-12 — Sin registro de eventos de seguridad
+**El healthcheck YA ESTÁ**, resuelto de rebote por INF-01 de la auditoría de backend:
+`backend/dockerfile` declara `HEALTHCHECK` sobre `/health` con `start-period=40s` para dar
+margen a Spring + Flyway. Compose lo respeta, así que esa mitad del hallazgo está cubierta.
+
+**Los `mem_limit` NO se pusieron, por decisión explícita del 2026-08-18.** El motivo es
+sano: un `mem_limit` por debajo del uso real hace que el kernel mate el contenedor, y eso
+es tirar producción abajo — el control pensado para contener un incidente se convierte en
+la causa del incidente. Fijarlos exige saber la RAM del VPS, dato que no estaba disponible
+al momento de decidir, y `docs/DEPLOYMENT.md` documenta que la app en marcha usa **~2,5GB**
+con solo 2GB de swap de colchón: el margen es angosto y el costo de equivocarse, alto.
+
+**Riesgo residual asumido:** un consumo desbocado del backend puede provocar un OOM que
+afecte al host completo, incluida la base. Sigue vigente.
+
+**Para cerrarlo cuando se quiera**, hace falta un solo dato: `free -h` en el servidor. Con
+la RAM real, los límites salen de ahí. Y si se le pone `mem_limit` al backend, conviene
+mirar **INF-03** de la auditoría de backend en el mismo movimiento: la JVM lee el límite
+del cgroup y por defecto toma solo el 25% para el heap, así que sin un `MaxRAMPercentage`
+explícito el contenedor puede quedar con memoria libre mientras el heap se ahoga. Los dos
+cambios se piensan juntos o el primero funciona a medias.
+
+**Resuelto en:** healthcheck en la rama de la auditoría de backend (INF-01). Límites,
+pendientes por decisión.
+
+## [x] SEC-12 — Sin registro de eventos de seguridad
 
 **Ubicación:** `AuthService.login`, `SecurityConfig` (entry point y access denied handler),
 `LoginRateLimitFilter`.
@@ -532,4 +597,26 @@ ni contra qué cuentas.
 **Mitigación propuesta:** loguear a nivel WARN los intentos de login fallidos (con
 username y IP), los 403 y los cortes por rate limit.
 
-**Resuelto en:** _(pendiente)_
+**Mitigación aplicada:** nuevo componente `security/SecurityEventLogger`, enganchado en los
+tres puntos: `AuthService.login` (los **tres** caminos de rechazo, no solo uno),
+`SecurityConfig.accessDeniedHandler` (403) y `LoginRateLimitFilter` (corte por límite).
+
+**Detalle que importa en el login:** los tres rechazos siguen devolviendo hacia afuera el
+mismo mensaje genérico —eso es SEC-10 y no se tocó—, pero **los tres se loguean por
+separado**. Hacia afuera son indistinguibles; hacia adentro queda registro. Esa asimetría
+es justamente el punto: no filtrar información al atacante sin quedarse ciego uno mismo.
+
+**Los eventos salen bajo el logger `SECURITY`, no bajo el nombre de la clase.** Así se
+filtra todo el flujo con un solo grep, se le cambia el nivel sin tocar el resto de la app,
+y se puede mandar a un appender aparte el día que haya agregación de logs. Nivel WARN
+porque en el perfil prod el nivel raíz es WARN: en INFO se perderían justo donde importan.
+
+**No se loguea nunca la contraseña intentada, ni el token, ni el hash.** Un log de
+seguridad que filtra credenciales es una vulnerabilidad nueva, no un control: los logs
+suelen tener lectores más amplios que la base de datos.
+
+La IP sale de `getRemoteAddr()`, que es la real gracias a
+`server.forward-headers-strategy=framework` (`application.yml:145`); detrás de nginx, sin
+eso, todos los eventos dirían la IP del proxy y el log no serviría para nada.
+
+**Resuelto en:** rama `sec/hardening-de-infra`. Suite en 304/304.

@@ -2,16 +2,20 @@ package com.retrorental.backend.exception;
 
 import com.retrorental.backend.dto.response.ApiError;
 import com.retrorental.backend.dto.response.ApiFieldError;
+import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -100,6 +104,56 @@ public class GlobalExceptionHandler {
     }
 
     // ---------------------------------------------------------------------
+    // Validacion a nivel de METODO: las restricciones puestas directamente
+    // sobre un parametro del controller en una clase @Validated, como el
+    // @NotEmpty + @Size(max = 500) del alta masiva del padron
+    // (AdminHabilitadoController.crearMasivo).
+    //
+    // Esas NO pasan por BindException: Bean Validation lanza
+    // ConstraintViolationException, que no extiende de aquella. Sin este
+    // handler caia en el catch-all y devolvia 500 "Ocurrio un error
+    // inesperado", tirando a la basura el mensaje que SI explicaba el
+    // problema: el admin que subia una nomina de 600 no tenia forma de
+    // enterarse de que el tope son 500, reintentaba y volvia a fallar.
+    // Ademas ensuciaba el log de errores como si fuera una falla del servidor.
+    //
+    // El nombre de la propiedad viene como ruta completa del metodo
+    // ("crearMasivo.requests[1].documento"); se recorta al ultimo tramo para
+    // que el cliente reciba el nombre del campo, igual que en handleValidation.
+    // ---------------------------------------------------------------------
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiError> handleConstraintViolation(ConstraintViolationException ex) {
+        List<ApiFieldError> fieldErrors = ex.getConstraintViolations().stream()
+            .map(v -> new ApiFieldError(
+                nombreDeCampo(v.getPropertyPath().toString()),
+                FIELD_CODES.getOrDefault(
+                    v.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName(),
+                    "INVALID"),
+                v.getMessage()))
+            .toList();
+
+        String message = fieldErrors.stream()
+            .map(ApiFieldError::message)
+            .reduce((a, b) -> a + "; " + b)
+            .orElse("Datos invalidos");
+        String field = fieldErrors.isEmpty() ? null : fieldErrors.get(0).field();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ApiError(
+            HttpStatus.BAD_REQUEST.value(),
+            ErrorCode.VALIDATION_ERROR.name(),
+            message,
+            field,
+            fieldErrors));
+    }
+
+    // "crearMasivo.requests[1].documento" -> "documento"
+    // "crearMasivo.requests"              -> "requests"
+    private String nombreDeCampo(String propertyPath) {
+        int ultimoPunto = propertyPath.lastIndexOf('.');
+        return ultimoPunto < 0 ? propertyPath : propertyPath.substring(ultimoPunto + 1);
+    }
+
+    // ---------------------------------------------------------------------
     // Cuerpo JSON ilegible: malformado, vacio, o enum inexistente en el body
     // (ej. rol: "JEFE"). Jackson no puede deserializar -> 400.
     // ---------------------------------------------------------------------
@@ -107,6 +161,37 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException ex) {
         return build(ErrorCode.MALFORMED_REQUEST,
             "El cuerpo de la peticion es invalido o esta mal formado", null);
+    }
+
+    // ---------------------------------------------------------------------
+    // Ruta valida, verbo equivocado (ej. PATCH /tickets) -> 405.
+    //
+    // Sin este handler la excepcion caia en el catch-all: devolvia 500 con
+    // "Ocurrio un error inesperado" y quedaba logueada como falla del servidor
+    // (ver docs/BACKEND-AUDIT.md, WEB-01). Doble costo: el cliente movil recibia
+    // un codigo que no describe el problema, y el log de errores se llenaba de
+    // falsas alarmas. Un log lleno de ruido es un log que nadie mira.
+    //
+    // El header `Allow` va porque es parte del contrato de un 405: le dice al
+    // cliente que verbos SI acepta esa ruta.
+    // ---------------------------------------------------------------------
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex) {
+        String message = "El metodo %s no esta permitido en esta ruta".formatted(ex.getMethod());
+        ResponseEntity.BodyBuilder respuesta =
+            ResponseEntity.status(ErrorCode.METHOD_NOT_ALLOWED.getStatus());
+
+        Set<HttpMethod> permitidos = ex.getSupportedHttpMethods();
+        if (permitidos != null && !permitidos.isEmpty()) {
+            respuesta.allow(permitidos.toArray(new HttpMethod[0]));
+        }
+
+        return respuesta.body(new ApiError(
+            ErrorCode.METHOD_NOT_ALLOWED.getStatus().value(),
+            ErrorCode.METHOD_NOT_ALLOWED.name(),
+            message,
+            null));
     }
 
     // ---------------------------------------------------------------------

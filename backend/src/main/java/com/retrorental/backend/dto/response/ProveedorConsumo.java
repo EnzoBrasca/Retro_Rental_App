@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 public record ProveedorConsumo(
     Integer proveedorId,
     String nombre,
-    double litros,
+    BigDecimal litros,
     BigDecimal gasto
 ) {
 }

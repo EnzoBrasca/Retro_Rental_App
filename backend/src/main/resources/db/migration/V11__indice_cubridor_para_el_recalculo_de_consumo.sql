@@ -1,0 +1,61 @@
+-- ---------------------------------------------------------------------------
+-- Indice CUBRIDOR para el recalculo de consumo del vehiculo.
+--
+-- Consulta: TicketRepository.findCargasParaConsumo, que corre en CADA
+-- TicketService.create() y en cada anular(). Es el camino de escritura mas
+-- caliente de la aplicacion: una vez por carga de combustible registrada.
+--
+-- POR QUE NO ALCANZABA UN INDICE COMUN. En V10 se probo agregar
+-- (id_vehiculo, uso_acumulado) a secas y NO se gano el sueldo: medido sobre
+-- 200.000 tickets, el planner seguia prefiriendo `tickets_id_vehiculo_idx` y,
+-- forzandolo, la mejora era de 1,53 ms a 1,09 ms a cambio de 4,5 MB. Quedo
+-- documentado ahi por que no entro.
+--
+-- El problema no era el indice: era que la consulta traia entidades `Ticket`
+-- COMPLETAS cuando el calculo solo necesita (uso_acumulado, litros). Mientras
+-- se traiga la entidad entera, Postgres tiene que ir al heap si o si y ningun
+-- indice lo evita.
+--
+-- ESTE indice SI rinde, pero solo junto con el cambio de la consulta a una
+-- proyeccion (ver TicketRepository.CargaParaConsumo). Los dos viajan juntos:
+-- el indice sin la proyeccion queda sin usar, y la proyeccion sin el indice
+-- sigue yendo al heap.
+--
+-- El INCLUDE (litros) es lo que lo vuelve cubridor: mete la columna en el
+-- indice sin indexarla, asi la consulta se responde ENTERA desde el indice
+-- (Index Only Scan, Heap Fetches: 0) sin tocar la tabla.
+--
+-- Medido sobre 200.000 tickets:
+--   entidad completa + bitmap + sort : 2.069 buffers, 2,389 ms
+--   proyeccion + este indice         :     17 buffers, 0,210 ms  (Heap Fetches: 0)
+--
+-- Ademas desaparece el Sort: el orden del indice (id_vehiculo, uso_acumulado)
+-- ya es el del ORDER BY.
+--
+-- CONDICION QUE HAY QUE CONOCER: un Index Only Scan solo evita ir al heap si el
+-- VISIBILITY MAP de la tabla esta poblado, y eso lo mantiene VACUUM, no ANALYZE.
+-- Recien insertadas las filas (o justo despues de una carga masiva) el planner
+-- estima que igual tendria que ir al heap y prefiere el bitmap scan de siempre:
+-- el indice queda sin usar hasta que pase autovacuum.
+--
+-- En operacion normal no hay que hacer nada: autovacuum lo mantiene al dia
+-- solo. Pero si alguna vez se migra o se importa un lote grande de tickets,
+-- conviene un `VACUUM ANALYZE tickets;` explicito despues, o el recalculo va a
+-- seguir corriendo lento sin motivo aparente hasta que autovacuum lo alcance.
+--
+-- (Este detalle se descubrio al verificar la migracion: la primera medicion, en
+-- la fase 1, habia dado el numero bueno porque autovacuum ya habia pasado.)
+--
+-- El WHERE parcial refleja exactamente los filtros de la consulta, asi que solo
+-- indexa las filas que el recalculo mira: cargas vigentes con lectura de
+-- contador. Las de herramienta (id_vehiculo NULL) y las anteriores a la feature
+-- de uso_acumulado quedan afuera y no ocupan espacio.
+--
+-- Sin CONCURRENTLY por el mismo motivo que en V10: produccion tiene del orden
+-- de 3 tickets. Cuando la tabla tenga volumen real, cualquier indice NUEVO si
+-- debe crearse con CONCURRENTLY + executeInTransaction=false.
+-- ---------------------------------------------------------------------------
+CREATE INDEX tickets_consumo_cubridor_idx
+    ON tickets (id_vehiculo, uso_acumulado)
+    INCLUDE (litros)
+    WHERE fecha_anulacion IS NULL AND uso_acumulado IS NOT NULL;

@@ -1,6 +1,7 @@
 package com.retrorental.backend.dto.response;
 
 import com.retrorental.backend.model.enums.TipoCombustible;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -9,7 +10,7 @@ import java.time.LocalDateTime;
  * front decide entonces si lo deja vacio para que el empleado lo complete.
  */
 public record TicketAnalysisResult(
-    Double litros,
+    BigDecimal litros,
     LocalDateTime fechaCarga,
     Double importeTotal,
     Double precioPorLitro,

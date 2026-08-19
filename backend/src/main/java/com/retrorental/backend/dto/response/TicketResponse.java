@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 
 public record TicketResponse(
     Integer id,
-    Double litros,
+    BigDecimal litros,
     LocalDateTime fechaCarga,
     Integer idPrecio,
     Integer idProveedor,

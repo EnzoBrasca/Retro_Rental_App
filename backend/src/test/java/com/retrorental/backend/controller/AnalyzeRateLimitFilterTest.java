@@ -13,6 +13,7 @@ import com.retrorental.backend.config.SecurityConfig;
 import com.retrorental.backend.dto.response.TicketAnalysisResponse;
 import com.retrorental.backend.security.AnalyzeRateLimitFilter;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.security.LoginRateLimitFilter;
 import com.retrorental.backend.service.TicketService;
 import org.junit.jupiter.api.Tag;
@@ -41,7 +42,7 @@ import org.springframework.test.web.servlet.request.MockMultipartHttpServletRequ
  */
 @WebMvcTest(controllers = TicketController.class)
 @Import({SecurityConfig.class, JwtFilter.class, LoginRateLimitFilter.class,
-         AnalyzeRateLimitFilter.class})
+         AnalyzeRateLimitFilter.class, SecurityEventLogger.class})
 @TestPropertySource(properties = {
     "app.rate-limit.analyze.max-attempts=3",
     "app.rate-limit.analyze.window-seconds=600"
@@ -124,7 +125,9 @@ class AnalyzeRateLimitFilterTest extends AbstractControllerTest {
         // /tickets/analyze ya esta cortado para esa cuenta, pero el historial
         // del MISMO usuario sigue respondiendo: el freno es de ese endpoint, no
         // de la sesion.
-        when(ticketService.listMine(any())).thenReturn(java.util.List.of());
+        when(ticketService.listMine(any(), any())).thenReturn(
+            new org.springframework.data.web.PagedModel<>(
+                new org.springframework.data.domain.PageImpl<>(java.util.List.of())));
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .get("/tickets/me").with(usuario("solo-analyze")))
             .andExpect(status().isOk());

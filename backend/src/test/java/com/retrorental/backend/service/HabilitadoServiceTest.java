@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -20,6 +21,7 @@ import com.retrorental.backend.model.Empleado;
 import com.retrorental.backend.model.EmpleadoHabilitado;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Tag;
@@ -213,23 +215,65 @@ class HabilitadoServiceTest {
         verify(habilitadoRepository, never()).save(any());
     }
 
+    /**
+     * Los documentos ya presentes se saltean en lugar de abortar todo el lote.
+     *
+     * El alta masiva ahora resuelve los existentes en UNA consulta
+     * (findByDocumentoIn) y persiste con un saveAll, en vez de un
+     * existsByDocumento + save por elemento: con el tope de 500 del endpoint eso
+     * eran hasta mil viajes a la base (ver docs/BACKEND-AUDIT.md, DB-07).
+     */
     @Test
     void createBulk_salteaLosRepetidosEnLugarDeAbortarTodo() {
-        when(habilitadoRepository.existsByDocumento("30111222")).thenReturn(true);
-        when(habilitadoRepository.existsByDocumento("30555666")).thenReturn(false);
-        when(habilitadoRepository.findAllByOrderByFechaAltaDesc()).thenReturn(List.of());
+        EmpleadoHabilitado yaExistente = habilitado();
+        yaExistente.setDocumento("30111222");
+        when(habilitadoRepository.findByDocumentoIn(List.of("30111222", "30555666")))
+            .thenReturn(List.of(yaExistente));
+        when(habilitadoRepository.findAllConPersona()).thenReturn(List.of());
 
-        CreateHabilitadoRequest repetido = new CreateHabilitadoRequest();
-        repetido.setDocumento("30111222");
-        repetido.setApellido("Pérez");
+        service.createBulk(List.of(
+            requestDe("30111222", "Pérez"),
+            requestDe("30555666", "Gómez")));
 
-        CreateHabilitadoRequest nuevo = new CreateHabilitadoRequest();
-        nuevo.setDocumento("30555666");
-        nuevo.setApellido("Gómez");
+        // Solo entra el que no estaba.
+        verify(habilitadoRepository).saveAll(argThat((Iterable<EmpleadoHabilitado> nuevos) -> {
+            List<EmpleadoHabilitado> lista = new ArrayList<>();
+            nuevos.forEach(lista::add);
+            return lista.size() == 1 && lista.get(0).getDocumento().equals("30555666");
+        }));
+    }
 
-        service.createBulk(List.of(repetido, nuevo));
+    /**
+     * Un documento REPETIDO DENTRO del mismo lote se inserta una sola vez.
+     *
+     * La versión anterior no manejaba este caso: chequeaba contra la base fila
+     * por fila, así que el segundo duplicado del archivo pasaba el chequeo (no
+     * estaba en la base todavía) y rompía contra la constraint UNIQUE al hacer
+     * flush, tirando abajo el lote entero. Es un caso real: el admin sube una
+     * planilla y una persona aparece dos veces.
+     */
+    @Test
+    void createBulk_conUnDocumentoRepetidoDentroDelMismoLote_loInsertaUnaSolaVez() {
+        when(habilitadoRepository.findByDocumentoIn(List.of("30777888", "30777888")))
+            .thenReturn(List.of());
+        when(habilitadoRepository.findAllConPersona()).thenReturn(List.of());
 
-        verify(habilitadoRepository).save(any(EmpleadoHabilitado.class));
+        service.createBulk(List.of(
+            requestDe("30777888", "Díaz"),
+            requestDe("30777888", "Díaz")));
+
+        verify(habilitadoRepository).saveAll(argThat((Iterable<EmpleadoHabilitado> nuevos) -> {
+            List<EmpleadoHabilitado> lista = new ArrayList<>();
+            nuevos.forEach(lista::add);
+            return lista.size() == 1;
+        }));
+    }
+
+    private CreateHabilitadoRequest requestDe(String documento, String apellido) {
+        CreateHabilitadoRequest req = new CreateHabilitadoRequest();
+        req.setDocumento(documento);
+        req.setApellido(apellido);
+        return req;
     }
 
     @Test
@@ -280,7 +324,7 @@ class HabilitadoServiceTest {
         persona.setUsername("jperez");
         usada.setPersona(persona);
 
-        when(habilitadoRepository.findAllByOrderByFechaAltaDesc())
+        when(habilitadoRepository.findAllConPersona())
             .thenReturn(List.of(libre, usada));
 
         List<HabilitadoResponse> resultado = service.listAll();

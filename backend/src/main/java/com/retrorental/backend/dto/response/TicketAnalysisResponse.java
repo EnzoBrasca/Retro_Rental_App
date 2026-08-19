@@ -23,7 +23,7 @@ import java.time.LocalDateTime;
  *   producto). null si el OCR no leyó el combustible o no hay precio cargado.
  */
 public record TicketAnalysisResponse(
-    Double litros,
+    BigDecimal litros,
     LocalDateTime fechaCarga,
     Double importeTotal,
     Double precioPorLitro,

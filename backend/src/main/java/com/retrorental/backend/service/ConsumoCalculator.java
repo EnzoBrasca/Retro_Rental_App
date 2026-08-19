@@ -39,8 +39,16 @@ public final class ConsumoCalculator {
     private ConsumoCalculator() {
     }
 
-    /** Una carga: la lectura del contador y los litros cargados. */
-    public record Carga(int uso, double litros) {
+    /**
+     * Una carga: la lectura del contador y los litros cargados.
+     *
+     * `litros` es BigDecimal y no double a proposito. Esta clase ACUMULA litros
+     * a lo largo de muchos intervalos (ver {@link #tasa}); con double primitivo
+     * el error de representacion se sumaba vuelta a vuelta antes de que el total
+     * se envolviera en BigDecimal, asi que envolverlo al final no servia de nada
+     * (ver docs/BACKEND-AUDIT.md, DB-04).
+     */
+    public record Carga(int uso, BigDecimal litros) {
     }
 
     /**
@@ -84,11 +92,14 @@ public final class ConsumoCalculator {
             return null;
         }
 
-        double litros = 0;
+        // Acumulacion EXACTA. Con double, cada suma agregaba su propio error de
+        // representacion y el total derivaba proporcionalmente a la cantidad de
+        // intervalos: justo el caso de un vehiculo con años de historial.
+        BigDecimal litros = BigDecimal.ZERO;
         for (int i = desde + 1; i <= hasta; i++) {
-            litros += cargas.get(i).litros();
+            litros = litros.add(cargas.get(i).litros());
         }
-        if (litros <= 0) {
+        if (litros.signum() <= 0) {
             return null;
         }
 
@@ -96,7 +107,7 @@ public final class ConsumoCalculator {
         // por hora.
         BigDecimal factor = unidad == UnidadUso.HORAS ? BigDecimal.ONE : BigDecimal.valueOf(100);
 
-        return BigDecimal.valueOf(litros)
+        return litros
             .multiply(factor)
             .divide(BigDecimal.valueOf(uso), 2, RoundingMode.HALF_UP);
     }

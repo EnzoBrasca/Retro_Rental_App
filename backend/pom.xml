@@ -175,7 +175,85 @@
 					</compilerArgs>
 				</configuration>
 			</plugin>
+			<!--
+			  Cobertura. Antes no habia forma de saber si los agujeros de tests se
+			  estaban cerrando o agrandando: sin medicion no hay mejora, hay opinion.
+
+			  El reporte se genera en cada `mvn test` (target/site/jacoco/index.html)
+			  y NO rompe el build por umbral. Es deliberado: un umbral duro puesto de
+			  entrada sobre un proyecto con agujeros conocidos obliga a elegir entre
+			  bajarlo hasta que no signifique nada o bloquear a todo el mundo. Primero
+			  se establece la linea de base; el umbral se sube despues, a conciencia.
+			-->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<!--
+				  Version FIJADA. El parent de Spring Boot no gestiona este plugin, asi
+				  que sin esto Maven resuelve la ultima publicada y el build deja de ser
+				  reproducible: la misma cabeza de git puede medir distinto la semana que
+				  viene.
+				-->
+				<version>0.8.15</version>
+				<executions>
+					<execution>
+						<id>prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 	</build>
+
+	<profiles>
+		<!--
+		  Chequeo de CVEs en las dependencias. Va en un perfil OPT-IN y no en el
+		  build de siempre a proposito: dependency-check descarga la base del NVD,
+		  que tarda varios minutos la primera vez y desde 2023 pide API key para no
+		  comerse el rate limit. Atado a `verify` dejaria a cualquiera que clone el
+		  repo con un build lento o roto por un motivo que no tiene que ver con su
+		  cambio.
+
+		  Uso:  ./mvnw verify -Pseguridad -DnvdApiKey=<key>
+		  Pedir la key gratis en https://nvd.nist.gov/developers/request-an-api-key
+
+		  Importa aca porque esta app maneja auth, JWT, subida de archivos y rate
+		  limiting, y arrastra tres dependencias con version fijada a mano (jjwt,
+		  minio, dotenv-java) que el BOM de Spring Boot NO actualiza solo.
+		-->
+		<profile>
+			<id>seguridad</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.owasp</groupId>
+						<artifactId>dependency-check-maven</artifactId>
+						<version>10.0.4</version>
+						<configuration>
+							<!-- Falla el build ante cualquier CVE de severidad alta o mas. -->
+							<failBuildOnCVSS>7</failBuildOnCVSS>
+							<nvdApiKey>${nvdApiKey}</nvdApiKey>
+						</configuration>
+						<executions>
+							<execution>
+								<goals>
+									<goal>check</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 
 </project>

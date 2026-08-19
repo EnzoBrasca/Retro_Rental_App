@@ -54,12 +54,15 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private final ObjectMapper objectMapper;
     private final FixedWindowCounter contador;
+    private final SecurityEventLogger securityEventLogger;
 
     public LoginRateLimitFilter(
             ObjectMapper objectMapper,
+            SecurityEventLogger securityEventLogger,
             @Value("${app.rate-limit.login.max-attempts:10}") int maxAttempts,
             @Value("${app.rate-limit.login.window-seconds:60}") long windowSeconds) {
         this.objectMapper = objectMapper;
+        this.securityEventLogger = securityEventLogger;
         this.contador = new FixedWindowCounter(maxAttempts, Duration.ofSeconds(windowSeconds));
     }
 
@@ -90,7 +93,13 @@ public class LoginRateLimitFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        if (contador.excedeLimite(request.getRemoteAddr())) {
+        String ip = request.getRemoteAddr();
+        if (contador.excedeLimite(ip)) {
+            // El corte se registra: una rafaga de estos contra /auth/login es la
+            // firma de una fuerza bruta, y sin log no queda rastro de que ocurrio
+            // (ver docs/SECURITY-AUDIT.md, SEC-12).
+            securityEventLogger.rateLimitSuperado(rutaSinContexto(request), ip);
+
             long segundos = contador.segundosDeVentana();
             response.setHeader("Retry-After", String.valueOf(segundos));
             escribirError(response, "Demasiados intentos. Espera "

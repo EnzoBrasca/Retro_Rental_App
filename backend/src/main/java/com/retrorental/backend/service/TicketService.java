@@ -16,19 +16,16 @@ import com.retrorental.backend.model.Ticket;
 import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.model.enums.Estado;
 import com.retrorental.backend.model.enums.Rol;
-import com.retrorental.backend.model.enums.Servicio;
-import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.repository.HerramientaRepository;
 import com.retrorental.backend.repository.PersonaRepository;
-import com.retrorental.backend.repository.PrecioRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
 import com.retrorental.backend.repository.TicketRepository;
 import com.retrorental.backend.repository.VehiculoRepository;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.web.PagedModel;
@@ -37,7 +34,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,27 +43,25 @@ import java.util.List;
 public class TicketService {
 
     private final TicketRepository ticketRepository;
-    private final PrecioRepository precioRepository;
     private final ProveedorRepository proveedorRepository;
     private final VehiculoRepository vehiculoRepository;
     private final HerramientaRepository herramientaRepository;
     private final PersonaRepository personaRepository;
     private final StorageService storageService;
     private final ImageValidator imageValidator;
+    // Reglas del catalogo de precios (resolucion, reemplazo del vigente, margen)
+    // y recalculo del consumo del vehiculo. Estaban adentro de esta clase, que
+    // habia acumulado seis responsabilidades en 759 lineas (ver
+    // docs/BACKEND-AUDIT.md, SVC-01).
+    private final PrecioCatalogoService precioCatalogo;
+    private final VehiculoConsumoService vehiculoConsumo;
+    // Resolucion del OCR contra el catalogo. Bean SEPARADO a proposito: es lo
+    // que permite que analyze() deje la llamada HTTP fuera de la transaccion
+    // (ver TX-01 y el javadoc de analyze).
+    private final CatalogoOcrResolver catalogoOcrResolver;
     // Opcional: el bean de análisis solo existe si hay API key de Mistral. Crear
     // tickets NO debe depender de eso, por eso se inyecta con ObjectProvider.
     private final ObjectProvider<TicketAnalysisService> analysisProvider;
-
-    // Cuanto puede alejarse del vigente un precio corregido a mano (o leido por
-    // OCR) antes de considerarse un error de carga. Se inyecta por campo y no
-    // por constructor para no reescribir el @RequiredArgsConstructor entero por
-    // un solo escalar de configuracion.
-    @Value("${app.precio.margen-maximo:30}")
-    private BigDecimal margenMaximo;
-
-    // Cuantos intervalos mira el consumo "reciente" del vehiculo.
-    @Value("${app.consumo.ventana-cargas:10}")
-    private int ventanaConsumo;
 
     @Transactional
     public TicketResponse create(CreateTicketRequest request, String empleadoUsername) {
@@ -86,8 +80,8 @@ public class TicketService {
         // el precio se resuelve/crea aca (ver resolvePrecioPorCombustible). Cual
         // de los dos vino lo garantiza @OrigenCargaCoherente.
         Precio precio = request.getIdPrecio() != null
-            ? resolvePrecioPorId(request.getIdPrecio(), proveedor)
-            : resolvePrecioPorCombustible(proveedor, request.getTipoCombustible());
+            ? precioCatalogo.resolvePorId(request.getIdPrecio(), proveedor)
+            : precioCatalogo.resolvePorCombustible(proveedor, request.getTipoCombustible());
 
         // Precio realmente pagado. Si el empleado lo corrigio (el del catalogo
         // estaba desactualizado), se valida el margen y el catalogo se actualiza:
@@ -98,9 +92,9 @@ public class TicketService {
         Precio precioAplicado = precio;
         if (request.getPrecioUnitario() != null
             && precio.getPrecioUnitario().compareTo(request.getPrecioUnitario()) != 0) {
-            validarMargen(request.getPrecioUnitario(), precio.getPrecioUnitario(),
+            precioCatalogo.validarMargen(request.getPrecioUnitario(), precio.getPrecioUnitario(),
                 precio.getTipoCombustible(), "precioUnitario");
-            precioAplicado = reemplazarVigente(
+            precioAplicado = precioCatalogo.reemplazarVigente(
                 proveedor, precio.getTipoCombustible(), request.getPrecioUnitario());
         }
 
@@ -177,72 +171,11 @@ public class TicketService {
             // Recien ahora, con el ticket ya persistido, el consumo se recalcula
             // incluyendolo. El vehiculo se guarda una sola vez con todo junto: la
             // lectura nueva, el operario y el consumo.
-            recalcularConsumo(vehiculo);
+            vehiculoConsumo.recalcularConsumo(vehiculo);
             vehiculoRepository.save(vehiculo);
         }
 
         return toResponse(guardado);
-    }
-
-    /**
-     * Recalcula el consumo del vehiculo a partir de sus cargas.
-     *
-     * Se hace en cada alta de ticket y no al leer para que el listado de la
-     * flota no dispare una consulta por vehiculo. El costo es una consulta por
-     * carga, que es la operacion poco frecuente de las dos.
-     *
-     * Si no hay datos suficientes (hacen falta dos cargas con lectura), se
-     * vuelve a consumoInicial: la estimacion que cargo el admin en el alta.
-     *
-     * Ese fallback existe por la ANULACION. Mientras los tickets solo se
-     * agregaban, alcanzaba con no tocar consumoPromedio cuando el calculo no
-     * daba: el valor que habia era justamente la estimacion del alta. Al poder
-     * anular, el vehiculo puede RETROCEDER a menos de dos cargas, y entonces
-     * "no tocar" dejaria un consumo calculado a partir de cargas que ya no
-     * existen. Un numero que sobrevive a la evidencia que lo sustentaba.
-     *
-     * Si consumoInicial es null (vehiculos anteriores a V7, cuya estimacion
-     * original ya se habia perdido) no hay a que volver: se deja lo que hay,
-     * que es lo unico que se puede hacer sin inventar un dato.
-     */
-    private void recalcularConsumo(Vehiculo vehiculo) {
-        List<ConsumoCalculator.Carga> cargas = ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculo.getId())
-            .stream()
-            .map(t -> new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()))
-            .toList();
-
-        ConsumoCalculator.Consumo consumo = ConsumoCalculator.calcular(
-            cargas, vehiculo.getTipoVehiculo().unidadUso(), ventanaConsumo);
-
-        if (consumo.historico() != null) {
-            vehiculo.setConsumoPromedio(consumo.historico());
-        } else if (vehiculo.getConsumoInicial() != null) {
-            vehiculo.setConsumoPromedio(vehiculo.getConsumoInicial());
-        }
-        vehiculo.setConsumoReciente(consumo.reciente());
-    }
-
-    /**
-     * Recalcula la lectura del contador del vehiculo desde sus cargas vigentes.
-     *
-     * Es lo que hace util a la anulacion. El motivo mas comun para anular un
-     * ticket es un error de tipeo en la lectura (99999 en vez de 9999), y esa
-     * lectura equivocada quedo copiada en vehiculo.usoAcumulado. Sin revertirla,
-     * toda carga futura del vehiculo se rechazaria con USO_ACUMULADO_RETROCEDE
-     * contra un numero que ya nadie puede justificar: la funcion que el admin
-     * usa para arreglar el error lo dejaria sin poder arreglarlo.
-     *
-     * Sin cargas vigentes no se toca: la lectura previa a todos los tickets no
-     * se guarda en ningun lado. El admin la corrige a mano desde el ABM.
-     */
-    private void recalcularUsoAcumulado(Vehiculo vehiculo) {
-        ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculo.getId())
-            .stream()
-            .map(Ticket::getUsoAcumulado)
-            .max(Integer::compareTo)
-            .ifPresent(vehiculo::setUsoAcumulado);
     }
 
     /**
@@ -280,8 +213,8 @@ public class TicketService {
         // ninguna lectura ni consumo, asi que no hay nada que recalcular.
         Vehiculo vehiculo = ticket.getVehiculo();
         if (vehiculo != null) {
-            recalcularUsoAcumulado(vehiculo);
-            recalcularConsumo(vehiculo);
+            vehiculoConsumo.recalcularUsoAcumulado(vehiculo);
+            vehiculoConsumo.recalcularConsumo(vehiculo);
             vehiculoRepository.save(vehiculo);
         }
 
@@ -290,15 +223,26 @@ public class TicketService {
     }
 
     /**
-     * Analiza la foto de un ticket con el OCR y lo resuelve contra el catálogo
+     * Analiza la foto de un ticket con el OCR y la resuelve contra el catálogo
      * para pre-cargar el formulario de creación.
      *
-     * ATENCIÓN: además de leer, este método PUEDE ESCRIBIR. Si el OCR devuelve
-     * un proveedor o un precio que no existe en el catálogo, los da de alta
-     * automáticamente (ver resolveProveedor/resolvePrecio). Por eso es
-     * transaccional de escritura, no readOnly.
+     * SIN @Transactional, y eso es EL punto de este método (ver
+     * docs/BACKEND-AUDIT.md, TX-01). Antes estaba anotado, así que la llamada
+     * HTTP a Mistral —hasta 30 segundos de timeout— corría con una conexión de
+     * base tomada y sin hacer nada con ella.
+     *
+     * Peor todavía: la transacción se abría ANTES del mamparo, así que los
+     * requests que esperaban un lugar libre (hasta 5 segundos más) TAMBIÉN
+     * retenían una conexión. El semáforo de MistralTicketAnalysisService protege
+     * los hilos de Tomcat y la memoria, pero no protegía el pool: con Hikari en
+     * 10 conexiones, diez análisis simultáneos dejaban al resto de la API —login,
+     * listados, estadísticas— sin conexiones.
+     *
+     * Ahora la única parte que toca la base es catalogoOcrResolver.resolver(),
+     * que abre su propia transacción corta y la cierra. Tiene que vivir en OTRO
+     * bean: llamarla desde acá siendo del mismo bean sería una self-invocation y
+     * el proxy de Spring no abriría ninguna transacción.
      */
-    @Transactional
     public TicketAnalysisResponse analyze(MultipartFile ticketFoto) {
         TicketAnalysisService analysisService = analysisProvider.getIfAvailable();
         if (analysisService == null) {
@@ -314,235 +258,11 @@ public class TicketService {
         // sabemos que hay que rechazar.
         imageValidator.validar(ticketFoto);
 
+        // Llamada de red, sin transacción abierta.
         var ocr = analysisService.analyze(ticketFoto);
 
-        Proveedor proveedor = resolveProveedor(ocr.estacion(), ocr.cuit());
-        // El precio se resuelve PARA el proveedor: cada estación tiene su propio
-        // precio del combustible. Si no se pudo resolver el proveedor, no hay a
-        // quién asociar el precio → queda en blanco.
-        Precio precio = resolvePrecio(proveedor, ocr.tipoCombustible(), ocr.precioPorLitro());
-
-        return new TicketAnalysisResponse(
-            ocr.litros(),
-            ocr.fechaCarga(),
-            ocr.importeTotal(),
-            ocr.precioPorLitro(),
-            ocr.estacion(),
-            ocr.tipoCombustible(),
-            proveedor != null ? proveedor.getId() : null,
-            proveedor != null ? proveedor.getNombre() : null,
-            precio != null ? precio.getId() : null,
-            precio != null ? precio.getPrecioUnitario() : null
-        );
-    }
-
-    // Resuelve el proveedor para la estación leída. Si no hay match existente y
-    // el OCR trae los datos necesarios (nombre + CUIT), lo crea automáticamente.
-    // Sin CUIT no se puede crear (columna NOT NULL): se deja null para carga
-    // manual.
-    private Proveedor resolveProveedor(String estacion, String cuit) {
-        if (estacion == null || estacion.isBlank()) {
-            return null;
-        }
-
-        Proveedor matched = matchProveedor(estacion);
-        if (matched != null) {
-            return matched;
-        }
-
-        if (cuit == null || cuit.isBlank()) {
-            return null;
-        }
-        String cuitLimpio = cuit.trim();
-
-        // Idempotencia: si ya existe uno con ese CUIT, se reutiliza en vez de
-        // crear un duplicado (analyze puede llamarse varias veces).
-        return proveedorRepository.findByCuit(cuitLimpio).orElseGet(() -> {
-            Proveedor nuevo = new Proveedor();
-            nuevo.setNombre(estacion.trim());
-            nuevo.setCuit(cuitLimpio);
-            nuevo.setServicio(Servicio.COMBUSTIBLE);
-            return proveedorRepository.save(nuevo);
-        });
-    }
-
-    // Resuelve el precio del ticket PARA UN PROVEEDOR, dándole prioridad sobre el
-    // catálogo (que puede estar desactualizado). El precio es por (proveedor,
-    // combustible): distintas estaciones tienen precios distintos del mismo
-    // producto.
-    //
-    // - Sin proveedor, sin combustible o sin precio leído → null: "dejar vacío lo
-    //   que no se leyó"; el empleado completa eligiendo el vehículo.
-    // - Si el vigente de ese (proveedor, combustible) YA coincide → se reutiliza.
-    // - Si difiere (o no hay) → el precio leído pasa a ser el NUEVO vigente de ese
-    //   (proveedor, combustible), cerrando el anterior (invariante: un único
-    //   vigente por proveedor+producto). Nunca se muta un Precio existente porque
-    //   hay tickets históricos que lo referencian; siempre se crea una fila nueva.
-    //
-    // Cuando el proveedor es NUEVO (recién dado de alta desde el ticket), esto
-    // carga SOLO el precio del combustible leído; los demás combustibles quedan
-    // sin precio hasta que aparezcan en otro ticket.
-    private Precio resolvePrecio(Proveedor proveedor, TipoCombustible tipoCombustible, Double precioPorLitro) {
-        if (proveedor == null || tipoCombustible == null || precioPorLitro == null) {
-            return null;
-        }
-
-        BigDecimal objetivo = BigDecimal.valueOf(precioPorLitro);
-        Precio vigente = precioRepository
-            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, tipoCombustible)
-            .orElse(null);
-
-        // compareTo ignora la escala (2083 == 2083.00).
-        if (vigente != null && vigente.getPrecioUnitario() != null
-            && vigente.getPrecioUnitario().compareTo(objetivo) == 0) {
-            return vigente;
-        }
-
-        // El OCR puede alucinar: leer 2.086 como 20.860 es un error de una coma.
-        // Antes, ese valor entraba al catalogo sin control y quedaba como precio
-        // vigente para TODOS los empleados. Si se aleja demasiado del vigente se
-        // descarta y se devuelve el vigente: aca NO se lanza excepcion, porque
-        // esto alimenta una sugerencia de formulario y trabar el analisis por un
-        // precio dudoso dejaria al empleado sin poder cargar.
-        if (vigente != null && fueraDeMargen(objetivo, vigente.getPrecioUnitario(), tipoCombustible)) {
-            return vigente;
-        }
-
-        return reemplazarVigente(proveedor, tipoCombustible, objetivo);
-    }
-
-    // Resuelve el precio de una carga de VEHICULO (idPrecio ya elegido en el
-    // formulario, resuelto contra el catalogo). Valida coherencia
-    // precio↔proveedor: si el precio pertenece a una estación, debe ser la
-    // MISMA que la del ticket. El precio es por (proveedor, combustible), así
-    // que cargar una compra con el precio de OTRA estación sería un dato
-    // inconsistente. (Precios legacy sin proveedor no se validan.)
-    private Precio resolvePrecioPorId(Integer idPrecio, Proveedor proveedor) {
-        Precio precio = precioRepository.findById(idPrecio)
-            .orElseThrow(() -> new ResourceNotFoundException(
-                ErrorCode.PRECIO_NOT_FOUND, "No existe el precio indicado", "idPrecio"));
-
-        if (precio.getProveedor() != null
-            && !precio.getProveedor().getId().equals(proveedor.getId())) {
-            throw new ConflictException(
-                ErrorCode.PRECIO_PROVEEDOR_MISMATCH,
-                "El precio indicado corresponde a otra estación de servicio", "idPrecio");
-        }
-        return precio;
-    }
-
-    /**
-     * Resuelve el precio de una carga de HERRAMIENTA, que no manda idPrecio
-     * (no hay uno resuelto de antemano: el combustible se elige carga por
-     * carga) sino el tipoCombustible elegido.
-     *
-     * - Si el proveedor ya tiene un vigente de ese combustible, se usa tal cual.
-     * - Si NO lo tiene y es MEZCLA (nafta con aceite): no es un producto que
-     *   vendan las estaciones (no tiene precio propio en el catálogo), así que
-     *   se crea copiando como valor inicial el vigente de NAFTA_SUPER del MISMO
-     *   proveedor. El empleado ve ese valor y lo corrige al precio real de la
-     *   mezcla (sin tope de margen, ver fueraDeMargen). Si el proveedor tampoco
-     *   tiene ese NAFTA_SUPER, no hay de donde copiar: error explícito, no se
-     *   inventa un precio en cero.
-     * - Para cualquier otro combustible sin vigente (ej. un bidón de GASOIL en
-     *   un proveedor que no lo tiene cargado): error explícito. A diferencia de
-     *   MEZCLA, ningún otro combustible tiene una referencia de la que copiar.
-     */
-    private Precio resolvePrecioPorCombustible(Proveedor proveedor, TipoCombustible tipoCombustible) {
-        Precio vigente = precioRepository
-            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, tipoCombustible)
-            .orElse(null);
-        if (vigente != null) {
-            return vigente;
-        }
-
-        if (tipoCombustible == TipoCombustible.MEZCLA) {
-            Precio base = precioRepository
-                .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, TipoCombustible.NAFTA_SUPER)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                    ErrorCode.PRECIO_BASE_MEZCLA_NOT_FOUND,
-                    "El proveedor no tiene un precio vigente de nafta super para tomar como base de la mezcla",
-                    "idProveedor"));
-            return reemplazarVigente(proveedor, TipoCombustible.MEZCLA, base.getPrecioUnitario());
-        }
-
-        throw new ResourceNotFoundException(
-            ErrorCode.PRECIO_NOT_FOUND_PARA_COMBUSTIBLE,
-            "El proveedor no tiene un precio vigente para ese combustible", "idProveedor");
-    }
-
-    /**
-     * Retira el precio vigente de (proveedor, combustible) y deja uno nuevo.
-     *
-     * Conserva la historia: el anterior queda con fechaHasta = hoy en vez de
-     * borrarse, asi los tickets viejos siguen apuntando al precio que realmente
-     * se pago. Lo comparten la correccion manual del empleado y la ruta del OCR.
-     */
-    private Precio reemplazarVigente(Proveedor proveedor, TipoCombustible tipoCombustible,
-                                     BigDecimal valor) {
-        LocalDate hoy = LocalDate.now();
-        precioRepository
-            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, tipoCombustible)
-            .ifPresent(vigente -> vigente.setFechaHasta(hoy));
-
-        Precio nuevo = new Precio();
-        nuevo.setPrecioUnitario(valor);
-        nuevo.setServicio(Servicio.COMBUSTIBLE);
-        nuevo.setTipoCombustible(tipoCombustible);
-        nuevo.setProveedor(proveedor);
-        nuevo.setFechaDesde(hoy);
-        nuevo.setFechaHasta(null);
-        return precioRepository.save(nuevo);
-    }
-
-    /**
-     * Si el precio propuesto se aleja del vigente mas de lo tolerado.
-     *
-     * La MEZCLA (nafta con aceite, motosierra) queda SIN TOPE: cuando el
-     * proveedor no tiene un vigente propio, se crea tomando como base el
-     * vigente de NAFTA_SUPER de ese proveedor (ver
-     * resolvePrecioPorCombustible), y el usuario lo corrige despues al precio
-     * real de la mezcla, que lleva aceite y por eso se aleja legitimamente del
-     * de la nafta pura. Aplicarle el mismo margen que al resto trabaria
-     * correcciones validas.
-     */
-    private boolean fueraDeMargen(BigDecimal propuesto, BigDecimal vigente, TipoCombustible tipoCombustible) {
-        if (propuesto == null || vigente == null) {
-            return false;
-        }
-        if (tipoCombustible == TipoCombustible.MEZCLA) {
-            return false;
-        }
-        return propuesto.subtract(vigente).abs().compareTo(margenMaximo) > 0;
-    }
-
-    /** Igual que fueraDeMargen pero cortando la operacion: la usa la carga manual. */
-    private void validarMargen(BigDecimal propuesto, BigDecimal vigente,
-                               TipoCombustible tipoCombustible, String campo) {
-        if (fueraDeMargen(propuesto, vigente, tipoCombustible)) {
-            throw new ConflictException(
-                ErrorCode.PRECIO_FUERA_DE_RANGO,
-                "El precio ingresado (" + propuesto + ") se aleja mas de " + margenMaximo
-                    + " del precio vigente (" + vigente + "). Verificá el importe.",
-                campo);
-        }
-    }
-
-    // Busca un proveedor de COMBUSTIBLE cuyo nombre coincida (contención, sin
-    // distinguir mayúsculas) con el texto "estacion" que leyó el OCR. Solo se
-    // considera match si es ÚNICO: con 0 o varios candidatos se devuelve null.
-    private Proveedor matchProveedor(String estacion) {
-        if (estacion == null || estacion.isBlank()) {
-            return null;
-        }
-        String needle = estacion.toLowerCase();
-        List<Proveedor> candidatos = proveedorRepository.findByServicio(Servicio.COMBUSTIBLE).stream()
-            .filter(p -> {
-                String nombre = p.getNombre() == null ? "" : p.getNombre().toLowerCase();
-                return !nombre.isBlank() && (needle.contains(nombre) || nombre.contains(needle));
-            })
-            .toList();
-        return candidatos.size() == 1 ? candidatos.get(0) : null;
+        // Recién acá se toca la base, y por lo que dura resolver tres consultas.
+        return catalogoOcrResolver.resolver(ocr);
     }
 
     /**
@@ -562,16 +282,24 @@ public class TicketService {
         // vez de un ":param IS NULL OR ..." (que en Postgres rompe con
         // "could not determine data type" al pasar un timestamp null).
         Specification<Ticket> spec = (root, query, cb) -> {
-            // Evita el N+1: trae empleado, proveedor y precio en la MISMA query
-            // (JOIN FETCH). Solo en la query de datos, no en la de count — un
-            // fetch en el count rompe. Son todos @ManyToOne (single-valued), así
-            // que el fetch join es seguro con paginación.
+            // Evita el N+1: trae empleado, proveedor, precio, vehiculo y
+            // herramienta en la MISMA query (JOIN FETCH). Solo en la query de
+            // datos, no en la de count — un fetch en el count rompe. Son todos
+            // @ManyToOne (single-valued), así que el fetch join es seguro con
+            // paginación.
+            //
+            // vehiculo y herramienta van con JoinType.LEFT EXPLÍCITO. root.fetch()
+            // sin JoinType hace INNER JOIN, y como un ticket tiene vehiculo O
+            // herramienta (nunca los dos), un INNER sobre vehiculo BORRA del
+            // listado todos los tickets de herramienta. Mismo razonamiento que
+            // TicketRepository.findForStats, donde ya está documentado.
             if (query != null && query.getResultType() != Long.class
                     && query.getResultType() != long.class) {
                 root.fetch("persona");
                 root.fetch("proveedor");
                 root.fetch("precio");
-                root.fetch("vehiculo");
+                root.fetch("vehiculo", JoinType.LEFT);
+                root.fetch("herramienta", JoinType.LEFT);
             }
 
             List<Predicate> predicates = new ArrayList<>();
@@ -667,12 +395,21 @@ public class TicketService {
      * Tickets del empleado autenticado, más recientes primero. Alimenta la
      * pestaña "Historial" de la app del empleado. El empleado sale del JWT, no
      * de un parámetro, para que solo pueda ver los suyos.
+     *
+     * PAGINADO: el historial crece con cada carga y no se borra nunca, así que
+     * devolverlo entero era una lista sin techo sobre la conexión del teléfono.
+     * Mismo contrato que listForAdmin (PagedModel).
+     *
+     * El mapeo a TicketResponse ocurre dentro de la transacción para que las
+     * asociaciones LAZY se resuelvan con la sesión abierta.
      */
     @Transactional(readOnly = true)
-    public List<TicketResponse> listMine(String empleadoUsername) {
+    public PagedModel<TicketResponse> listMine(String empleadoUsername, Pageable pageable) {
         Persona persona = resolvePersona(empleadoUsername);
-        return ticketRepository.findByPersonaIdAndFechaAnulacionIsNullOrderByFechaCargaDesc(persona.getId())
-            .stream().map(this::toResponse).toList();
+        return new PagedModel<>(
+            ticketRepository.findVigentesDePersona(persona.getId(), pageable)
+                .map(this::toResponse)
+        );
     }
 
     private Persona resolvePersona(String username) {

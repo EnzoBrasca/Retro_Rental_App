@@ -29,8 +29,13 @@ import java.util.Objects;
  * Estadísticas de consumo de combustible por período. Diario, semanal y mensual
  * comparten TODA la lógica: solo cambian los límites del rango. El gasto se
  * calcula por ticket como litros × precioUnitario (el precio vigente que quedó
- * asociado al ticket), y se agrega en memoria — el volumen por período es chico
- * y evita mezclar Double (litros) con BigDecimal (precio) en un SUM de JPQL.
+ * asociado al ticket), y se agrega en memoria — el volumen por período es chico.
+ *
+ * Todo el dinero y todos los litros se acumulan en BigDecimal. Antes los litros
+ * eran Double y el argumento para dejarlos así era evitar mezclar tipos en un
+ * SUM de JPQL; ese argumento cayó cuando se vio que el operando ya entraba
+ * contaminado por el error de representación binaria y que multiplicarlo por un
+ * BigDecimal no lo recuperaba (ver docs/BACKEND-AUDIT.md, DB-04).
  */
 @Service
 @RequiredArgsConstructor
@@ -69,27 +74,30 @@ public class StatsService {
                                          Integer vehiculoId, List<Integer> empleadoIds) {
         LocalDateTime desde = desdeInclusive.atStartOfDay();
         LocalDateTime hasta = hastaExclusive.atStartOfDay();
-        List<Ticket> tickets = ticketRepository.findForStats(desde, hasta);
 
-        if (vehiculoId != null) {
-            // Filtrar por vehiculo excluye de por si los tickets de
-            // herramienta (getVehiculo() es null para esos).
-            tickets = tickets.stream()
-                .filter(t -> t.getVehiculo() != null && t.getVehiculo().getId().equals(vehiculoId))
-                .toList();
-        }
-        if (empleadoIds != null && !empleadoIds.isEmpty()) {
-            tickets = tickets.stream()
-                .filter(t -> empleadoIds.contains(t.getPersona().getId()))
-                .toList();
-        }
+        // Los dos filtros opcionales viajan a la CONSULTA. Antes se traia el
+        // rango entero —con precio, vehiculo, herramienta, persona y proveedor
+        // por cada fila— y se descartaba en memoria lo que no correspondia. Para
+        // un mes de una flota grande eso hidrata muchisimas mas filas de las que
+        // el resultado necesita (ver docs/BACKEND-AUDIT.md, SVC-02).
+        //
+        // La consulta exige una lista no nula, asi que se normaliza aca. El
+        // valor de relleno no se usa nunca: cuando filtrarPorEmpleado es false,
+        // el predicado del IN ni se evalua.
+        boolean filtrarPorEmpleado = empleadoIds != null && !empleadoIds.isEmpty();
+        List<Integer> idsParaLaConsulta = filtrarPorEmpleado ? empleadoIds : List.of(-1);
 
-        double totalLitros = 0d;
+        // Filtrar por vehiculo excluye de por si los tickets de herramienta
+        // (id_vehiculo es null para esos), igual que antes.
+        List<Ticket> tickets = ticketRepository.findForStats(
+            desde, hasta, vehiculoId, filtrarPorEmpleado, idsParaLaConsulta);
+
+        BigDecimal totalLitros = BigDecimal.ZERO;
         // Litros cargados a VEHICULOS unicamente. Va aparte de totalLitros
         // porque es el numerador de promedioLitrosPorVehiculo, cuyo denominador
         // (vehiculosActivos) tampoco cuenta herramientas: mezclarlos inflaria el
         // promedio de cada vehiculo con la nafta de las motosierras y bidones.
-        double litrosDeVehiculos = 0d;
+        BigDecimal litrosDeVehiculos = BigDecimal.ZERO;
         BigDecimal gastoTotal = BigDecimal.ZERO;
         // LinkedHashMap: acumula preservando orden de aparición (el orden
         // final lo define el sort por gasto, esto es solo estable).
@@ -97,13 +105,16 @@ public class StatsService {
         Map<Integer, Acumulador> porEmpleado = new LinkedHashMap<>();
 
         for (Ticket t : tickets) {
-            double litros = t.getLitros();
-            BigDecimal gasto = t.getPrecio().getPrecioUnitario()
-                .multiply(BigDecimal.valueOf(litros));
+            BigDecimal litros = t.getLitros();
+            // Multiplicacion EXACTA: los dos operandos son BigDecimal. Antes
+            // litros entraba como double y ya venia contaminado, asi que el
+            // BigDecimal del precio no alcanzaba (ver docs/BACKEND-AUDIT.md,
+            // DB-04).
+            BigDecimal gasto = t.getPrecio().getPrecioUnitario().multiply(litros);
 
-            totalLitros += litros;
+            totalLitros = totalLitros.add(litros);
             if (t.getVehiculo() != null) {
-                litrosDeVehiculos += litros;
+                litrosDeVehiculos = litrosDeVehiculos.add(litros);
             }
             gastoTotal = gastoTotal.add(gasto);
 
@@ -120,13 +131,13 @@ public class StatsService {
 
         List<ProveedorConsumo> desglosePorProveedor = new ArrayList<>();
         porProveedor.forEach((id, acc) -> desglosePorProveedor.add(new ProveedorConsumo(
-            id, acc.etiqueta, redondearLitros(acc.litros), redondear(acc.gasto))));
+            id, acc.etiqueta, redondear(acc.litros), redondear(acc.gasto))));
         // Top proveedores: mayor gasto primero.
         desglosePorProveedor.sort(Comparator.comparing(ProveedorConsumo::gasto, Comparator.reverseOrder()));
 
         List<EmpleadoConsumo> desglosePorEmpleado = new ArrayList<>();
         porEmpleado.forEach((id, acc) -> desglosePorEmpleado.add(new EmpleadoConsumo(
-            id, acc.etiqueta, redondearLitros(acc.litros), redondear(acc.gasto))));
+            id, acc.etiqueta, redondear(acc.litros), redondear(acc.gasto))));
         // Top consumidores: mayor gasto primero.
         desglosePorEmpleado.sort(Comparator.comparing(EmpleadoConsumo::gasto, Comparator.reverseOrder()));
 
@@ -140,18 +151,23 @@ public class StatsService {
             .map(Vehiculo::getId)
             .distinct()
             .count();
-        double promedio = vehiculosActivos == 0 ? 0d : litrosDeVehiculos / vehiculosActivos;
+        // La division SIEMPRE lleva escala y modo de redondeo explicitos: sin
+        // ellos, BigDecimal.divide tira ArithmeticException cuando el resultado
+        // es periodico (ej. 10 L / 3 vehiculos).
+        BigDecimal promedio = vehiculosActivos == 0
+            ? BigDecimal.ZERO
+            : litrosDeVehiculos.divide(BigDecimal.valueOf(vehiculosActivos), 2, RoundingMode.HALF_UP);
 
         Consumo consumo = consumoDelPeriodo(vehiculoId, desde, hasta);
 
         return new StatsResponse(
             desdeInclusive,
             hastaExclusive.minusDays(1), // se expone el último día INCLUIDO
-            redondearLitros(totalLitros),
+            redondear(totalLitros),
             redondear(gastoTotal),
             tickets.size(),
             vehiculosActivos,
-            redondearLitros(promedio),
+            redondear(promedio),
             consumo.valor(),
             consumo.unidad(),
             desglosePorProveedor,
@@ -195,15 +211,20 @@ public class StatsService {
         // orden de lectura. Las lecturas son monótonas (una carga que retrocede
         // el contador se rechaza al crearse), así que ese orden es también el
         // cronológico.
-        List<Ticket> cargasDelVehiculo = ticketRepository
-            .findByVehiculoIdAndUsoAcumuladoIsNotNullAndFechaAnulacionIsNullOrderByUsoAcumuladoAsc(vehiculoId);
+        // Proyeccion de cuatro columnas, no entidades: el calculo solo necesita
+        // lectura, litros, fecha y el tipo del vehiculo. El tipo viene en la
+        // misma consulta, lo que ademas elimina el SELECT lazy que antes
+        // disparaba `cargas.get(0).getVehiculo()` (ver docs/BACKEND-AUDIT.md,
+        // SVC-06).
+        List<TicketRepository.CargaParaStats> cargasDelVehiculo =
+            ticketRepository.findCargasParaStats(vehiculoId);
         if (cargasDelVehiculo.isEmpty()) {
             return Consumo.SIN_DATO;
         }
 
-        Ticket lineaBase = null;
-        List<Ticket> delPeriodo = new ArrayList<>();
-        for (Ticket t : cargasDelVehiculo) {
+        TicketRepository.CargaParaStats lineaBase = null;
+        List<TicketRepository.CargaParaStats> delPeriodo = new ArrayList<>();
+        for (TicketRepository.CargaParaStats t : cargasDelVehiculo) {
             if (t.getFechaCarga().isBefore(desde)) {
                 lineaBase = t; // se queda la última previa al rango
             } else if (t.getFechaCarga().isBefore(hasta)) {
@@ -217,11 +238,11 @@ public class StatsService {
         if (lineaBase != null) {
             cargas.add(new ConsumoCalculator.Carga(lineaBase.getUsoAcumulado(), lineaBase.getLitros()));
         }
-        for (Ticket t : delPeriodo) {
+        for (TicketRepository.CargaParaStats t : delPeriodo) {
             cargas.add(new ConsumoCalculator.Carga(t.getUsoAcumulado(), t.getLitros()));
         }
 
-        UnidadUso unidad = cargasDelVehiculo.get(0).getVehiculo().getTipoVehiculo().unidadUso();
+        UnidadUso unidad = cargasDelVehiculo.get(0).getTipoVehiculo().unidadUso();
         // La ventana del consumo "reciente" no interesa acá: el período ya ES la
         // ventana. Pasando el total de cargas, reciente == histórico y se ignora.
         BigDecimal valor = ConsumoCalculator.calcular(cargas, unidad, cargas.size()).historico();
@@ -235,22 +256,18 @@ public class StatsService {
         return valor.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private static double redondearLitros(double litros) {
-        return BigDecimal.valueOf(litros).setScale(2, RoundingMode.HALF_UP).doubleValue();
-    }
-
     // Acumulador mutable por proveedor/empleado (solo dentro del cálculo).
     private static final class Acumulador {
         private final String etiqueta;
-        private double litros = 0d;
+        private BigDecimal litros = BigDecimal.ZERO;
         private BigDecimal gasto = BigDecimal.ZERO;
 
         private Acumulador(String etiqueta) {
             this.etiqueta = etiqueta;
         }
 
-        private void add(double litros, BigDecimal gasto) {
-            this.litros += litros;
+        private void add(BigDecimal litros, BigDecimal gasto) {
+            this.litros = this.litros.add(litros);
             this.gasto = this.gasto.add(gasto);
         }
     }

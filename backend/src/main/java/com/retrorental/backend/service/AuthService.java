@@ -13,6 +13,7 @@ import com.retrorental.backend.model.embeddable.Telefono;
 import com.retrorental.backend.model.enums.Rol;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.security.JwtUtil;
+import com.retrorental.backend.security.SecurityEventLogger;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final UsernameGenerator usernameGenerator;
     private final HabilitadoService habilitadoService;
+    private final SecurityEventLogger securityEventLogger;
 
     /**
      * Registro publico de empleados.
@@ -108,10 +110,18 @@ public class AuthService {
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
 
+        // Los tres rechazos de abajo devuelven el MISMO mensaje al cliente (no
+        // revelar si la cuenta existe), pero los tres se LOGUEAN: hacia afuera
+        // son indistinguibles, hacia adentro quedan registrados (ver
+        // docs/SECURITY-AUDIT.md, SEC-12).
         Persona persona = personaRepository.findByUsername(request.getUsername())
-            .orElseThrow(() -> new InvalidCredentialsException("Usuario o contraseña incorrectos"));
+            .orElseThrow(() -> {
+                securityEventLogger.loginFallido(request.getUsername());
+                return new InvalidCredentialsException("Usuario o contraseña incorrectos");
+            });
 
         if (!passwordEncoder.matches(request.getPassword(), persona.getPassword())) {
+            securityEventLogger.loginFallido(request.getUsername());
             throw new InvalidCredentialsException("Usuario o contraseña incorrectos");
         }
 
@@ -119,6 +129,7 @@ public class AuthService {
         // que el resto de los rechazos de este método: no revela si la cuenta
         // existe o si simplemente está inactiva.
         if (persona instanceof Empleado emp && emp.getFechaBaja() != null) {
+            securityEventLogger.loginFallido(request.getUsername());
             throw new InvalidCredentialsException("Usuario o contraseña incorrectos");
         }
 

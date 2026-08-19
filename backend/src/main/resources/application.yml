@@ -8,11 +8,41 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    # Pool EXPLICITO. Antes no se configuraba nada y quedaba el default de Hikari
+    # (10 conexiones) por omision, no por decision — y ese numero era el
+    # multiplicador que volvia critico a TX-01: diez analisis de OCR simultaneos
+    # se llevaban el pool entero y dejaban sin conexiones al login, los listados
+    # y las estadisticas.
+    #
+    # Con el OCR y las subidas ya fuera de las transacciones, cada conexion se
+    # sostiene por lo que dura una consulta. 10 sigue siendo suficiente y ahora
+    # es una eleccion escrita: quien la cambie sabe contra que la esta cambiando.
+    #
+    # Postgres tiene max_connections=100 por defecto: subir esto sin mirar ese
+    # techo (y sin contar las conexiones que se lleva el pooler si algun dia se
+    # agrega) mueve el problema, no lo resuelve.
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      # Si una conexion no se consigue en este tiempo, se falla rapido con un
+      # error claro en vez de dejar el request colgado.
+      connection-timeout: 5000
+      # Reciclado preventivo: evita quedarse con conexiones que el servidor o un
+      # firewall intermedio ya dieron por muertas.
+      max-lifetime: 900000
+      idle-timeout: 300000
   jpa:
     open-in-view: false
     properties:
       hibernate:
         format_sql: true
+        jdbc:
+          # Agrupa los INSERT/UPDATE del mismo tipo en un solo viaje. Hoy rinde
+          # poco porque casi todo son escrituras de a una; queda puesto para
+          # cuando los saveAll de DB-07/DB-08 reemplacen los bucles de guardado.
+          batch_size: 30
+        order_inserts: true
+        order_updates: true
   # El schema lo construye Flyway, en TODOS los entornos. Hibernate solo lo
   # valida (ver ddl-auto en los perfiles): cualquier cambio de estructura va en
   # un archivo nuevo de db/migration, nunca automatico.
