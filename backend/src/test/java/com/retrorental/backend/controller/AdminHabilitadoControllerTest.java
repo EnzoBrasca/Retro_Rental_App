@@ -20,6 +20,7 @@ import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.HabilitadoService;
 import java.time.LocalDate;
 import java.util.List;
@@ -55,7 +56,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  *    el empleado quedaria trabado sin entender por que.
  */
 @WebMvcTest(controllers = AdminHabilitadoController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("habilitado")
 class AdminHabilitadoControllerTest extends AbstractControllerTest {
 

@@ -19,6 +19,7 @@ import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.HerramientaService;
 import java.math.BigDecimal;
 import java.util.List;
@@ -35,7 +36,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * que AdminVehiculoControllerTest (401 sin token, 403 con rol incorrecto).
  */
 @WebMvcTest(controllers = AdminHerramientaController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("herramienta")
 class AdminHerramientaControllerTest extends AbstractControllerTest {
 

@@ -20,6 +20,7 @@ import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.TicketService;
 import java.time.LocalDateTime;
 import com.retrorental.backend.model.enums.UnidadUso;
@@ -38,7 +39,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * Tests de /admin/tickets (listado paginado). Reservado a ADMINISTRADOR.
  */
 @WebMvcTest(controllers = AdminTicketController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("ticket")
 class AdminTicketControllerTest extends AbstractControllerTest {
 

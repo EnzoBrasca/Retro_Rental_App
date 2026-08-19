@@ -13,6 +13,7 @@ import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.model.enums.TipoVehiculo;
 import com.retrorental.backend.model.enums.UnidadUso;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.VehiculoService;
 import java.math.BigDecimal;
 import java.util.List;
@@ -28,7 +29,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * autenticado (cualquier rol), sin restriccion adicional.
  */
 @WebMvcTest(controllers = VehiculoController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("vehiculo")
 class VehiculoControllerTest extends AbstractControllerTest {
 

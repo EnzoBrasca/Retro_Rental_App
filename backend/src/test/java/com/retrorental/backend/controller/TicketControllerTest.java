@@ -19,6 +19,7 @@ import com.retrorental.backend.dto.response.TicketResponse;
 import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.TicketService;
 import java.time.LocalDateTime;
 import com.retrorental.backend.model.enums.UnidadUso;
@@ -36,7 +37,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * estar autenticado. La creacion valida @ModelAttribute + partes multipart.
  */
 @WebMvcTest(controllers = TicketController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("ticket")
 class TicketControllerTest extends AbstractControllerTest {
 

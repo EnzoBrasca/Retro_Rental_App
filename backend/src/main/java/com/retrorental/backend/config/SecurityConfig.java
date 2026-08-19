@@ -5,6 +5,7 @@ import com.retrorental.backend.exception.ErrorCode;
 import com.retrorental.backend.security.AnalyzeRateLimitFilter;
 import com.retrorental.backend.security.JwtFilter;
 import com.retrorental.backend.security.LoginRateLimitFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -35,6 +36,7 @@ public class SecurityConfig {
     private final LoginRateLimitFilter loginRateLimitFilter;
     private final AnalyzeRateLimitFilter analyzeRateLimitFilter;
     private final ObjectMapper objectMapper;
+    private final SecurityEventLogger securityEventLogger;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -91,9 +93,15 @@ public class SecurityConfig {
 
     // 403: autenticado pero sin el rol requerido (ej. empleado en /admin/**).
     private AccessDeniedHandler accessDeniedHandler() {
-        return (request, response, accessDeniedException) -> writeError(
-            response, ErrorCode.ACCESS_DENIED,
-            "No tenes permiso para acceder a este recurso");
+        return (request, response, accessDeniedException) -> {
+            // Un 403 es un usuario AUTENTICADO tocando algo que no le
+            // corresponde. Es de los eventos mas significativos que hay: no es
+            // un desconocido probando, es una credencial valida saliendose de su
+            // alcance (ver docs/SECURITY-AUDIT.md, SEC-12).
+            securityEventLogger.accesoDenegado(request.getMethod(), request.getRequestURI());
+            writeError(response, ErrorCode.ACCESS_DENIED,
+                "No tenes permiso para acceder a este recurso");
+        };
     }
 
     private void writeError(HttpServletResponse response, ErrorCode code, String message)

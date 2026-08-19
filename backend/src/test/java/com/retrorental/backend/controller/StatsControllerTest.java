@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.retrorental.backend.config.SecurityConfig;
 import com.retrorental.backend.dto.response.StatsResponse;
 import com.retrorental.backend.security.JwtFilter;
+import com.retrorental.backend.security.SecurityEventLogger;
 import com.retrorental.backend.service.StatsService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -24,7 +25,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * Tests de /admin/stats (daily/weekly/monthly). Reservado a ADMINISTRADOR.
  */
 @WebMvcTest(controllers = StatsController.class)
-@Import({SecurityConfig.class, JwtFilter.class})
+@Import({SecurityConfig.class, JwtFilter.class, SecurityEventLogger.class})
 @Tag("stats")
 class StatsControllerTest extends AbstractControllerTest {
 
