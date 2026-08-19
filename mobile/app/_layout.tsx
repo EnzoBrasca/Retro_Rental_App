@@ -11,6 +11,7 @@ import {
 } from '@expo-google-fonts/ibm-plex-sans';
 import { IBMPlexMono_500Medium } from '@expo-google-fonts/ibm-plex-mono';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { puedeQuedarse, rutaSegunSesion } from '../services/rutas';
 import { colors } from '../constants/theme';
 
 /**
@@ -38,24 +39,11 @@ function RootLayoutNav() {
   useEffect(() => {
     // Mientras rehidratamos la sesión no decidimos nada (evita redirects falsos).
     if (isLoading) return;
-
-    const inAuthGroup = segments[0] === '(auth)';
-
-    if (!user && !inAuthGroup) {
-      // No hay sesión y está fuera del login → mandarlo a autenticarse.
-      router.replace('/(auth)/login');
-    } else if (user?.rol === 'EMPLEADO' && segments[0] !== '(empleado)') {
-      // Empleado logueado → su sección.
-      router.replace('/(empleado)');
-    } else if (
-      user?.rol === 'ADMINISTRADOR' &&
-      segments[0] !== '(administrador)' &&
-      segments[0] !== '(empleado)'
-    ) {
-      // Administrador logueado → su sección (pero puede entrar a "modo operario"
-      // en (empleado) sin ser expulsado).
-      router.replace('/(administrador)');
-    }
+    // La regla de roles vive en services/rutas.ts, no acá: app/index.tsx la
+    // evalúa también, y tenerla escrita dos veces significaba que un tercer rol
+    // habría que acordarse de agregarlo en los dos archivos.
+    if (puedeQuedarse(user, segments[0])) return;
+    router.replace(rutaSegunSesion(user));
   }, [user, segments, isLoading, router]);
 
   // <Slot /> renderiza la pantalla hija que corresponda a la ruta actual.

@@ -1,5 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { colors, fonts } from '../../constants/theme';
@@ -249,6 +257,16 @@ export default function HistorialScreen() {
         // Trae la página siguiente al acercarse al final. Con el filtro activo
         // se sigue paginando sobre el historial completo: las filas que el
         // filtro descarta igual cuentan para llegar al final de la lista.
+        // Tirar para actualizar: el gesto que todo el mundo hace cuando algo no
+        // cargó. Antes había que salir de la pestaña y volver.
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={refetch}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         onEndReached={cargarMas}
         onEndReachedThreshold={0.5}
         ListFooterComponent={
