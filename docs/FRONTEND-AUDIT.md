@@ -58,16 +58,30 @@ en la máquina de quien programó.
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 3 | 0 | 0 |
 | Alta | 6 | 4 | 2 | 0 |
-| Media | 8 | 6 | 0 | 2 |
-| Baja | 14 | 4 | 1 | 9 |
-| **Total** | **31** | **17** | **3** | **11** |
+| Media | 8 | 8 | 0 | 0 |
+| Baja | 14 | 13 | 1 | 0 |
+| **Total** | **31** | **28** | **3** | **0** |
 
-**Fases 1, 2 y 3 cerradas, Fase 4 en curso** (rama `fix/fase-1-frontend-criticos`, que las
-acumula: no se despliega hasta terminar la auditoría, para no generar un APK por fase).
+**Las cuatro fases están cerradas.** No queda ningún hallazgo sin atender: 28 resueltos y 3
+parciales, con el motivo escrito en cada uno. Todo en la rama `fix/fase-1-frontend-criticos`,
+que las acumula porque se despliega **un solo APK** al terminar, no uno por fase.
 
-La Fase 4 arrancó por **corrección antes que severidad**: `DATA-02` estaba catalogado como
-media y resultó ser del mismo orden que las críticas (ver su nota). Hecho hasta ahora:
-`DATA-02`, `PERF-04`, `NAV-00`, `UI-07` parcial.
+La Fase 4 se ordenó por **corrección antes que severidad**: `DATA-02` estaba catalogado como
+media y resultó del mismo orden que las críticas (ver su nota).
+
+### Lo que queda abierto, y por qué
+
+| Parcial | Falta | Por qué se difirió |
+| --- | --- | --- |
+| `STATE-01` | `AbortController` real | Toca `api.ts`, todo `services/` y los 8 consumidores. La condición de carrera —el bug— ya está resuelta y cubierta por tests; esto solo ahorra datos |
+| `UI-07` | Filtro de fecha en el backend | Cruza a `GET /tickets/me`. El síntoma (el mensaje que mentía) está arreglado |
+| `A11Y-00` | El linter | `eslint-plugin-react-native-a11y` topa en ESLint 8 y el proyecto está en 9. **No existe versión compatible** |
+
+Y dos cosas que aparecieron durante la implementación y no son hallazgos de este documento:
+
+- **No hay endpoint para que un usuario edite su propio perfil.** `UI-01` se cerró sacando la
+  UI que mentía; la función en sí requiere un `PUT /me` que no existe.
+- **El backend no tiene CI**, aunque sí 305 tests y JaCoCo. Agregarlo es barato.
 
 **Ya no se verifica leyendo.** Desde la Fase 3 hay una red real:
 
@@ -1023,7 +1037,9 @@ pierde precisión real.
 
 ---
 
-## [ ] UI-03 — La misma entidad se valida distinto según por dónde entre
+## [x] UI-03 — La misma entidad se valida distinto según por dónde entre
+> **Resuelto.** Las reglas viven en `constants/validation.ts` y las consumen los tres
+> formularios. 12 tests, escritos antes de la implementación.
 
 **Dónde:** `app/(auth)/register.tsx:56-67` contra
 `app/(administrador)/index.tsx:917-930`.
@@ -1054,7 +1070,13 @@ pantalla entera.
 
 ---
 
-## [ ] UI-04 — La fecha de mantenimiento se carga como texto libre, sin validación ni selector
+## [x] UI-04 — La fecha de mantenimiento se carga como texto libre, sin validación ni selector
+> **Resuelto** en el paso intermedio que sugiere el hallazgo: se valida el formato **y que la
+> fecha exista** (se reconstruye con `Date` y se comparan los componentes, porque `Date` no
+> falla con valores fuera de rango: los desborda), más `keyboardType` numérico y placeholder.
+>
+> El date picker nativo queda pendiente a propósito: `@react-native-community/datetimepicker`
+> es una dependencia NATIVA nueva, y el paso intermedio ya elimina el problema real.
 
 **Dónde:** `app/(administrador)/index.tsx:687-688`.
 
@@ -1176,7 +1198,11 @@ de que "Este mes" signifique el mes y no "el mes, dentro de lo que bajé hasta a
 
 ---
 
-## [ ] UI-08 — 41 colores escritos a mano; `#1F2226` es `colors.surface` catorce veces
+## [x] UI-08 — 41 colores escritos a mano; `#1F2226` es `colors.surface` catorce veces
+> **Resuelto.** De **35 literales hexadecimales** en `app/` y `components/` a **cero**. Los que
+> no tenían token lo tienen ahora, con un nombre que dice para qué sirven: `surfaceMuted`,
+> `trackBg`, `trackFill`, `textStrong`, `panel`, `panelBorder`, `hintBg`, `primaryDeep`,
+> `primaryDeepest`.
 
 **Dónde:** todo `app/` y `components/`.
 
@@ -1204,7 +1230,9 @@ aparece a mitad de scroll y cuesta más encontrar que arreglar.
 
 ---
 
-## [ ] DEAD-01 — 16 claves de estilo duplicadas byte a byte entre login y register
+## [x] DEAD-01 — 16 claves de estilo duplicadas byte a byte entre login y register
+> **Resuelto** con `components/auth/AuthShell.tsx`. Login pasa de 21 claves de estilo propias
+> a 5 y register de 17 a 1; las duplicadas idénticas, de 15 a **cero**. (Eran 15, no 16.)
 
 **Dónde:** `app/(auth)/login.tsx:141-206` y `app/(auth)/register.tsx:170-224`.
 
@@ -1230,7 +1258,9 @@ pantallas quedan solo con sus campos y su submit.
 
 ---
 
-## [ ] DEAD-02 — Comentario huérfano pegado a la función equivocada
+## [x] DEAD-02 — Comentario huérfano pegado a la función equivocada
+> **Resuelto**: las tres líneas volvieron a `etiquetaLectura`. El reordenamiento del archivo
+> que sugiere la nota final queda pendiente — es cosmético y tocaría todo el módulo.
 
 **Dónde:** `services/vehiculos.ts:71-80`.
 
@@ -1261,7 +1291,15 @@ llamadas a la API.
 
 ---
 
-## [ ] PERF-03 — La foto del ticket se sube sin comprimir
+## [x] PERF-03 — La foto del ticket se sube sin comprimir
+> **Resuelto.** `services/imagenes.ts` redimensiona a 1600 px de ancho y comprime al 70%: de
+> 1,5-3 MB a ~200-400 KB. Se llama UNA vez, apenas se toma la foto, así las dos subidas
+> mandan el mismo archivo reducido — eso cubre también la mitad que quedaba.
+>
+> **`expo-image-manipulator` es una dependencia NATIVA**: el build de EAS la incorpora, pero un
+> dev build anterior no la tiene. Hay que reconstruir antes de probar la cámara en local.
+>
+> Nota de versión: `manipulateAsync` está DEPRECADO. Se usa la API contextual nueva.
 
 **Dónde:** `app/(empleado)/escanear.tsx:190` y `:200`.
 
@@ -1288,7 +1326,9 @@ subir. Un ticket de surtidor es legible de sobra a esa resolución y el archivo 
 
 ---
 
-## [ ] UI-09 — La hoja de detalle entera es un botón con `onPress` vacío
+## [x] UI-09 — La hoja de detalle entera es un botón con `onPress` vacío
+> **Resuelto**: `View` con `onStartShouldSetResponder`, que frena la propagación sin declarar
+> un control. De paso se fue el Fragment con un solo hijo.
 
 **Dónde:** `components/fuel/LoadDetailModal.tsx:73`.
 
@@ -1335,7 +1375,9 @@ contradice al producto y va a confundir al primero que agregue soporte de tema.
 
 ---
 
-## [ ] STATE-02 — Contextos sin memoizar y `setForm({ ...form })` en cada tecla
+## [x] STATE-02 — Contextos sin memoizar y `setForm({ ...form })` en cada tecla
+> **Resuelto.** Los dos contextos van con `useMemo` y `login` con `useCallback`. Los 17
+> `setForm({ ...form })` pasan a la forma funcional.
 
 **Dónde:** `context/AuthContext.tsx:110`, `context/TutorialContext.tsx:35`, y los formularios
 de `app/(administrador)/index.tsx`.
@@ -1364,7 +1406,9 @@ toda una clase de bugs de closure viejo.
 
 ---
 
-## [ ] UI-10 — El desplegable de filtros no se acota al viewport
+## [x] UI-10 — El desplegable de filtros no se acota al viewport
+> **Resuelto.** El panel decide abrir hacia arriba o hacia abajo según dónde haya lugar, y
+> acota el alto al espacio real del viewport en vez de un 260 fijo.
 
 **Dónde:** `components/fuel/FilterDropdown.tsx:88-100`.
 
@@ -1421,7 +1465,11 @@ entre datos distintos.
 
 ---
 
-## [ ] NAV-01 — Doble guardia de navegación entre el layout raíz e `index`
+## [x] NAV-01 — Doble guardia de navegación entre el layout raíz e `index`
+> **Resuelto.** La regla se muda a `services/rutas.ts` y la consumen los dos puntos. Que se
+> EVALÚE dos veces es deliberado (el primer frame sin parpadeo); que estuviera ESCRITA dos
+> veces, no. 7 tests, que dejan explícito el caso fácil de perder: el admin tiene *modo
+> operario* y entrar a `(empleado)` no lo expulsa.
 
 **Dónde:** `app/_layout.tsx:39-64` y `app/index.tsx:14-26`.
 
@@ -1441,7 +1489,9 @@ de roles esté escrita una sola vez aunque se evalúe en dos.
 
 ---
 
-## [ ] UI-11 — No hay pull-to-refresh en ninguna lista
+## [x] UI-11 — No hay pull-to-refresh en ninguna lista
+> **Resuelto**: `RefreshControl` en el historial y en la flota, cableado al `refetch` que
+> `useFetch` ya devolvía.
 
 **Dónde:** `app/(empleado)/historial.tsx`, `app/(empleado)/index.tsx`, y las listas del panel.
 
