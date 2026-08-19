@@ -1,6 +1,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   SectionList,
   StyleSheet,
@@ -432,6 +433,18 @@ export default function FlotaScreen() {
             <FilterRow options={TIPO_FILTERS} value={tipoF} onChange={setTipoF} />
             <FilterRow options={COMBUSTIBLE_FILTERS} value={combF} onChange={setCombF} />
           </View>
+        }
+        // Tirar para actualizar es el reflejo de todo el mundo cuando algo no
+        // cargó. Sin esto, la única forma de refrescar era salir de la pestaña y
+        // volver, que no es evidente — y en una app de campo con conexión
+        // intermitente se necesita seguido.
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={refetch}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
         }
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
