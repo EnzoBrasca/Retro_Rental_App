@@ -61,6 +61,8 @@ import {
   TIPO_HERRAMIENTA,
   TipoSeleccionVehiculo,
   tipoSeleccionLabel,
+  parseEntero,
+  parseNumero,
 } from '../../constants/labels';
 
 const RANGES: { key: StatsRange; label: string }[] = [
@@ -566,7 +568,7 @@ function VehiclesABM() {
     if (form.tipoVehiculo === TIPO_HERRAMIENTA) {
       if (!form.nombreHerramienta.trim())
         return setFormError('Ingresá el nombre de la herramienta.');
-      const capacidad = parseInt(form.capacidadTanque, 10);
+      const capacidad = parseEntero(form.capacidadTanque);
       if (!(capacidad > 0)) return setFormError('Capacidad inválida.');
 
       const payload = { nombre: form.nombreHerramienta.trim(), capacidad };
@@ -593,9 +595,9 @@ function VehiclesABM() {
       return setFormError('Ingresá el modelo de la máquina.');
     }
     if (!form.tipoCombustible) return setFormError('Elegí el combustible.');
-    const capacidad = parseInt(form.capacidadTanque, 10);
-    const uso = parseInt(form.usoAcumulado, 10);
-    const consumo = parseFloat(form.consumoPromedio.replace(',', '.'));
+    const capacidad = parseEntero(form.capacidadTanque);
+    const uso = parseEntero(form.usoAcumulado);
+    const consumo = parseNumero(form.consumoPromedio);
     if (!(capacidad > 0)) return setFormError('Capacidad de tanque inválida.');
     if (!(uso >= 0)) return setFormError(`${etiquetaUso(form.tipoVehiculo)} inválido.`);
     if (!(consumo > 0)) return setFormError('Consumo promedio inválido.');

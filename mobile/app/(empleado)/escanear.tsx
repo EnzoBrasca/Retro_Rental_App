@@ -30,7 +30,7 @@ import {
 import { getHerramientas } from '../../services/herramientas';
 import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
-import { combustibleLabel, formatMoney } from '../../constants/labels';
+import { combustibleLabel, formatMoney, parseEntero, parseNumero } from '../../constants/labels';
 
 // Una herramienta no tiene combustible fijo (a diferencia de un vehículo): se
 // elige carga por carga. Salvo GNC, que no aplica a una herramienta portátil.
@@ -252,7 +252,7 @@ export default function EscanearScreen() {
   // referencia cuando es una MEZCLA que el proveedor todavía no tiene cargada.
   const precioBase = precioSel ?? (esMezclaSinPrecioPropio ? precioNaftaSuperProveedor : undefined);
 
-  const litrosNum = parseFloat(litros.replace(',', '.')) || 0;
+  const litrosNum = parseNumero(litros) || 0;
 
   // El precio base prellena el campo apenas se resuelve, y se vuelve a
   // prellenar si cambia el proveedor o el combustible. No se pisa lo que el
@@ -270,7 +270,7 @@ export default function EscanearScreen() {
     }
   }, [precioBase]);
 
-  const precioNum = parseFloat(precioEditado.replace(',', '.')) || 0;
+  const precioNum = parseNumero(precioEditado) || 0;
   // El total sigue al precio que el empleado ve, no al del catálogo.
   const total = precioNum > 0 ? litrosNum * precioNum : 0;
   // Solo se manda si difiere de la base: si es igual, que resuelva el backend.
@@ -296,7 +296,7 @@ export default function EscanearScreen() {
     // para un vehículo.
     let usoNum: number | undefined;
     if (idVehiculo) {
-      usoNum = parseInt(usoAcumulado, 10);
+      usoNum = parseEntero(usoAcumulado);
       if (!(usoNum >= 0)) {
         return setError(`Ingresá ${etiquetaLectura(vehiculoSel?.tipoVehiculo ?? null)}.`);
       }
