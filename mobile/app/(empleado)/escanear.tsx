@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  BackHandler,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -126,6 +127,30 @@ export default function EscanearScreen() {
       // efecto de más abajo ya vacía el campo y su ref.
       setUsoAcumulado('');
     }, [paramVehiculoId, paramHerramientaId]),
+  );
+
+  // El botón atrás de Android tiene que cerrar la cámara o el análisis, NO la
+  // pantalla entera.
+  //
+  // Cámara y análisis no son rutas: son estado (`stage`). Para el navegador no
+  // existen, así que el atrás hacía pop de `escanear` completa y se llevaba
+  // todo lo que el operario ya había tipeado — litros, lectura, proveedor. El
+  // gesto es reflejo en Android: se abre la cámara, no gusta el encuadre, atrás.
+  // Hay una ✕ para volver, pero compite contra quince años de costumbre.
+  //
+  // VA EN useFocusEffect, NO en useEffect: la pantalla es un Tabs.Screen con
+  // href:null y queda MONTADA entre entradas, así que un listener registrado al
+  // montar seguiría interceptando el botón atrás desde las otras pestañas.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        // En el formulario no se toca: que el sistema haga lo suyo y salga.
+        if (stage === 'form') return false;
+        setStage('form');
+        return true; // consumido
+      });
+      return () => sub.remove();
+    }, [stage]),
   );
 
   // Al capturar/elegir la foto pasamos por la etapa 'analyzing' (overlay) mientras
