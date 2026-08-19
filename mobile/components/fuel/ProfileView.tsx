@@ -1,44 +1,44 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { colors, fonts } from '../../constants/theme';
-import { PROFILE_FIELDS } from '../../data/mock';
 import { useAuth } from '../../context/AuthContext';
-
-import IconNotif from '../../assets/icons/002-notificacin.svg';
 
 /**
  * Vista de Perfil compartida por el área de empleado (como tab) y por el
  * administrador (abierta desde el avatar del dashboard).
  *
- * Ya es role-aware: el subtítulo muestra "Administrador" u "Operario" según
+ * Es role-aware: el subtítulo muestra "Administrador" u "Operario" según
  * `user.rol`. Cuando se le pasa `onBack`, dibuja un botón "volver" arriba
  * (útil en el flujo del admin, donde no es una tab).
+ *
+ * ES DE SOLO LECTURA, A PROPÓSITO. Antes cada campo tenía un lápiz que abría un
+ * input y "guardaba" el valor: no había ningún request detrás, era `useState`
+ * local. El usuario corregía su teléfono, veía el cambio, cerraba la app y el
+ * dato seguía viejo en la base — sin que nada se lo dijera. También había un
+ * switch de notificaciones sin sistema detrás (`expo-notifications` ni está
+ * instalado), un "✓ Cuenta verificada" fijo y una obra inventada.
+ *
+ * No hay endpoint para que un usuario edite sus propios datos, así que la
+ * pantalla muestra lo que hay y no promete más. Cuando exista un `PUT /me`, la
+ * edición vuelve con estado de guardado, error y reversión.
+ *
+ * Los valores se derivan de `user` en cada render, no se copian a estado: una
+ * copia con `useState(() => ...)` no se re-sincroniza si `user` cambia después
+ * del montaje.
  */
 export function ProfileView({ onBack }: { onBack?: () => void }) {
   const { user, logout } = useAuth();
 
-  const fullName = user ? `${user.nombre} ${user.apellido}` : 'Juan Pérez';
-  const initials = user ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase() : 'JP';
+  const fullName = user ? `${user.nombre} ${user.apellido}` : '—';
+  const initials = user ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase() : '—';
   const roleLabel = user?.rol === 'ADMINISTRADOR' ? 'Administrador' : 'Operario';
 
-  // Edición local (mock): sin persistencia todavía. Se enchufará a un PUT del
-  // backend en la fase de cableado.
-  // Índices de PROFILE_FIELDS: 0 = Nombre completo, 1 = Usuario, 2 = Teléfono.
-  // Los tres se pisan con los datos reales del usuario logueado.
-  const [fields, setFields] = useState(() =>
-    PROFILE_FIELDS.map((f, i) => {
-      if (!user) return f;
-      if (i === 0) return { ...f, value: fullName };
-      if (i === 1) return { ...f, value: user.username };
-      if (i === 2) return { ...f, value: user.telefono ?? 'No cargado' };
-      return f;
-    }),
-  );
-
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [notifsEnabled, setNotifsEnabled] = useState(true);
+  const datos = [
+    { label: 'Nombre completo', value: fullName },
+    { label: 'Usuario', value: user?.username ?? '—' },
+    { label: 'Teléfono', value: user?.telefono ?? 'No cargado' },
+  ];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -47,72 +47,56 @@ export function ProfileView({ onBack }: { onBack?: () => void }) {
         showsVerticalScrollIndicator={false}
       >
         {onBack && (
-          <Pressable style={styles.back} onPress={onBack} hitSlop={10}>
+          <Pressable
+            style={styles.back}
+            onPress={onBack}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Volver"
+          >
             <Text style={styles.backText}>‹ Volver</Text>
           </Pressable>
         )}
 
-        <Text style={styles.h1}>PERFIL</Text>
+        <Text style={styles.h1} accessibilityRole="header">
+          PERFIL
+        </Text>
 
         <View style={styles.hero}>
-          <View style={styles.avatar}>
+          {/* El avatar son las iniciales: para un lector de pantalla no aporta
+              nada que no diga el nombre de abajo. */}
+          <View style={styles.avatar} accessibilityElementsHidden importantForAccessibility="no">
             <Text style={styles.avatarText}>{initials}</Text>
           </View>
           <Text style={styles.name}>{fullName}</Text>
-          <Text style={styles.role}>{roleLabel} · Obra Ruta 33 Sur</Text>
-          <View style={styles.verified}>
-            <Text style={styles.verifiedText}>✓ Cuenta verificada</Text>
-          </View>
+          <Text style={styles.role}>{roleLabel}</Text>
         </View>
 
-        <Text style={styles.section}>Datos personales</Text>
+        <Text style={styles.section} accessibilityRole="header">
+          Datos personales
+        </Text>
         <View style={styles.group}>
-          {fields.map((f, i) => (
-            <View key={f.label} style={[styles.row, i < fields.length - 1 && styles.rowBorder]}>
+          {datos.map((d, i) => (
+            <View
+              key={d.label}
+              style={[styles.row, i < datos.length - 1 && styles.rowBorder]}
+              accessible
+              accessibilityLabel={`${d.label}: ${d.value}`}
+            >
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={styles.rowLabel}>{f.label}</Text>
-                {editingIndex === i ? (
-                  <TextInput
-                    style={[styles.rowValue, styles.inputEditing]}
-                    value={f.value}
-                    autoFocus
-                    onChangeText={(v) => {
-                      const newFields = [...fields];
-                      newFields[i] = { ...newFields[i], value: v };
-                      setFields(newFields);
-                    }}
-                    onBlur={() => setEditingIndex(null)}
-                  />
-                ) : (
-                  <Text style={styles.rowValue}>{f.value}</Text>
-                )}
+                <Text style={styles.rowLabel}>{d.label}</Text>
+                <Text style={styles.rowValue}>{d.value}</Text>
               </View>
-              <Pressable
-                onPress={() => setEditingIndex(editingIndex === i ? null : i)}
-                hitSlop={10}
-              >
-                <Text style={styles.edit}>{editingIndex === i ? '✓' : '✎'}</Text>
-              </Pressable>
             </View>
           ))}
         </View>
 
-        <View style={styles.group}>
-          <View style={styles.row}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <IconNotif width={16} height={16} color={colors.textDim} />
-              <Text style={styles.settingLabel}>Notificaciones</Text>
-            </View>
-            <Switch
-              value={notifsEnabled}
-              onValueChange={setNotifsEnabled}
-              trackColor={{ false: '#4d525a', true: colors.primary }}
-              thumbColor={colors.bgDeep}
-            />
-          </View>
-        </View>
-
-        <Pressable style={styles.logout} onPress={logout}>
+        <Pressable
+          style={styles.logout}
+          onPress={logout}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar sesión"
+        >
           <Text style={styles.logoutText}>Cerrar sesión</Text>
         </Pressable>
         {/* La versión sale de app.json y no de una constante escrita a mano:
@@ -132,7 +116,7 @@ const styles = StyleSheet.create({
   h1: { fontFamily: fonts.displayBold, fontSize: 26, color: colors.text, marginBottom: 16 },
   hero: {
     alignItems: 'center',
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 16,
@@ -152,14 +136,6 @@ const styles = StyleSheet.create({
   avatarText: { fontFamily: fonts.displayBold, fontSize: 30, color: colors.bgDeep },
   name: { fontFamily: fonts.display, fontSize: 20, color: colors.text },
   role: { fontSize: 12, color: colors.textFaint, marginTop: 2, fontFamily: fonts.sans },
-  verified: {
-    marginTop: 12,
-    backgroundColor: colors.greenBg,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-  },
-  verifiedText: { color: colors.greenText, fontSize: 11, fontFamily: fonts.sansSemi },
   section: {
     fontSize: 11,
     letterSpacing: 1.5,
@@ -170,7 +146,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sans,
   },
   group: {
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
@@ -187,18 +163,6 @@ const styles = StyleSheet.create({
   rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.divider },
   rowLabel: { fontSize: 10.5, color: colors.textFaint, fontFamily: fonts.sans },
   rowValue: { fontSize: 14, color: colors.text, marginTop: 2, fontFamily: fonts.sans },
-  inputEditing: {
-    backgroundColor: '#16181B',
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 2,
-    color: colors.text,
-  },
-  edit: { color: colors.primary, fontSize: 16 },
-  settingLabel: { fontSize: 14, color: colors.text, fontFamily: fonts.sans },
   logout: {
     height: 50,
     backgroundColor: colors.dangerBg,
@@ -212,7 +176,7 @@ const styles = StyleSheet.create({
   version: {
     textAlign: 'center',
     fontSize: 11,
-    color: '#4d525a',
+    color: colors.textDim,
     marginTop: 16,
     fontFamily: fonts.sans,
   },

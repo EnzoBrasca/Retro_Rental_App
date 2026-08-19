@@ -131,7 +131,14 @@ export default function LoginScreen() {
               <Text style={styles.ctaText}>Ingresar</Text>
             )}
           </Pressable>
-          <Text style={styles.forgot}>¿Olvidaste tu contraseña?</Text>
+          {/* Antes decía "¿Olvidaste tu contraseña?": un Text suelto, sin
+              Pressable y sin destino, justo donde va ese link en todos los
+              logins del mundo. El usuario lo tocaba y no pasaba nada. No hay
+              flujo de recuperación ni en el backend ni acá, así que ahora dice
+              lo único que sí se puede hacer. */}
+          <Text style={styles.forgot}>
+            Si no podés ingresar, pedile al administrador que restablezca tu contraseña.
+          </Text>
 
           <View style={styles.hint}>
             <View style={styles.hintIcon}>
