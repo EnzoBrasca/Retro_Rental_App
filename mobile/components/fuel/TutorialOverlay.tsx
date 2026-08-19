@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   card: {
-    backgroundColor: '#22262b',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
     borderColor: colors.primary,
     borderRadius: 15,
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dots: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  dot: { width: 6, height: 6, borderRadius: 4, backgroundColor: '#4d525a' },
+  dot: { width: 6, height: 6, borderRadius: 4, backgroundColor: colors.textDim },
   dotActive: { width: 18, backgroundColor: colors.primary },
   next: {
     backgroundColor: colors.primary,

@@ -701,9 +701,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     borderRadius: radius.xl,
     overflow: 'hidden',
-    backgroundColor: '#141517',
+    backgroundColor: colors.panel,
     borderWidth: 1,
-    borderColor: '#2c2f33',
+    borderColor: colors.panelBorder,
   },
   hint: {
     position: 'absolute',
@@ -712,7 +712,7 @@ const styles = StyleSheet.create({
     bottom: 14,
     textAlign: 'center',
     fontSize: 11,
-    color: '#cfd3d8',
+    color: colors.textStrong,
     fontFamily: fonts.sans,
   },
   controls: {
@@ -726,7 +726,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 10,
-    backgroundColor: '#1b1d20',
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -736,7 +736,7 @@ const styles = StyleSheet.create({
     borderRadius: 37,
     backgroundColor: colors.primary,
     borderWidth: 5,
-    borderColor: '#2a2c30',
+    borderColor: colors.border,
   },
 
   h1: { fontFamily: fonts.displayBold, fontSize: 24, color: colors.text, marginBottom: 16 },
@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
   },
   totalBox: {
     marginTop: 18,
-    backgroundColor: '#1F2226',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 13,

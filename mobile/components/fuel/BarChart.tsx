@@ -36,7 +36,7 @@ export function BarChart({ data }: { data: Bar[] }) {
                 styles.fill,
                 {
                   width: `${(d.v / max) * 100}%`,
-                  backgroundColor: d.c ?? (d.highlight ? colors.primary : '#3a3f45'),
+                  backgroundColor: d.c ?? (d.highlight ? colors.primary : colors.trackFill),
                 },
               ]}
             />
@@ -49,8 +49,8 @@ export function BarChart({ data }: { data: Bar[] }) {
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  label: { fontSize: 12, color: '#C9CDD2', fontFamily: fonts.sans },
+  label: { fontSize: 12, color: colors.textStrong, fontFamily: fonts.sans },
   amount: { fontSize: 12, fontFamily: fonts.mono, color: colors.text },
-  track: { height: 9, backgroundColor: '#151719', borderRadius: 5, overflow: 'hidden' },
+  track: { height: 9, backgroundColor: colors.trackBg, borderRadius: 5, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 5 },
 });

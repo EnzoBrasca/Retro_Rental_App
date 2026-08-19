@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#1b1d20',
+    backgroundColor: colors.surfaceMuted,
   },
   pagerBtnOff: { opacity: 0.4 },
   pagerText: { fontFamily: fonts.sansSemi, fontSize: 13, color: colors.text },
