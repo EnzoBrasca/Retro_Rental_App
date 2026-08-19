@@ -57,17 +57,26 @@ en la máquina de quien programó.
 | Severidad | Total | Resueltas | Parciales | Pendientes |
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 3 | 0 | 0 |
-| Alta | 6 | 2 | 1 | 3 |
+| Alta | 6 | 3 | 1 | 2 |
 | Media | 8 | 0 | 0 | 8 |
 | Baja | 14 | 1 | 0 | 13 |
-| **Total** | **31** | **6** | **1** | **24** |
+| **Total** | **31** | **7** | **1** | **23** |
 
-**Fases 1 y 2 cerradas** (rama `fix/fase-1-frontend-criticos`, que las acumula: no se
-despliega hasta terminar la auditoría, para no generar un APK por fase). El backend pasó de
-304 a 305 tests, y `tsc --noEmit` sigue limpio.
+**Fases 1, 2 y 3 cerradas** (rama `fix/fase-1-frontend-criticos`, que las acumula: no se
+despliega hasta terminar la auditoría, para no generar un APK por fase).
 
-`STATE-01` queda en `[~]`: la condición de carrera está resuelta, pero la cancelación real
-de la conexión (`AbortController`) se difiere.
+**Ya no se verifica leyendo.** Desde la Fase 3 hay una red real:
+
+```
+cd mobile && npm run verify      # tipos + lint + formato + tests
+```
+
+Estado actual: `tsc` limpio, **0 problemas** de ESLint en 44 archivos, formato consistente,
+**35 tests** en verde. Backend en **305**. CI corriendo en cada push y PR que toque
+`mobile/`.
+
+`STATE-01` queda en `[~]`: la condición de carrera está resuelta y cubierta por tests, pero
+la cancelación real de la conexión (`AbortController`) se difiere.
 
 Una corrección a la propia auditoría: al implementar `STATE-00` se verificó que **la mitad
 del hallazgo no era válida** (el arrastre de `precioEditado`). El detalle está escrito en el
@@ -83,7 +92,26 @@ Orden sugerido de ataque:
 3. **Fase 3 — la red de contención:** `BLD-00`. Sin ESLint ni un solo test, cada arreglo de
    las fases anteriores es un acto de fe. Va después de lo urgente pero antes que todo lo
    demás, porque es lo que evita que esto se vuelva a llenar.
-4. **Fase 4 — el resto**, por severidad.
+4. **Fase 4 — el resto**, por severidad. Arrancar por `A11Y-00`, que además trae su propio
+   linter (`eslint-plugin-react-native-a11y`): se dejó afuera de la Fase 3 a propósito
+   porque encendería los 67 `Pressable` de golpe y dejaría el lint en rojo permanente antes
+   de que existiera el arreglo. Un check que nace fallando es un check que nadie mira.
+
+## Advertencia sobre este documento
+
+Tres fases de implementación dejaron **cuatro correcciones al propio análisis**. Vale
+tenerlo presente antes de tomar un hallazgo como un hecho:
+
+| Corrección | Dónde |
+| --- | --- |
+| La mitad de `STATE-00` (el arrastre de `precioEditado`) **no ocurre** | `STATE-00` |
+| `useFetch` tiene 8 consumidores, no 6 | `STATE-01` |
+| El warning de setState sobre componente desmontado ya no existe (React 19) | `STATE-01` |
+| Un filtro muerto que el audit no vio, encontrado por el linter en su primera corrida | `BLD-00` |
+
+Esta auditoría se hizo **leyendo**, no ejecutando: es un mapa, no un territorio. Cada
+hallazgo hay que verificarlo contra el código antes de implementarlo. Desde la Fase 3 eso es
+mucho más barato — hay tests y linter.
 
 ## Lo que ya está bien (no tocar)
 
@@ -620,7 +648,39 @@ directo de `user`, no copiándolo a estado.
 
 ---
 
-## [ ] BLD-00 — Sin ESLint, sin tests, sin Prettier — y hay un `eslint-disable` para una regla que nadie corre
+## [x] BLD-00 — Sin ESLint, sin tests, sin Prettier — y hay un `eslint-disable` para una regla que nadie corre
+
+> **Resuelto, los cuatro puntos.**
+>
+> | Herramienta | Estado |
+> | --- | --- |
+> | ESLint | `eslint.config.js` con `eslint-config-expo` (flat). `exhaustive-deps` y `no-unused-vars` en **error**. Cero problemas en 44 archivos |
+> | Tests | **35**, en `constants/labels`, `services/vehiculos` y `hooks/useFetch` |
+> | Prettier | Configurado al estilo que ya tenía el código (comillas simples, 100 columnas), aplicado a todo en un commit aislado |
+> | CI | `.github/workflows/mobile.yml` — primer workflow del repo |
+> | Scripts | `lint`, `typecheck`, `format`, `format:check`, `test`, `test:watch`, `verify` |
+>
+> **El `eslint-disable` de `useFetch.ts` dejó de ser decorativo**: ahora hay un linter que
+> corre esa regla, y el contrato de `deps` quedó escrito en el JSDoc del hook.
+>
+> **Lo que encontró el linter en su primera corrida, y el audit no tenía:** un **filtro
+> muerto** en `app/(empleado)/index.tsx`. `estadoF` se leía en el `useMemo` de filtrado pero
+> `setEstadoF` no se llamaba nunca, así que la condición era siempre verdadera. Doce
+> problemas en total, todos resueltos.
+>
+> **Los tests se validaron contra el código roto, no solo contra el bueno.** Se corrió la
+> suite contra la implementación vieja de `useFetch`: los dos tests de carrera **fallan**, y
+> pasan contra la nueva. Y `labels.test.ts` incluye un test que afirma la premisa del
+> off-by-one (`new Date('2026-07-06').getDate() === 5` bajo UTC-3), para que el archivo no
+> pueda volverse decorativo en silencio si alguien toca la zona horaria del runner.
+>
+> **Trampa de versión, anotada para el próximo que escriba un test de hook:** en
+> `@testing-library/react-native` 14, `renderHook` y `rerender` son **asíncronos** (se
+> alinearon con el `act` asíncrono de React 19). Sin el `await`, `result` queda `undefined` y
+> el archivo entero falla sin decir por qué.
+>
+> Falta todavía: cobertura del resto (`context/`, componentes, el resto de `services/`), y un
+> workflow para el backend, que tiene 305 tests y JaCoCo pero tampoco tenía CI.
 
 **Dónde:** raíz de `mobile/`.
 
