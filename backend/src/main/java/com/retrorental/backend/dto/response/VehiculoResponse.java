@@ -39,6 +39,10 @@ public record VehiculoResponse(
     BigDecimal consumoPromedio,
     // Consumo de las ultimas cargas. Null hasta que haya dos con lectura.
     BigDecimal consumoReciente,
+    // Viaja porque UpdateVehiculoRequest la exige en cada edicion: sin ella el
+    // ABM del admin no tiene de donde leer el valor guardado y lo completa con
+    // la fecha de hoy, pisando el mantenimiento real del vehiculo.
+    LocalDate fechaUltimoMantenimiento,
     LocalDate fechaBaja,
     // Operario que usó el vehiculo por última vez (se actualiza en cada carga de
     // ticket). Null = sin uso registrado todavía. El nombre/apellido viajan para

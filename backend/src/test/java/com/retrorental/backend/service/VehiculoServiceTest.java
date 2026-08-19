@@ -325,6 +325,32 @@ class VehiculoServiceTest {
     }
 
     // ------------------------------------------------------------------
+    // toResponse() — el contrato de lectura
+    // ------------------------------------------------------------------
+
+    /**
+     * La vista de lectura DEBE exponer fechaUltimoMantenimiento, porque
+     * UpdateVehiculoRequest la exige (@NotNull) en cada edición.
+     *
+     * Mientras el response no la devolvía, el cliente no tenía de dónde leer el
+     * valor guardado y lo completaba con la fecha de hoy: cualquier edición de
+     * cualquier campo le pisaba al vehículo el mantenimiento real (ver
+     * docs/FRONTEND-AUDIT.md, DATA-01). Un contrato que pide un dato que no
+     * devuelve obliga al cliente a inventarlo.
+     */
+    @Test
+    void listAll_exponeLaFechaDeUltimoMantenimiento() {
+        vehiculo.setFechaUltimoMantenimiento(LocalDate.of(2025, 11, 3));
+        when(vehiculoRepository.findAll()).thenReturn(List.of(vehiculo));
+
+        List<VehiculoResponse> res = service.listAll();
+
+        assertThat(res).singleElement()
+            .extracting(VehiculoResponse::fechaUltimoMantenimiento)
+            .isEqualTo(LocalDate.of(2025, 11, 3));
+    }
+
+    // ------------------------------------------------------------------
     // desactivar()
     // ------------------------------------------------------------------
 
