@@ -705,7 +705,7 @@ function VehiclesABM() {
         <OptionChips
           options={TIPO_VEHICULO_OPTS}
           value={form.tipoVehiculo}
-          onChange={(k) => setForm({ ...form, tipoVehiculo: k })}
+          onChange={(k) => setForm((f) => ({ ...f, tipoVehiculo: k }))}
           disabledKeys={disabledTipoKeys}
         />
         {editing !== 'new' && (
@@ -721,7 +721,7 @@ function VehiclesABM() {
             <TextInput
               style={styles.abmInput}
               value={form.nombreHerramienta}
-              onChangeText={(t) => setForm({ ...form, nombreHerramienta: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, nombreHerramienta: t }))}
               placeholder="Motosierra Stihl"
               placeholderTextColor={colors.textDim}
             />
@@ -731,7 +731,7 @@ function VehiclesABM() {
               style={styles.abmInput}
               value={form.capacidadTanque}
               keyboardType="number-pad"
-              onChangeText={(t) => setForm({ ...form, capacidadTanque: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, capacidadTanque: t }))}
             />
           </>
         ) : (
@@ -743,7 +743,7 @@ function VehiclesABM() {
               style={styles.abmInput}
               value={form.identificador}
               autoCapitalize="characters"
-              onChangeText={(t) => setForm({ ...form, identificador: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, identificador: t }))}
               placeholder={placeholderIdentificador(tipoVehiculoForm)}
               placeholderTextColor={colors.textDim}
             />
@@ -754,7 +754,7 @@ function VehiclesABM() {
                 <TextInput
                   style={styles.abmInput}
                   value={form.modelo}
-                  onChangeText={(t) => setForm({ ...form, modelo: t })}
+                  onChangeText={(t) => setForm((f) => ({ ...f, modelo: t }))}
                   placeholder="CAT 320D"
                   placeholderTextColor={colors.textDim}
                 />
@@ -768,14 +768,14 @@ function VehiclesABM() {
             <OptionChips
               options={COMBUSTIBLE_OPTS}
               value={form.tipoCombustible}
-              onChange={(k) => setForm({ ...form, tipoCombustible: k })}
+              onChange={(k) => setForm((f) => ({ ...f, tipoCombustible: k }))}
             />
 
             <Text style={[styles.fieldHint, { marginTop: 12 }]}>Estado</Text>
             <OptionChips
               options={ESTADO_OPTS}
               value={form.estado}
-              onChange={(k) => setForm({ ...form, estado: k })}
+              onChange={(k) => setForm((f) => ({ ...f, estado: k }))}
             />
 
             <Text style={[styles.fieldHint, { marginTop: 12 }]}>Capacidad de tanque (L)</Text>
@@ -783,7 +783,7 @@ function VehiclesABM() {
               style={styles.abmInput}
               value={form.capacidadTanque}
               keyboardType="number-pad"
-              onChangeText={(t) => setForm({ ...form, capacidadTanque: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, capacidadTanque: t }))}
             />
 
             {/* La etiqueta sigue al tipo elegido: una máquina vial mide horas de
@@ -793,7 +793,7 @@ function VehiclesABM() {
               style={styles.abmInput}
               value={form.usoAcumulado}
               keyboardType="number-pad"
-              onChangeText={(t) => setForm({ ...form, usoAcumulado: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, usoAcumulado: t }))}
             />
 
             <Text style={styles.fieldHint}>{etiquetaConsumo(tipoVehiculoForm)}</Text>
@@ -801,7 +801,7 @@ function VehiclesABM() {
               style={styles.abmInput}
               value={form.consumoPromedio}
               keyboardType="numeric"
-              onChangeText={(t) => setForm({ ...form, consumoPromedio: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, consumoPromedio: t }))}
             />
             <Text style={styles.abmHint}>
               Estimación inicial. A partir de la segunda carga se reemplaza por el consumo real
@@ -812,7 +812,7 @@ function VehiclesABM() {
             <TextInput
               style={styles.abmInput}
               value={form.fechaUltimoMantenimiento}
-              onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, fechaUltimoMantenimiento: t }))}
               // El teclado numérico con puntuación evita la mitad de los errores
               // de tipeo. La validación de que la fecha EXISTA está en save().
               keyboardType="numbers-and-punctuation"
@@ -1164,7 +1164,7 @@ function EmpleadosList() {
         <TextInput
           style={styles.abmInput}
           value={form.nombre}
-          onChangeText={(t) => setForm({ ...form, nombre: t })}
+          onChangeText={(t) => setForm((f) => ({ ...f, nombre: t }))}
           placeholder="Juan"
           placeholderTextColor={colors.textDim}
         />
@@ -1173,7 +1173,7 @@ function EmpleadosList() {
         <TextInput
           style={styles.abmInput}
           value={form.apellido}
-          onChangeText={(t) => setForm({ ...form, apellido: t })}
+          onChangeText={(t) => setForm((f) => ({ ...f, apellido: t }))}
           placeholder="Pérez"
           placeholderTextColor={colors.textDim}
         />
@@ -1185,7 +1185,7 @@ function EmpleadosList() {
               style={styles.abmInput}
               value={form.documento}
               keyboardType="number-pad"
-              onChangeText={(t) => setForm({ ...form, documento: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, documento: t }))}
               placeholder="30123456"
               placeholderTextColor={colors.textDim}
             />
@@ -1199,7 +1199,7 @@ function EmpleadosList() {
               style={styles.abmInput}
               value={form.password}
               secureTextEntry
-              onChangeText={(t) => setForm({ ...form, password: t })}
+              onChangeText={(t) => setForm((f) => ({ ...f, password: t }))}
               placeholder="••••••••"
               placeholderTextColor={colors.textDim}
             />
@@ -1211,7 +1211,7 @@ function EmpleadosList() {
           style={styles.abmInput}
           value={form.codigoArea}
           keyboardType="number-pad"
-          onChangeText={(t) => setForm({ ...form, codigoArea: t })}
+          onChangeText={(t) => setForm((f) => ({ ...f, codigoArea: t }))}
         />
 
         <Text style={styles.fieldHint}>Teléfono</Text>
@@ -1219,7 +1219,7 @@ function EmpleadosList() {
           style={styles.abmInput}
           value={form.telefonoNumero}
           keyboardType="number-pad"
-          onChangeText={(t) => setForm({ ...form, telefonoNumero: t })}
+          onChangeText={(t) => setForm((f) => ({ ...f, telefonoNumero: t }))}
         />
 
         {formError && <Text style={styles.error}>{formError}</Text>}

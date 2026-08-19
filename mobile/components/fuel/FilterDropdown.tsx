@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { ReactNode, useRef, useState } from 'react';
 import {
+  Dimensions,
   LayoutRectangle,
   Modal,
   Pressable,
@@ -35,11 +36,62 @@ type MultiSelectProps<T extends string | number> = {
 
 type FilterDropdownProps<T extends string | number> = SingleSelectProps<T> | MultiSelectProps<T>;
 
+/** Margen mínimo entre el panel y el borde de la pantalla. */
+const MARGEN = 12;
+/** Separación entre el trigger y el panel. */
+const GAP = 4;
+/** Techo del panel: más alto que esto se vuelve incómodo aunque haya lugar. */
+const MAX_ALTO = 260;
+/** Piso: por debajo de esto el panel no sirve, mejor que desborde un poco. */
+const MIN_ALTO = 120;
+
+/**
+ * Decide si el panel abre hacia abajo o hacia arriba, y cuánto alto puede tomar.
+ *
+ * Antes se posicionaba siempre debajo del trigger, sin comparar contra el alto
+ * de la pantalla: con el trigger en la mitad inferior, el panel se dibujaba
+ * fuera del viewport y las últimas opciones no se podían tocar. Con el filtro de
+ * personas de Analítica en una pantalla chica, pasa.
+ */
+function PanelPosicionado({
+  trigger,
+  children,
+}: {
+  trigger: LayoutRectangle;
+  children: ReactNode;
+}) {
+  const alto = Dimensions.get('window').height;
+  const espacioAbajo = alto - (trigger.y + trigger.height) - GAP - MARGEN;
+  const espacioArriba = trigger.y - GAP - MARGEN;
+  // Se abre hacia abajo salvo que arriba entre claramente mejor. El alto se
+  // acota al espacio REAL disponible, con el 260 original como techo.
+  const haciaAbajo = espacioAbajo >= espacioArriba;
+  const disponible = Math.max(haciaAbajo ? espacioAbajo : espacioArriba, MIN_ALTO);
+
+  return (
+    <View
+      style={[
+        styles.panel,
+        {
+          left: trigger.x,
+          width: trigger.width,
+          maxHeight: Math.min(MAX_ALTO, disponible),
+          ...(haciaAbajo
+            ? { top: trigger.y + trigger.height + GAP }
+            : { bottom: alto - trigger.y + GAP }),
+        },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
 /**
  * Desplegable genérico (single o multi select) que sirve de filtro: un
  * trigger tipo "input" que muestra la selección actual, y un panel que se
- * abre hacia abajo mediante un Modal transparente. Se cierra al tocar fuera
- * o, en modo single, al elegir una opción.
+ * abre mediante un Modal transparente, hacia abajo o hacia arriba según dónde
+ * haya lugar. Se cierra al tocar fuera o, en modo single, al elegir una opción.
  */
 export function FilterDropdown<T extends string | number>(props: FilterDropdownProps<T>) {
   const [open, setOpen] = useState(false);
@@ -91,16 +143,7 @@ export function FilterDropdown<T extends string | number>(props: FilterDropdownP
       <Modal visible={open} transparent animationType="fade" onRequestClose={closeDropdown}>
         <Pressable style={StyleSheet.absoluteFill} onPress={closeDropdown} />
         {triggerLayout && (
-          <View
-            style={[
-              styles.panel,
-              {
-                top: triggerLayout.y + triggerLayout.height + 4,
-                left: triggerLayout.x,
-                width: triggerLayout.width,
-              },
-            ]}
-          >
+          <PanelPosicionado trigger={triggerLayout}>
             <ScrollView style={styles.optionsList} keyboardShouldPersistTaps="handled">
               {props.mode === 'multi' && (
                 <Pressable style={styles.option} onPress={props.onClear}>
@@ -144,7 +187,7 @@ export function FilterDropdown<T extends string | number>(props: FilterDropdownP
                 <Text style={styles.doneBtnText}>Listo</Text>
               </Pressable>
             )}
-          </View>
+          </PanelPosicionado>
         )}
       </Modal>
     </View>
@@ -174,7 +217,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
-  optionsList: { maxHeight: 260 },
+  // Sin maxHeight propio: el alto lo acota PanelPosicionado contra el viewport.
+  optionsList: { flexShrink: 1 },
   option: {
     paddingHorizontal: 13,
     paddingVertical: 11,

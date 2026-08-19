@@ -67,9 +67,6 @@ export function textoBusquedaVehiculo(v: Vehiculo): string {
   return `${v.identificador} ${v.modelo ?? ''}`.toLowerCase();
 }
 
-// Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
-// Nombra el instrumento a propósito: en el campo se lee un horómetro o un
-// odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
 // Sufijo con el que se muestra un consumo ya calculado, a partir de la unidad
 // que mandó el servidor. Es la forma preferida: no necesita el vehículo entero,
 // solo el `unidadUso` que viaja en la respuesta.
@@ -107,6 +104,9 @@ export function unidadConsumo(tipo: TipoVehiculo | null): string {
   return sufijoConsumo(unidadDeTipo(tipo));
 }
 
+// Etiqueta del campo donde el empleado anota la lectura al cargar combustible.
+// Nombra el instrumento a propósito: en el campo se lee un horómetro o un
+// odómetro, y decirlo así evita que alguien anote kilómetros en una máquina.
 export function etiquetaLectura(tipo: TipoVehiculo | null): string {
   return unidadDeTipo(tipo) === 'HORAS' ? 'Horas del horómetro' : 'Kilómetros del odómetro';
 }

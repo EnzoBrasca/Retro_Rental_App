@@ -73,74 +73,74 @@ function DetailSheet({ row, onClose }: { row: Row; onClose: () => void }) {
   const Icon = iconForTipoVehiculo(row.tipoVehiculo);
 
   return (
-    <>
-      {/* Frena la propagación: tocar la tarjeta no cierra el modal. */}
-      <Pressable style={styles.sheet} onPress={() => {}}>
-        <View style={styles.handle} />
+    // Frena la propagación —tocar la hoja no cierra el modal— sin declarar un
+    // control. Antes era un <Pressable onPress={() => {}}>, que convertía la
+    // hoja ENTERA en un botón: un lector de pantalla la anunciaba como un botón
+    // gigante y sin nombre alrededor de todo el contenido, y en Android disparaba
+    // el ripple al tocar cualquier parte.
+    <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+      <View style={styles.handle} />
 
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.icon}>
-              <Icon width={20} height={20} color={colors.primary} />
-            </View>
-            <View>
-              <Text style={styles.identificador}>{row.identificador}</Text>
-              <Text style={styles.fecha}>{formatFecha(row.fechaCarga)}</Text>
-            </View>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.icon}>
+            <Icon width={20} height={20} color={colors.primary} />
           </View>
-          <Pressable
-            onPress={onClose}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Cerrar el detalle de la carga"
-          >
-            <Text style={styles.close}>✕</Text>
-          </Pressable>
+          <View>
+            <Text style={styles.identificador}>{row.identificador}</Text>
+            <Text style={styles.fecha}>{formatFecha(row.fechaCarga)}</Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar el detalle de la carga"
+        >
+          <Text style={styles.close}>✕</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.ticketBox}>
+          {row.ticketFotoUrl && !imgError ? (
+            <>
+              <Image
+                source={{ uri: row.ticketFotoUrl }}
+                style={styles.ticketImg}
+                resizeMode="contain"
+                onLoadEnd={() => setImgLoading(false)}
+                onError={() => {
+                  setImgLoading(false);
+                  setImgError(true);
+                }}
+              />
+              {imgLoading && <ActivityIndicator color={colors.primary} style={styles.imgSpinner} />}
+            </>
+          ) : (
+            <View style={styles.ticketPlaceholder}>
+              <Text style={styles.placeholderIcon}>🧾</Text>
+              <Text style={styles.placeholderText}>
+                {imgError ? 'No se pudo cargar la foto del ticket.' : 'Sin foto del ticket.'}
+              </Text>
+            </View>
+          )}
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          <View style={styles.ticketBox}>
-            {row.ticketFotoUrl && !imgError ? (
-              <>
-                <Image
-                  source={{ uri: row.ticketFotoUrl }}
-                  style={styles.ticketImg}
-                  resizeMode="contain"
-                  onLoadEnd={() => setImgLoading(false)}
-                  onError={() => {
-                    setImgLoading(false);
-                    setImgError(true);
-                  }}
-                />
-                {imgLoading && (
-                  <ActivityIndicator color={colors.primary} style={styles.imgSpinner} />
-                )}
-              </>
-            ) : (
-              <View style={styles.ticketPlaceholder}>
-                <Text style={styles.placeholderIcon}>🧾</Text>
-                <Text style={styles.placeholderText}>
-                  {imgError ? 'No se pudo cargar la foto del ticket.' : 'Sin foto del ticket.'}
-                </Text>
-              </View>
-            )}
-          </View>
+        <DetailRow label="Proveedor" value={row.proveedor} />
+        <DetailRow
+          label="Combustible"
+          value={row.tipoCombustible ? combustibleLabel[row.tipoCombustible] : '—'}
+        />
+        <DetailRow label="Litros" value={`${row.litros} L`} mono />
+        <DetailRow label="Precio / L" value={formatMoney(row.precioUnitario)} mono />
 
-          <DetailRow label="Proveedor" value={row.proveedor} />
-          <DetailRow
-            label="Combustible"
-            value={row.tipoCombustible ? combustibleLabel[row.tipoCombustible] : '—'}
-          />
-          <DetailRow label="Litros" value={`${row.litros} L`} mono />
-          <DetailRow label="Precio / L" value={formatMoney(row.precioUnitario)} mono />
-
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>TOTAL</Text>
-            <Text style={styles.totalValue}>{formatMoney(row.costo)}</Text>
-          </View>
-        </ScrollView>
-      </Pressable>
-    </>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>TOTAL</Text>
+          <Text style={styles.totalValue}>{formatMoney(row.costo)}</Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 

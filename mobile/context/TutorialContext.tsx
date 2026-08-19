@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
 import { TUTORIAL_STEPS } from '../constants/tutorial';
 import { TutorialOverlay } from '../components/fuel/TutorialOverlay';
 
@@ -30,15 +30,16 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Igual que en AuthContext: un objeto literal cambia de identidad en cada
+  // render y re-renderiza a todo consumidor de useTutorial().
+  const open = useCallback(() => {
+    setStep(0);
+    setVisible(true);
+  }, []);
+  const value = useMemo(() => ({ open }), [open]);
+
   return (
-    <TutorialContext.Provider
-      value={{
-        open: () => {
-          setStep(0);
-          setVisible(true);
-        },
-      }}
-    >
+    <TutorialContext.Provider value={value}>
       {children}
       <TutorialOverlay
         visible={visible}
