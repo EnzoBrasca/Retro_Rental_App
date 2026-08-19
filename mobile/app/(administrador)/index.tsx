@@ -81,12 +81,20 @@ const estadoStyle: Record<Estado, { bg: string; color: string }> = {
 // SOLO de UI (ver TipoSeleccionVehiculo): al elegirla el formulario muestra
 // nombre + capacidad en vez de los campos de un vehículo, y el submit va a los
 // endpoints de herramientas.
-const TIPO_VEHICULO_OPTS = (Object.keys(tipoSeleccionLabel) as TipoSeleccionVehiculo[]).map((k) => ({
+const TIPO_VEHICULO_OPTS = (Object.keys(tipoSeleccionLabel) as TipoSeleccionVehiculo[]).map(
+  (k) => ({
+    key: k,
+    label: tipoSeleccionLabel[k],
+  }),
+);
+const COMBUSTIBLE_OPTS = (Object.keys(combustibleLabel) as TipoCombustible[]).map((k) => ({
   key: k,
-  label: tipoSeleccionLabel[k],
+  label: combustibleLabel[k],
 }));
-const COMBUSTIBLE_OPTS = (Object.keys(combustibleLabel) as TipoCombustible[]).map((k) => ({ key: k, label: combustibleLabel[k] }));
-const ESTADO_OPTS = (Object.keys(estadoLabel) as Estado[]).map((k) => ({ key: k, label: estadoLabel[k] }));
+const ESTADO_OPTS = (Object.keys(estadoLabel) as Estado[]).map((k) => ({
+  key: k,
+  label: estadoLabel[k],
+}));
 
 // Vistas del panel. El orden es el del uso: se entra a mirar cómo viene el
 // gasto, y recién después a tocar flota, tickets o personal.
@@ -104,13 +112,14 @@ export default function AdministradorScreen() {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('analytics');
 
-  const initials = user
-    ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase()
-    : 'AD';
+  const initials = user ? `${user.nombre[0] ?? ''}${user.apellido[0] ?? ''}`.toUpperCase() : 'AD';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>PANEL DE CONTROL</Text>
@@ -215,7 +224,12 @@ function Analytics() {
   });
 
   const fecha = toISODate(anchor);
-  const { data: stats, loading, error, refetch } = useFetch(
+  const {
+    data: stats,
+    loading,
+    error,
+    refetch,
+  } = useFetch(
     () => getStats(range, { fecha, vehiculoId, empleadoIds }),
     [range, fecha, vehiculoId, empleadoIds],
   );
@@ -238,7 +252,8 @@ function Analytics() {
 
   const personaOpts = (filterData?.personas ?? []).map((p: PersonaOpcion) => ({
     key: p.id,
-    label: p.rol === 'ADMINISTRADOR' ? `${p.nombre} ${p.apellido} (Admin)` : `${p.nombre} ${p.apellido}`,
+    label:
+      p.rol === 'ADMINISTRADOR' ? `${p.nombre} ${p.apellido} (Admin)` : `${p.nombre} ${p.apellido}`,
   }));
 
   const toggleEmpleado = (id: number) => {
@@ -254,8 +269,14 @@ function Analytics() {
         <Text style={styles.fieldHint}>Período</Text>
         <View style={styles.segment}>
           {RANGES.map((r) => (
-            <Pressable key={r.key} style={[styles.seg, range === r.key && styles.segActive]} onPress={() => changeRange(r.key)}>
-              <Text style={[styles.segText, range === r.key && styles.segTextActive]}>{r.label}</Text>
+            <Pressable
+              key={r.key}
+              style={[styles.seg, range === r.key && styles.segActive]}
+              onPress={() => changeRange(r.key)}
+            >
+              <Text style={[styles.segText, range === r.key && styles.segTextActive]}>
+                {r.label}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -268,8 +289,14 @@ function Analytics() {
               {formatDay(stats.desde)} – {formatDay(stats.hasta)}
             </Text>
           )}
-          <Pressable style={[styles.rangeArrow, !canGoNext && styles.rangeArrowDisabled]} onPress={goNext} disabled={!canGoNext}>
-            <Text style={[styles.rangeArrowText, !canGoNext && styles.rangeArrowTextDisabled]}>›</Text>
+          <Pressable
+            style={[styles.rangeArrow, !canGoNext && styles.rangeArrowDisabled]}
+            onPress={goNext}
+            disabled={!canGoNext}
+          >
+            <Text style={[styles.rangeArrowText, !canGoNext && styles.rangeArrowTextDisabled]}>
+              ›
+            </Text>
           </Pressable>
         </View>
 
@@ -307,11 +334,27 @@ function Analytics() {
       ) : (
         <>
           <View style={styles.kpiGrid}>
-            <Kpi label="Costo total" value={formatMoney(stats.gastoTotal)} valueColor={colors.primary} delta={`${stats.cantidadRegistros} cargas`} deltaColor={colors.textFaint} accent />
-            <Kpi label="Litros cargados" value={`${stats.totalLitros} L`} delta={`${stats.vehiculosActivos} vehículos`} deltaColor={colors.textFaint} />
+            <Kpi
+              label="Costo total"
+              value={formatMoney(stats.gastoTotal)}
+              valueColor={colors.primary}
+              delta={`${stats.cantidadRegistros} cargas`}
+              deltaColor={colors.textFaint}
+              accent
+            />
+            <Kpi
+              label="Litros cargados"
+              value={`${stats.totalLitros} L`}
+              delta={`${stats.vehiculosActivos} vehículos`}
+              deltaColor={colors.textFaint}
+            />
             <Kpi
               label="Promedio / carga"
-              value={stats.cantidadRegistros > 0 ? formatMoney(stats.gastoTotal / stats.cantidadRegistros) : '$0'}
+              value={
+                stats.cantidadRegistros > 0
+                  ? formatMoney(stats.gastoTotal / stats.cantidadRegistros)
+                  : '$0'
+              }
               delta="por carga"
               deltaColor={colors.orange}
             />
@@ -331,9 +374,19 @@ function Analytics() {
               // Vehículo elegido pero sin dos lecturas en el período con las que
               // formar un intervalo. Se dice, en vez de mostrar un cero que se
               // leería como "no consumió".
-              <Kpi label="Consumo" value="—" delta="sin datos suficientes" deltaColor={colors.textFaint} />
+              <Kpi
+                label="Consumo"
+                value="—"
+                delta="sin datos suficientes"
+                deltaColor={colors.textFaint}
+              />
             ) : (
-              <Kpi label="Litros / vehículo" value={`${Math.round(stats.promedioLitrosPorVehiculo)} L`} delta="promedio" deltaColor={colors.textFaint} />
+              <Kpi
+                label="Litros / vehículo"
+                value={`${Math.round(stats.promedioLitrosPorVehiculo)} L`}
+                delta="promedio"
+                deltaColor={colors.textFaint}
+              />
             )}
           </View>
 
@@ -456,7 +509,10 @@ const formFromHerramienta = (h: Herramienta): FormState => ({
 
 function VehiclesABM() {
   const { data, loading, error, refetch } = useFetch(async () => {
-    const [vehiculos, herramientas] = await Promise.all([getAdminVehiculos(), getAdminHerramientas()]);
+    const [vehiculos, herramientas] = await Promise.all([
+      getAdminVehiculos(),
+      getAdminHerramientas(),
+    ]);
     return { vehiculos, herramientas };
   });
 
@@ -508,7 +564,8 @@ function VehiclesABM() {
     if (!form.tipoVehiculo) return setFormError('Elegí el tipo de vehículo.');
 
     if (form.tipoVehiculo === TIPO_HERRAMIENTA) {
-      if (!form.nombreHerramienta.trim()) return setFormError('Ingresá el nombre de la herramienta.');
+      if (!form.nombreHerramienta.trim())
+        return setFormError('Ingresá el nombre de la herramienta.');
       const capacidad = parseInt(form.capacidadTanque, 10);
       if (!(capacidad > 0)) return setFormError('Capacidad inválida.');
 
@@ -612,11 +669,17 @@ function VehiclesABM() {
     // pero TS no lo usa para angostar `form.tipoVehiculo` dentro del JSX (no es
     // un narrowing directo sobre la unión). Esta variable evita repetir el cast
     // en cada uso de la rama de vehículo.
-    const tipoVehiculoForm: TipoVehiculo | null = esHerramienta ? null : (form.tipoVehiculo as TipoVehiculo | null);
+    const tipoVehiculoForm: TipoVehiculo | null = esHerramienta
+      ? null
+      : (form.tipoVehiculo as TipoVehiculo | null);
     return (
       <View style={{ marginTop: 4 }}>
         <Text style={styles.formTitle}>
-          {editing === 'new' ? 'Nuevo vehículo' : esHerramienta ? 'Editar herramienta' : 'Editar vehículo'}
+          {editing === 'new'
+            ? 'Nuevo vehículo'
+            : esHerramienta
+              ? 'Editar herramienta'
+              : 'Editar vehículo'}
         </Text>
 
         {/* El tipo va PRIMERO: de él dependen qué campos aparecen debajo (los
@@ -656,13 +719,28 @@ function VehiclesABM() {
           </>
         ) : (
           <>
-            <Text style={[styles.fieldHint, { marginTop: 12 }]}>{etiquetaIdentificador(tipoVehiculoForm)}</Text>
-            <TextInput style={styles.abmInput} value={form.identificador} autoCapitalize="characters" onChangeText={(t) => setForm({ ...form, identificador: t })} placeholder={placeholderIdentificador(tipoVehiculoForm)} placeholderTextColor={colors.textDim} />
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>
+              {etiquetaIdentificador(tipoVehiculoForm)}
+            </Text>
+            <TextInput
+              style={styles.abmInput}
+              value={form.identificador}
+              autoCapitalize="characters"
+              onChangeText={(t) => setForm({ ...form, identificador: t })}
+              placeholder={placeholderIdentificador(tipoVehiculoForm)}
+              placeholderTextColor={colors.textDim}
+            />
 
             {requiereModelo(tipoVehiculoForm) && (
               <>
                 <Text style={[styles.fieldHint, { marginTop: 12 }]}>Modelo</Text>
-                <TextInput style={styles.abmInput} value={form.modelo} onChangeText={(t) => setForm({ ...form, modelo: t })} placeholder="CAT 320D" placeholderTextColor={colors.textDim} />
+                <TextInput
+                  style={styles.abmInput}
+                  value={form.modelo}
+                  onChangeText={(t) => setForm({ ...form, modelo: t })}
+                  placeholder="CAT 320D"
+                  placeholderTextColor={colors.textDim}
+                />
                 <Text style={styles.fieldNote}>
                   Dos máquinas pueden compartir modelo: el número interno es el que las distingue.
                 </Text>
@@ -670,38 +748,75 @@ function VehiclesABM() {
             )}
 
             <Text style={[styles.fieldHint, { marginTop: 12 }]}>Combustible</Text>
-            <OptionChips options={COMBUSTIBLE_OPTS} value={form.tipoCombustible} onChange={(k) => setForm({ ...form, tipoCombustible: k })} />
+            <OptionChips
+              options={COMBUSTIBLE_OPTS}
+              value={form.tipoCombustible}
+              onChange={(k) => setForm({ ...form, tipoCombustible: k })}
+            />
 
             <Text style={[styles.fieldHint, { marginTop: 12 }]}>Estado</Text>
-            <OptionChips options={ESTADO_OPTS} value={form.estado} onChange={(k) => setForm({ ...form, estado: k })} />
+            <OptionChips
+              options={ESTADO_OPTS}
+              value={form.estado}
+              onChange={(k) => setForm({ ...form, estado: k })}
+            />
 
             <Text style={[styles.fieldHint, { marginTop: 12 }]}>Capacidad de tanque (L)</Text>
-            <TextInput style={styles.abmInput} value={form.capacidadTanque} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, capacidadTanque: t })} />
+            <TextInput
+              style={styles.abmInput}
+              value={form.capacidadTanque}
+              keyboardType="number-pad"
+              onChangeText={(t) => setForm({ ...form, capacidadTanque: t })}
+            />
 
             {/* La etiqueta sigue al tipo elegido: una máquina vial mide horas de
                 horómetro, no kilómetros. */}
             <Text style={styles.fieldHint}>{etiquetaUso(tipoVehiculoForm)}</Text>
-            <TextInput style={styles.abmInput} value={form.usoAcumulado} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, usoAcumulado: t })} />
+            <TextInput
+              style={styles.abmInput}
+              value={form.usoAcumulado}
+              keyboardType="number-pad"
+              onChangeText={(t) => setForm({ ...form, usoAcumulado: t })}
+            />
 
             <Text style={styles.fieldHint}>{etiquetaConsumo(tipoVehiculoForm)}</Text>
-            <TextInput style={styles.abmInput} value={form.consumoPromedio} keyboardType="numeric" onChangeText={(t) => setForm({ ...form, consumoPromedio: t })} />
+            <TextInput
+              style={styles.abmInput}
+              value={form.consumoPromedio}
+              keyboardType="numeric"
+              onChangeText={(t) => setForm({ ...form, consumoPromedio: t })}
+            />
             <Text style={styles.abmHint}>
               Estimación inicial. A partir de la segunda carga se reemplaza por el consumo real
               calculado con las cargas del vehículo.
             </Text>
 
             <Text style={styles.fieldHint}>Último mantenimiento (AAAA-MM-DD)</Text>
-            <TextInput style={styles.abmInput} value={form.fechaUltimoMantenimiento} onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })} />
+            <TextInput
+              style={styles.abmInput}
+              value={form.fechaUltimoMantenimiento}
+              onChangeText={(t) => setForm({ ...form, fechaUltimoMantenimiento: t })}
+            />
           </>
         )}
 
         {formError && <Text style={styles.error}>{formError}</Text>}
 
         <View style={styles.abmActions}>
-          <Pressable style={[styles.abmBtn, { backgroundColor: colors.primary }]} onPress={save} disabled={saving}>
-            <Text style={[styles.abmBtnText, { color: colors.bgDeep }]}>{saving ? 'Guardando…' : 'Guardar'}</Text>
+          <Pressable
+            style={[styles.abmBtn, { backgroundColor: colors.primary }]}
+            onPress={save}
+            disabled={saving}
+          >
+            <Text style={[styles.abmBtnText, { color: colors.bgDeep }]}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </Text>
           </Pressable>
-          <Pressable style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]} onPress={() => setEditing(null)} disabled={saving}>
+          <Pressable
+            style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]}
+            onPress={() => setEditing(null)}
+            disabled={saving}
+          >
             <Text style={[styles.abmBtnText, { color: colors.text }]}>Cancelar</Text>
           </Pressable>
         </View>
@@ -742,7 +857,15 @@ function VehiclesABM() {
             return (
               <View key={`v-${v.id}`} style={[styles.abmCard, baja && { opacity: 0.5 }]}>
                 <View style={styles.abmHeader}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 10 }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 10,
+                      flex: 1,
+                      paddingRight: 10,
+                    }}
+                  >
                     <View style={styles.abmIcon}>
                       <Icon width={24} height={24} color={colors.primary} />
                     </View>
@@ -755,8 +878,8 @@ function VehiclesABM() {
                         {tituloVehiculo(v)}
                       </Text>
                       <Text style={styles.abmSub}>
-                        {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]} ·{' '}
-                        {v.consumoPromedio} {unidadConsumo(v.tipoVehiculo)}
+                        {tipoVehiculoLabel[v.tipoVehiculo]} · {combustibleLabel[v.tipoCombustible]}{' '}
+                        · {v.consumoPromedio} {unidadConsumo(v.tipoVehiculo)}
                       </Text>
                       {/* El reciente solo se muestra cuando difiere del histórico:
                           si son iguales no aporta nada, y cuando se despega es
@@ -793,7 +916,15 @@ function VehiclesABM() {
           return (
             <View key={`h-${h.id}`} style={[styles.abmCard, baja && { opacity: 0.5 }]}>
               <View style={styles.abmHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 10 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    flex: 1,
+                    paddingRight: 10,
+                  }}
+                >
                   <View style={styles.abmIcon}>
                     <Text style={{ fontSize: 20 }}>🔧</Text>
                   </View>
@@ -802,7 +933,9 @@ function VehiclesABM() {
                       {h.nombre}
                     </Text>
                     <Text style={styles.abmSub}>Herramienta · Capacidad {h.capacidad} L</Text>
-                    {baja && <Text style={[styles.abmEstado, { color: colors.danger }]}>DADO DE BAJA</Text>}
+                    {baja && (
+                      <Text style={[styles.abmEstado, { color: colors.danger }]}>DADO DE BAJA</Text>
+                    )}
                   </View>
                 </View>
                 {!baja && (
@@ -978,41 +1111,89 @@ function EmpleadosList() {
   if (editing !== null) {
     return (
       <View style={{ marginTop: 4 }}>
-        <Text style={styles.formTitle}>{editing === 'new' ? 'Nuevo empleado' : 'Editar empleado'}</Text>
+        <Text style={styles.formTitle}>
+          {editing === 'new' ? 'Nuevo empleado' : 'Editar empleado'}
+        </Text>
 
         <Text style={styles.fieldHint}>Nombre</Text>
-        <TextInput style={styles.abmInput} value={form.nombre} onChangeText={(t) => setForm({ ...form, nombre: t })} placeholder="Juan" placeholderTextColor={colors.textDim} />
+        <TextInput
+          style={styles.abmInput}
+          value={form.nombre}
+          onChangeText={(t) => setForm({ ...form, nombre: t })}
+          placeholder="Juan"
+          placeholderTextColor={colors.textDim}
+        />
 
         <Text style={styles.fieldHint}>Apellido</Text>
-        <TextInput style={styles.abmInput} value={form.apellido} onChangeText={(t) => setForm({ ...form, apellido: t })} placeholder="Pérez" placeholderTextColor={colors.textDim} />
+        <TextInput
+          style={styles.abmInput}
+          value={form.apellido}
+          onChangeText={(t) => setForm({ ...form, apellido: t })}
+          placeholder="Pérez"
+          placeholderTextColor={colors.textDim}
+        />
 
         {editing === 'new' && (
           <>
             <Text style={styles.fieldHint}>Documento</Text>
-            <TextInput style={styles.abmInput} value={form.documento} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, documento: t })} placeholder="30123456" placeholderTextColor={colors.textDim} />
+            <TextInput
+              style={styles.abmInput}
+              value={form.documento}
+              keyboardType="number-pad"
+              onChangeText={(t) => setForm({ ...form, documento: t })}
+              placeholder="30123456"
+              placeholderTextColor={colors.textDim}
+            />
           </>
         )}
 
         {editing === 'new' && (
           <>
             <Text style={styles.fieldHint}>Contraseña</Text>
-            <TextInput style={styles.abmInput} value={form.password} secureTextEntry onChangeText={(t) => setForm({ ...form, password: t })} placeholder="••••••••" placeholderTextColor={colors.textDim} />
+            <TextInput
+              style={styles.abmInput}
+              value={form.password}
+              secureTextEntry
+              onChangeText={(t) => setForm({ ...form, password: t })}
+              placeholder="••••••••"
+              placeholderTextColor={colors.textDim}
+            />
           </>
         )}
 
         <Text style={[styles.fieldHint, { marginTop: 12 }]}>Código de área</Text>
-        <TextInput style={styles.abmInput} value={form.codigoArea} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, codigoArea: t })} />
+        <TextInput
+          style={styles.abmInput}
+          value={form.codigoArea}
+          keyboardType="number-pad"
+          onChangeText={(t) => setForm({ ...form, codigoArea: t })}
+        />
 
         <Text style={styles.fieldHint}>Teléfono</Text>
-        <TextInput style={styles.abmInput} value={form.telefonoNumero} keyboardType="number-pad" onChangeText={(t) => setForm({ ...form, telefonoNumero: t })} />
+        <TextInput
+          style={styles.abmInput}
+          value={form.telefonoNumero}
+          keyboardType="number-pad"
+          onChangeText={(t) => setForm({ ...form, telefonoNumero: t })}
+        />
 
         {formError && <Text style={styles.error}>{formError}</Text>}
 
         <View style={styles.abmActions}>
-          <Pressable style={[styles.abmBtn, { backgroundColor: colors.primary }]} onPress={save} disabled={saving}>
-            <Text style={[styles.abmBtnText, { color: colors.bgDeep }]}>{saving ? 'Guardando…' : 'Guardar'}</Text>
+          <Pressable
+            style={[styles.abmBtn, { backgroundColor: colors.primary }]}
+            onPress={save}
+            disabled={saving}
+          >
+            <Text style={[styles.abmBtnText, { color: colors.bgDeep }]}>
+              {saving ? 'Guardando…' : 'Guardar'}
+            </Text>
           </Pressable>
-          <Pressable style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]} onPress={() => setEditing(null)} disabled={saving}>
+          <Pressable
+            style={[styles.abmBtn, { backgroundColor: '#1b1d20' }]}
+            onPress={() => setEditing(null)}
+            disabled={saving}
+          >
             <Text style={[styles.abmBtnText, { color: colors.text }]}>Cancelar</Text>
           </Pressable>
         </View>
@@ -1041,9 +1222,21 @@ function EmpleadosList() {
           return (
             <View key={e.id} style={[styles.abmCard, baja && { opacity: 0.5 }]}>
               <View style={styles.abmHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 10 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    flex: 1,
+                    paddingRight: 10,
+                  }}
+                >
                   <View style={styles.abmIcon}>
-                    <Text style={{ color: colors.primary, fontFamily: fonts.displayBold, fontSize: 14 }}>{initials}</Text>
+                    <Text
+                      style={{ color: colors.primary, fontFamily: fonts.displayBold, fontSize: 14 }}
+                    >
+                      {initials}
+                    </Text>
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.abmName} numberOfLines={1}>
@@ -1054,7 +1247,9 @@ function EmpleadosList() {
                       {' · '}
                       {e.telefono ? `${e.telefono.codigoArea} ${e.telefono.numero}` : '—'}
                     </Text>
-                    {baja && <Text style={[styles.abmEstado, { color: colors.danger }]}>DADO DE BAJA</Text>}
+                    {baja && (
+                      <Text style={[styles.abmEstado, { color: colors.danger }]}>DADO DE BAJA</Text>
+                    )}
                   </View>
                 </View>
                 {!baja && (
@@ -1158,8 +1353,8 @@ function HabilitadosList() {
       <View style={{ marginTop: 4 }}>
         <Text style={styles.formTitle}>Habilitar empleado</Text>
         <Text style={[styles.abmSub, { marginBottom: 12 }]}>
-          El empleado se registra solo desde la app. El apellido tiene que coincidir con el
-          que cargues acá.
+          El empleado se registra solo desde la app. El apellido tiene que coincidir con el que
+          cargues acá.
         </Text>
 
         <Text style={styles.fieldHint}>Documento</Text>
@@ -1286,10 +1481,22 @@ function Kpi({
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   eyebrow: { fontSize: 11, color: colors.textFaint, letterSpacing: 1.5, fontFamily: fonts.sans },
   h1: { fontFamily: fonts.displayBold, fontSize: 24, color: colors.text, marginTop: 2 },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primaryDark, alignItems: 'center', justifyContent: 'center' },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primaryDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   avatarText: { fontFamily: fonts.displayBold, color: colors.bgDeep, fontSize: 14 },
   operarioBtn: {
     paddingHorizontal: 13,
@@ -1298,14 +1505,60 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   operarioBtnText: { fontFamily: fonts.sansSemi, fontSize: 12, color: colors.bgDeep },
-  caption: { fontSize: 11.5, color: colors.textFaint, marginBottom: 16, marginTop: 8, fontFamily: fonts.sans },
-  panel: { backgroundColor: '#1F2226', borderWidth: 1, borderColor: colors.border, borderRadius: 13, padding: 14, marginBottom: 16 },
-  panelLabel: { fontSize: 10, letterSpacing: 1.5, color: colors.primary, marginBottom: 10, fontFamily: fonts.sansSemi },
-  fieldHint: { fontSize: 11, color: colors.textFaint, marginBottom: 6, marginTop: 8, fontFamily: fonts.sans },
+  caption: {
+    fontSize: 11.5,
+    color: colors.textFaint,
+    marginBottom: 16,
+    marginTop: 8,
+    fontFamily: fonts.sans,
+  },
+  panel: {
+    backgroundColor: '#1F2226',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 13,
+    padding: 14,
+    marginBottom: 16,
+  },
+  panelLabel: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: colors.primary,
+    marginBottom: 10,
+    fontFamily: fonts.sansSemi,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: colors.textFaint,
+    marginBottom: 6,
+    marginTop: 8,
+    fontFamily: fonts.sans,
+  },
   // Aclaración bajo un input, para explicar por qué se pide el dato.
-  fieldNote: { fontSize: 11, color: colors.textDim, marginTop: 6, lineHeight: 15, fontFamily: fonts.sans },
-  abmHint: { fontSize: 11, color: colors.textDim, marginTop: 4, lineHeight: 15, fontFamily: fonts.sans },
-  segment: { flexDirection: 'row', backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: 9, padding: 3, gap: 2, marginBottom: 12 },
+  fieldNote: {
+    fontSize: 11,
+    color: colors.textDim,
+    marginTop: 6,
+    lineHeight: 15,
+    fontFamily: fonts.sans,
+  },
+  abmHint: {
+    fontSize: 11,
+    color: colors.textDim,
+    marginTop: 4,
+    lineHeight: 15,
+    fontFamily: fonts.sans,
+  },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 9,
+    padding: 3,
+    gap: 2,
+    marginBottom: 12,
+  },
   seg: { flex: 1, paddingVertical: 6, borderRadius: 7, alignItems: 'center' },
   segActive: { backgroundColor: colors.primary },
   segText: { fontSize: 12, color: colors.textMuted, fontFamily: fonts.sansSemi },
@@ -1338,16 +1591,35 @@ const styles = StyleSheet.create({
     padding: 14,
     overflow: 'hidden',
   },
-  kpiAccent: { position: 'absolute', top: 0, left: 0, width: 4, height: '100%', backgroundColor: colors.primary },
+  kpiAccent: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 4,
+    height: '100%',
+    backgroundColor: colors.primary,
+  },
   kpiLabel: { fontSize: 10.5, color: colors.textFaint, fontFamily: fonts.sans },
   kpiValue: { fontFamily: fonts.mono, fontSize: 20, color: colors.text, marginTop: 6 },
   kpiDelta: { fontSize: 10.5, marginTop: 4, fontFamily: fonts.sans },
-  chartCard: { backgroundColor: '#1F2226', borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 16 },
+  chartCard: {
+    backgroundColor: '#1F2226',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 16,
+  },
   chartHead: { flexDirection: 'row', marginBottom: 12 },
   chartTitle: { fontFamily: fonts.display, fontSize: 15, color: colors.text },
   chartSub: { fontSize: 11, color: colors.textFaint, marginTop: 2, fontFamily: fonts.sans },
 
-  topTabs: { flexDirection: 'row', backgroundColor: '#1b1d20', borderRadius: 9, padding: 4, marginBottom: 20 },
+  topTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#1b1d20',
+    borderRadius: 9,
+    padding: 4,
+    marginBottom: 20,
+  },
   topTab: { flex: 1, paddingVertical: 10, borderRadius: 7, alignItems: 'center' },
   topTabActive: { backgroundColor: colors.primary },
   // 12px y no 13: con cuatro pestañas, "Analítica" se cortaba en pantallas de
@@ -1356,18 +1628,57 @@ const styles = StyleSheet.create({
   topTabTextActive: { color: colors.bgDeep },
 
   formTitle: { fontFamily: fonts.display, fontSize: 18, color: colors.text, marginBottom: 6 },
-  addBtn: { backgroundColor: colors.primary, padding: 14, borderRadius: 10, alignItems: 'center', marginBottom: 16 },
+  addBtn: {
+    backgroundColor: colors.primary,
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   addBtnText: { color: colors.bgDeep, fontFamily: fonts.displayBold, letterSpacing: 1 },
-  abmCard: { backgroundColor: '#1F2226', borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 14, marginBottom: 10 },
-  abmInput: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, fontFamily: fonts.sans, marginBottom: 4 },
+  abmCard: {
+    backgroundColor: '#1F2226',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  abmInput: {
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontFamily: fonts.sans,
+    marginBottom: 4,
+  },
   abmActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
   abmBtn: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
   abmBtnText: { fontFamily: fonts.sansSemi, fontSize: 14 },
   abmHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  abmIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.primary + '1A', alignItems: 'center', justifyContent: 'center' },
+  abmIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.primary + '1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   abmName: { fontFamily: fonts.displayBold, fontSize: 15, color: colors.text },
   abmSub: { fontSize: 11, color: colors.textFaint, marginTop: 2, fontFamily: fonts.sans },
   abmEstado: { fontSize: 10, fontFamily: fonts.sansSemi, marginTop: 3, letterSpacing: 0.5 },
-  iconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSoft },
+  iconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+  },
   error: { color: colors.danger, fontSize: 13, marginTop: 12, fontFamily: fonts.sans },
 });

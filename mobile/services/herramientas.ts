@@ -40,7 +40,10 @@ export function createHerramienta(payload: CreateHerramientaPayload): Promise<He
   return api.post<Herramienta>('/admin/herramientas', payload);
 }
 
-export function updateHerramienta(id: number, payload: UpdateHerramientaPayload): Promise<Herramienta> {
+export function updateHerramienta(
+  id: number,
+  payload: UpdateHerramientaPayload,
+): Promise<Herramienta> {
   return api.put<Herramienta>(`/admin/herramientas/${id}`, payload);
 }
 

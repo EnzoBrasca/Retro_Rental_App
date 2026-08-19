@@ -31,7 +31,13 @@ export function EmptyState({ message }: { message: string }) {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30, gap: 14 },
-  errorText: { color: colors.danger, fontSize: 14, textAlign: 'center', fontFamily: fonts.sans, lineHeight: 20 },
+  errorText: {
+    color: colors.danger,
+    fontSize: 14,
+    textAlign: 'center',
+    fontFamily: fonts.sans,
+    lineHeight: 20,
+  },
   retry: {
     backgroundColor: colors.primary,
     borderRadius: 10,

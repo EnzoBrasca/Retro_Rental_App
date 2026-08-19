@@ -31,7 +31,14 @@ export function TutorialProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <TutorialContext.Provider value={{ open: () => { setStep(0); setVisible(true); } }}>
+    <TutorialContext.Provider
+      value={{
+        open: () => {
+          setStep(0);
+          setVisible(true);
+        },
+      }}
+    >
       {children}
       <TutorialOverlay
         visible={visible}

@@ -76,7 +76,14 @@ export default function RootLayout() {
   // oscuro: evita el "flash" de texto con la tipografía del sistema.
   if (!fontsLoaded) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         <ActivityIndicator color={colors.primary} />
       </View>
     );

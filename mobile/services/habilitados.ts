@@ -37,9 +37,7 @@ export function createHabilitado(payload: CreateHabilitadoPayload): Promise<Habi
 }
 
 // Alta masiva: los documentos ya presentes se saltean. Devuelve el padrón completo.
-export function createHabilitadosBulk(
-  payload: CreateHabilitadoPayload[],
-): Promise<Habilitado[]> {
+export function createHabilitadosBulk(payload: CreateHabilitadoPayload[]): Promise<Habilitado[]> {
   return api.post<Habilitado[]>('/admin/habilitados/bulk', payload);
 }
 

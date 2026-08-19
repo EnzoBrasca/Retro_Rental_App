@@ -10,7 +10,12 @@ import {
   View,
 } from 'react-native';
 import { colors, fonts, radius } from '../../constants/theme';
-import { combustibleLabel, formatFecha, formatMoney, iconForTipoVehiculo } from '../../constants/labels';
+import {
+  combustibleLabel,
+  formatFecha,
+  formatMoney,
+  iconForTipoVehiculo,
+} from '../../constants/labels';
 import type { TipoCombustible, TipoVehiculo } from '../../services/vehiculos';
 
 /**
@@ -71,62 +76,64 @@ function DetailSheet({ row, onClose }: { row: Row; onClose: () => void }) {
     <>
       {/* Frena la propagación: tocar la tarjeta no cierra el modal. */}
       <Pressable style={styles.sheet} onPress={() => {}}>
-          <View style={styles.handle} />
+        <View style={styles.handle} />
 
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={styles.icon}>
-                <Icon width={20} height={20} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.identificador}>{row.identificador}</Text>
-                <Text style={styles.fecha}>{formatFecha(row.fechaCarga)}</Text>
-              </View>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.icon}>
+              <Icon width={20} height={20} color={colors.primary} />
             </View>
-            <Pressable onPress={onClose} hitSlop={12}>
-              <Text style={styles.close}>✕</Text>
-            </Pressable>
+            <View>
+              <Text style={styles.identificador}>{row.identificador}</Text>
+              <Text style={styles.fecha}>{formatFecha(row.fechaCarga)}</Text>
+            </View>
+          </View>
+          <Pressable onPress={onClose} hitSlop={12}>
+            <Text style={styles.close}>✕</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView showsVerticalScrollIndicator={false}>
+          <View style={styles.ticketBox}>
+            {row.ticketFotoUrl && !imgError ? (
+              <>
+                <Image
+                  source={{ uri: row.ticketFotoUrl }}
+                  style={styles.ticketImg}
+                  resizeMode="contain"
+                  onLoadEnd={() => setImgLoading(false)}
+                  onError={() => {
+                    setImgLoading(false);
+                    setImgError(true);
+                  }}
+                />
+                {imgLoading && (
+                  <ActivityIndicator color={colors.primary} style={styles.imgSpinner} />
+                )}
+              </>
+            ) : (
+              <View style={styles.ticketPlaceholder}>
+                <Text style={styles.placeholderIcon}>🧾</Text>
+                <Text style={styles.placeholderText}>
+                  {imgError ? 'No se pudo cargar la foto del ticket.' : 'Sin foto del ticket.'}
+                </Text>
+              </View>
+            )}
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.ticketBox}>
-              {row.ticketFotoUrl && !imgError ? (
-                <>
-                  <Image
-                    source={{ uri: row.ticketFotoUrl }}
-                    style={styles.ticketImg}
-                    resizeMode="contain"
-                    onLoadEnd={() => setImgLoading(false)}
-                    onError={() => {
-                      setImgLoading(false);
-                      setImgError(true);
-                    }}
-                  />
-                  {imgLoading && <ActivityIndicator color={colors.primary} style={styles.imgSpinner} />}
-                </>
-              ) : (
-                <View style={styles.ticketPlaceholder}>
-                  <Text style={styles.placeholderIcon}>🧾</Text>
-                  <Text style={styles.placeholderText}>
-                    {imgError ? 'No se pudo cargar la foto del ticket.' : 'Sin foto del ticket.'}
-                  </Text>
-                </View>
-              )}
-            </View>
+          <DetailRow label="Proveedor" value={row.proveedor} />
+          <DetailRow
+            label="Combustible"
+            value={row.tipoCombustible ? combustibleLabel[row.tipoCombustible] : '—'}
+          />
+          <DetailRow label="Litros" value={`${row.litros} L`} mono />
+          <DetailRow label="Precio / L" value={formatMoney(row.precioUnitario)} mono />
 
-            <DetailRow label="Proveedor" value={row.proveedor} />
-            <DetailRow
-              label="Combustible"
-              value={row.tipoCombustible ? combustibleLabel[row.tipoCombustible] : '—'}
-            />
-            <DetailRow label="Litros" value={`${row.litros} L`} mono />
-            <DetailRow label="Precio / L" value={formatMoney(row.precioUnitario)} mono />
-
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>TOTAL</Text>
-              <Text style={styles.totalValue}>{formatMoney(row.costo)}</Text>
-            </View>
-          </ScrollView>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>TOTAL</Text>
+            <Text style={styles.totalValue}>{formatMoney(row.costo)}</Text>
+          </View>
+        </ScrollView>
       </Pressable>
     </>
   );
@@ -160,7 +167,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.borderSoft,
     marginBottom: 14,
   },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   icon: {
     width: 40,
@@ -189,7 +201,12 @@ const styles = StyleSheet.create({
   imgSpinner: { position: 'absolute' },
   ticketPlaceholder: { alignItems: 'center', gap: 8, padding: 20 },
   placeholderIcon: { fontSize: 34 },
-  placeholderText: { color: colors.textDim, fontSize: 13, fontFamily: fonts.sans, textAlign: 'center' },
+  placeholderText: {
+    color: colors.textDim,
+    fontSize: 13,
+    fontFamily: fonts.sans,
+    textAlign: 'center',
+  },
 
   detailRow: {
     flexDirection: 'row',

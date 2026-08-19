@@ -70,7 +70,10 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.brandRow}>
             <Logo size={46} />
@@ -151,8 +154,20 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 26, flexGrow: 1 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 8 },
-  subtitle: { fontSize: 13, color: colors.textFaint, marginBottom: 26, lineHeight: 20, fontFamily: fonts.sans },
-  tabs: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md, padding: 4, marginBottom: 22 },
+  subtitle: {
+    fontSize: 13,
+    color: colors.textFaint,
+    marginBottom: 26,
+    lineHeight: 20,
+    fontFamily: fonts.sans,
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 4,
+    marginBottom: 22,
+  },
   tab: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
   tabActive: { backgroundColor: colors.primary },
   tabText: { fontSize: 13, fontFamily: fonts.sansSemi, color: colors.textMuted },
@@ -194,7 +209,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: colors.bgDeep,
   },
-  forgot: { textAlign: 'center', fontSize: 12.5, color: colors.textDim, marginTop: 16, fontFamily: fonts.sans },
+  forgot: {
+    textAlign: 'center',
+    fontSize: 12.5,
+    color: colors.textDim,
+    marginTop: 16,
+    fontFamily: fonts.sans,
+  },
   hint: {
     marginTop: 'auto',
     flexDirection: 'row',

@@ -91,10 +91,18 @@ export function TicketsABM() {
   // Los catálogos se piden una sola vez: alimentan los chips de filtro y la
   // resolución de IDs a nombres. Sin ellos la lista mostraría "Vehículo #3".
   useEffect(() => {
-    Promise.all([getAdminVehiculos(), getAdminHerramientas(), getAdminEmpleados(), getProveedores()])
+    Promise.all([
+      getAdminVehiculos(),
+      getAdminHerramientas(),
+      getAdminEmpleados(),
+      getProveedores(),
+    ])
       .then(([vehiculos, herramientas, empleados, proveedores]) =>
-        setCatalogos({ vehiculos, herramientas, empleados, proveedores }))
-      .catch((e) => setError(e instanceof Error ? e.message : 'No se pudieron cargar los catálogos.'));
+        setCatalogos({ vehiculos, herramientas, empleados, proveedores }),
+      )
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : 'No se pudieron cargar los catálogos.'),
+      );
   }, []);
 
   // Misma guarda que useFetch: cada carga se numera y solo la más reciente
@@ -317,8 +325,10 @@ function parseMonto(texto: string): number | null {
  */
 function toRow(t: Ticket, cat: Catalogos): Row & { operario: string } {
   // Exactamente uno de los dos viene con valor (ver services/tickets.ts).
-  const vehiculo = t.idVehiculo != null ? cat.vehiculos.find((v) => v.id === t.idVehiculo) : undefined;
-  const herramienta = t.idHerramienta != null ? cat.herramientas.find((h) => h.id === t.idHerramienta) : undefined;
+  const vehiculo =
+    t.idVehiculo != null ? cat.vehiculos.find((v) => v.id === t.idVehiculo) : undefined;
+  const herramienta =
+    t.idHerramienta != null ? cat.herramientas.find((h) => h.id === t.idHerramienta) : undefined;
   const proveedor = cat.proveedores.find((p) => p.id === t.idProveedor);
   const empleado = cat.empleados.find((e) => e.username === t.empleadoUsername);
   return {
@@ -351,7 +361,13 @@ function toRow(t: Ticket, cat: Catalogos): Row & { operario: string } {
 const styles = StyleSheet.create({
   // Los tres de abajo son los mismos valores que usa la analítica: el panel de
   // filtros tiene que leerse como el mismo componente en las dos pestañas.
-  caption: { fontSize: 11.5, color: colors.textFaint, marginBottom: 16, marginTop: 8, fontFamily: fonts.sans },
+  caption: {
+    fontSize: 11.5,
+    color: colors.textFaint,
+    marginBottom: 16,
+    marginTop: 8,
+    fontFamily: fonts.sans,
+  },
   panel: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -360,7 +376,13 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
-  panelLabel: { fontSize: 10, letterSpacing: 1.5, color: colors.primary, marginBottom: 10, fontFamily: fonts.sansSemi },
+  panelLabel: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: colors.primary,
+    marginBottom: 10,
+    fontFamily: fonts.sansSemi,
+  },
   filterRow: { flexDirection: 'row', gap: 10 },
   filterRowItem: { flex: 1 },
   fieldHint: { fontSize: 11, color: colors.textFaint, marginBottom: 6, fontFamily: fonts.sans },
@@ -390,7 +412,13 @@ const styles = StyleSheet.create({
   checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   checkboxTick: { fontSize: 12, color: colors.bgDeep, fontFamily: fonts.sansSemi },
   toggleText: { fontSize: 12, color: colors.textMuted, fontFamily: fonts.sans },
-  count: { fontSize: 11, color: colors.textFaint, fontFamily: fonts.sans, marginTop: 16, marginBottom: 10 },
+  count: {
+    fontSize: 11,
+    color: colors.textFaint,
+    fontFamily: fonts.sans,
+    marginTop: 16,
+    marginBottom: 10,
+  },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -407,7 +435,13 @@ const styles = StyleSheet.create({
   cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   cardName: { fontFamily: fonts.displayBold, fontSize: 15, color: colors.text },
   cardSub: { fontSize: 11, color: colors.textFaint, marginTop: 2, fontFamily: fonts.sans },
-  anuladoTag: { fontSize: 10, color: colors.danger, marginTop: 4, fontFamily: fonts.sansSemi, letterSpacing: 0.5 },
+  anuladoTag: {
+    fontSize: 10,
+    color: colors.danger,
+    marginTop: 4,
+    fontFamily: fonts.sansSemi,
+    letterSpacing: 0.5,
+  },
   chevron: { fontSize: 22, color: colors.textDim, marginLeft: 4 },
   iconBtn: {
     width: 34,

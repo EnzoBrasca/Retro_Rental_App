@@ -21,9 +21,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "allowBackup": false,
-      "permissions": [
-        "android.permission.CAMERA"
-      ]
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "bundler": "metro"

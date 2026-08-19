@@ -66,7 +66,11 @@ function FilterRow<T extends string>({
   onChange: (v: T | null) => void;
 }) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.filterRow}
+    >
       {options.map((o) => {
         const active = value === o.key;
         return (
@@ -75,7 +79,9 @@ function FilterRow<T extends string>({
             onPress={() => onChange(o.key)}
             style={[styles.filterChip, active && styles.filterChipActive]}
           >
-            <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{o.label}</Text>
+            <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -132,28 +138,30 @@ const VehiculoCard = memo(({ item, onOpen }: { item: Vehiculo; onOpen: (id: numb
 // Card de una herramienta. No tiene estado ni operario asignado (no hay
 // contador ni asignación como en un vehículo), así que solo muestra nombre y
 // capacidad, y siempre está disponible para cargarle combustible.
-const HerramientaCard = memo(({ item, onOpen }: { item: Herramienta; onOpen: (id: number) => void }) => (
-  <Pressable style={styles.card} onPress={() => onOpen(item.id)}>
-    <View style={styles.cardTop}>
-      <View style={styles.cardIcon}>
-        <Text style={{ fontSize: 22 }}>🔧</Text>
+const HerramientaCard = memo(
+  ({ item, onOpen }: { item: Herramienta; onOpen: (id: number) => void }) => (
+    <Pressable style={styles.card} onPress={() => onOpen(item.id)}>
+      <View style={styles.cardTop}>
+        <View style={styles.cardIcon}>
+          <Text style={{ fontSize: 22 }}>🔧</Text>
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.cardName} numberOfLines={1}>
+            {item.nombre}
+          </Text>
+          <Text style={styles.cardSub}>Herramienta · Capacidad {item.capacidad} L</Text>
+        </View>
       </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={styles.cardName} numberOfLines={1}>
-          {item.nombre}
-        </Text>
-        <Text style={styles.cardSub}>Herramienta · Capacidad {item.capacidad} L</Text>
-      </View>
-    </View>
 
-    <View style={styles.cardFooter}>
-      <Text style={styles.operario} numberOfLines={1}>
-        Combustible a elección en la carga
-      </Text>
-      <Text style={styles.cardHint}>Registrar carga →</Text>
-    </View>
-  </Pressable>
-));
+      <View style={styles.cardFooter}>
+        <Text style={styles.operario} numberOfLines={1}>
+          Combustible a elección en la carga
+        </Text>
+        <Text style={styles.cardHint}>Registrar carga →</Text>
+      </View>
+    </Pressable>
+  ),
+);
 
 function Stat({ value, label, color }: { value: string; label: string; color: string }) {
   return (
@@ -203,7 +211,10 @@ export default function FlotaScreen() {
 
   // Solo activos (los dados de baja no operan). Los filtros se aplican en
   // cliente: ya tenemos todo el catálogo en memoria, es barato.
-  const activos = useMemo(() => (data?.vehiculos ?? []).filter((v) => v.fechaBaja === null), [data]);
+  const activos = useMemo(
+    () => (data?.vehiculos ?? []).filter((v) => v.fechaBaja === null),
+    [data],
+  );
   const activasHerramientas = useMemo(
     () => (data?.herramientas ?? []).filter((h) => (h.fechaBaja ?? null) === null),
     [data],
@@ -231,7 +242,9 @@ export default function FlotaScreen() {
     if (tipoF !== null && tipoF !== TIPO_HERRAMIENTA) return [];
     if (combF !== null) return [];
     const needle = search.trim().toLowerCase();
-    return activasHerramientas.filter((h) => needle === '' || h.nombre.toLowerCase().includes(needle));
+    return activasHerramientas.filter(
+      (h) => needle === '' || h.nombre.toLowerCase().includes(needle),
+    );
   }, [activasHerramientas, search, tipoF, combF]);
 
   const operativos = activos.filter((v) => v.estado !== 'EN_MANTENIMIENTO').length;
@@ -301,7 +314,7 @@ export default function FlotaScreen() {
           autoCapitalize="characters"
           autoCorrect={false}
         />
-        
+
         <FilterRow options={TIPO_FILTERS} value={tipoF} onChange={setTipoF} />
         <FilterRow options={COMBUSTIBLE_FILTERS} value={combF} onChange={setCombF} />
 
@@ -345,7 +358,12 @@ export default function FlotaScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
   greeting: { fontSize: 12, color: colors.textFaint, fontFamily: fonts.sans },
   h1: { fontFamily: fonts.displayBold, fontSize: 26, color: colors.text, marginTop: 2 },
   helpBtn: {

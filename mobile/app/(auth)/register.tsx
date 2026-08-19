@@ -112,7 +112,10 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.brandRow}>
             <Logo size={46} />
@@ -133,21 +136,48 @@ export default function RegisterScreen() {
             <Input value={nombre} onChangeText={setNombre} editable={!loading} placeholder="Juan" />
           </Field>
           <Field label="Apellido">
-            <Input value={apellido} onChangeText={setApellido} editable={!loading} placeholder="Pérez" />
+            <Input
+              value={apellido}
+              onChangeText={setApellido}
+              editable={!loading}
+              placeholder="Pérez"
+            />
           </Field>
           <Field label="Documento">
-            <Input value={documento} onChangeText={setDocumento} editable={!loading} keyboardType="number-pad" placeholder="30123456" />
+            <Input
+              value={documento}
+              onChangeText={setDocumento}
+              editable={!loading}
+              keyboardType="number-pad"
+              placeholder="30123456"
+            />
           </Field>
           <Field label="Contraseña">
-            <Input value={password} onChangeText={setPassword} editable={!loading} secureTextEntry placeholder="••••••••" />
+            <Input
+              value={password}
+              onChangeText={setPassword}
+              editable={!loading}
+              secureTextEntry
+              placeholder="••••••••"
+            />
           </Field>
 
           <Text style={styles.section}>Teléfono</Text>
           <Field label="Código de área">
-            <Input value={codigoArea} onChangeText={setCodigoArea} editable={!loading} keyboardType="number-pad" />
+            <Input
+              value={codigoArea}
+              onChangeText={setCodigoArea}
+              editable={!loading}
+              keyboardType="number-pad"
+            />
           </Field>
           <Field label="Número">
-            <Input value={telefonoNumero} onChangeText={setTelefonoNumero} editable={!loading} keyboardType="number-pad" />
+            <Input
+              value={telefonoNumero}
+              onChangeText={setTelefonoNumero}
+              editable={!loading}
+              keyboardType="number-pad"
+            />
           </Field>
 
           {error && <Text style={styles.error}>{error}</Text>}
@@ -187,13 +217,7 @@ function Input(props: {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   keyboardType?: KeyboardTypeOptions;
 }) {
-  return (
-    <TextInput
-      style={styles.input}
-      placeholderTextColor={colors.textDim}
-      {...props}
-    />
-  );
+  return <TextInput style={styles.input} placeholderTextColor={colors.textDim} {...props} />;
 }
 
 const styles = StyleSheet.create({
@@ -201,8 +225,20 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 26 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 8 },
-  subtitle: { fontSize: 13, color: colors.textFaint, marginBottom: 26, lineHeight: 20, fontFamily: fonts.sans },
-  tabs: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md, padding: 4, marginBottom: 22 },
+  subtitle: {
+    fontSize: 13,
+    color: colors.textFaint,
+    marginBottom: 26,
+    lineHeight: 20,
+    fontFamily: fonts.sans,
+  },
+  tabs: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 4,
+    marginBottom: 22,
+  },
   tab: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: 'center' },
   tabActive: { backgroundColor: colors.primary },
   tabText: { fontSize: 13, fontFamily: fonts.sansSemi, color: colors.textMuted },

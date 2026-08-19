@@ -53,10 +53,7 @@ export const HISTORIAL_PAGE_SIZE = 30;
  * yacimiento eso no tenía techo. Mismo contrato `Paged<T>` que el listado del
  * admin.
  */
-export function getMisTickets(
-  page = 0,
-  size = HISTORIAL_PAGE_SIZE,
-): Promise<Paged<Ticket>> {
+export function getMisTickets(page = 0, size = HISTORIAL_PAGE_SIZE): Promise<Paged<Ticket>> {
   return api.get<Paged<Ticket>>(`/tickets/me?page=${page}&size=${size}`);
 }
 
@@ -180,7 +177,10 @@ export interface CreateTicketPayload {
  * el uri local de la imagen (cámara o galería) y es OPCIONAL: si no viene, el
  * ticket se crea sin comprobante (el backend acepta ticketFoto null).
  */
-export function createTicket(payload: CreateTicketPayload, fotoUri?: string | null): Promise<Ticket> {
+export function createTicket(
+  payload: CreateTicketPayload,
+  fotoUri?: string | null,
+): Promise<Ticket> {
   const form = new FormData();
   form.append('litros', String(payload.litros));
   // Uno de los dos, nunca ambos (ver CreateTicketPayload).
