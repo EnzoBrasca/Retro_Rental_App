@@ -237,6 +237,7 @@ public class VehiculoService {
             vehiculo.getTipoVehiculo().unidadUso(),
             vehiculo.getConsumoPromedio(),
             vehiculo.getConsumoReciente(),
+            vehiculo.getFechaUltimoMantenimiento(),
             vehiculo.getFechaBaja(),
             operario != null ? operario.getId() : null,
             operario != null ? operario.getNombre() : null,
