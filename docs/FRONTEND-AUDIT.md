@@ -58,12 +58,16 @@ en la máquina de quien programó.
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 3 | 0 | 0 |
 | Alta | 6 | 3 | 1 | 2 |
-| Media | 8 | 0 | 0 | 8 |
-| Baja | 14 | 1 | 0 | 13 |
-| **Total** | **31** | **7** | **1** | **23** |
+| Media | 8 | 2 | 0 | 6 |
+| Baja | 14 | 2 | 1 | 11 |
+| **Total** | **31** | **10** | **2** | **19** |
 
-**Fases 1, 2 y 3 cerradas** (rama `fix/fase-1-frontend-criticos`, que las acumula: no se
-despliega hasta terminar la auditoría, para no generar un APK por fase).
+**Fases 1, 2 y 3 cerradas, Fase 4 en curso** (rama `fix/fase-1-frontend-criticos`, que las
+acumula: no se despliega hasta terminar la auditoría, para no generar un APK por fase).
+
+La Fase 4 arrancó por **corrección antes que severidad**: `DATA-02` estaba catalogado como
+media y resultó ser del mismo orden que las críticas (ver su nota). Hecho hasta ahora:
+`DATA-02`, `PERF-04`, `NAV-00`, `UI-07` parcial.
 
 **Ya no se verifica leyendo.** Desde la Fase 3 hay una red real:
 
@@ -108,6 +112,8 @@ tenerlo presente antes de tomar un hallazgo como un hecho:
 | `useFetch` tiene 8 consumidores, no 6 | `STATE-01` |
 | El warning de setState sobre componente desmontado ya no existe (React 19) | `STATE-01` |
 | Un filtro muerto que el audit no vio, encontrado por el linter en su primera corrida | `BLD-00` |
+| `DATA-02` está **mal clasificado**: es del orden de las críticas, no una media | `DATA-02` |
+| `NAV-00` necesita `useFocusEffect`, no `useEffect` — el hallazgo no lo dice y con `useEffect` el arreglo rompe las otras pestañas | `NAV-00` |
 
 Esta auditoría se hizo **leyendo**, no ejecutando: es un mapa, no un territorio. Cada
 hallazgo hay que verificarlo contra el código antes de implementarlo. Desde la Fase 3 eso es
@@ -792,7 +798,17 @@ memoizados. Es barato, pero es inconsistencia.
 
 ---
 
-## [ ] NAV-00 — El botón atrás de Android sale de la pantalla de carga y se lleva el formulario
+## [x] NAV-00 — El botón atrás de Android sale de la pantalla de carga y se lleva el formulario
+
+> **Resuelto** con `BackHandler`: si `stage !== 'form'`, vuelve al formulario y consume el
+> evento.
+>
+> **Detalle que este hallazgo no tenía:** el listener va en `useFocusEffect`, **no** en
+> `useEffect`. La pantalla es un `Tabs.Screen` con `href: null` y queda MONTADA entre
+> entradas, así que registrarlo al montar dejaría el botón atrás interceptado también desde
+> las otras pestañas.
+>
+> Queda pendiente el complemento (confirmar antes de abandonar con datos cargados).
 
 **Dónde:** `app/(empleado)/escanear.tsx`, etapas `capture` y `analyzing`.
 
@@ -911,7 +927,24 @@ que el caso no debería existir — y si existiera, un estado vacío es la respu
 
 ---
 
-## [ ] DATA-02 — `replace(',', '.')` rompe con el separador de miles argentino
+## [x] DATA-02 — `replace(',', '.')` rompe con el separador de miles argentino
+
+> **Resuelto, y RECLASIFICADO.** Estaba catalogado como media: no lo es. Verificado en
+> código, `12.500,75` entraba como `12,5` (un precio por litro con error de mil veces) y
+> `parseInt('1.523')` daba `1` en la lectura del odómetro. Es el mismo vector de corrupción
+> silenciosa que `STATE-00`, que sí era crítica.
+>
+> `parseNumero` y `parseEntero` viven en `constants/labels.ts`, al lado de `formatMoney` que
+> ya sabe de `es-AR`, y reemplazan las 4 copias de `replace(',', '.')` y los 4 `parseInt`.
+> Además **rechazan la basura** en vez de recortarla: `parseFloat('152340km')` devolvía
+> `152340` sin chistar.
+>
+> El punto solo es ambiguo (`1.234` son 1234 litros, `58.5` son 58,5) y se resuelve por la
+> forma del grupo: 3 dígitos después, 1 a 3 antes y sin cero adelante es separador de miles.
+>
+> **15 tests, escritos antes de la implementación** — uno agarró que `12,5,3` pasaba como
+> `1253` por no validar la forma de los grupos. Queda pendiente el complemento sugerido
+> (rango razonable por campo).
 
 **Dónde:** `app/(empleado)/escanear.tsx:233` y `:250`,
 `app/(administrador)/index.tsx:534`, `components/admin/TicketsABM.tsx:283`.
@@ -1053,7 +1086,15 @@ y con el traslado de `TUTORIAL_STEPS` fuera de `mock.ts` (`DEAD-00`).
 
 ---
 
-## [ ] UI-07 — El historial dice "Todavía no registraste cargas" cuando en realidad el filtro no matcheó
+## [~] UI-07 — El historial dice "Todavía no registraste cargas" cuando en realidad el filtro no matcheó
+
+> **Resuelto el síntoma, pendiente la causa.** El vacío ya distingue "todavía no registraste
+> cargas" de "no hay cargas en este período".
+>
+> **Sigue abierto el arreglo de fondo:** el filtro de fecha se aplica en cliente sobre las
+> páginas ya traídas, así que "Este mes" significa "el mes, dentro de lo que bajé hasta
+> ahora". Mandarlo al backend como parámetro de `GET /tickets/me` es la única forma de que
+> signifique el mes. Cruza al backend, por eso no entró en esta tanda.
 
 **Dónde:** `app/(empleado)/historial.tsx:223`.
 
@@ -1303,7 +1344,12 @@ disponible en vez de un 260 fijo.
 
 ---
 
-## [ ] PERF-04 — `BarChart` divide por cero cuando todos los valores son cero
+## [x] PERF-04 — `BarChart` divide por cero cuando todos los valores son cero
+
+> **Resuelto.** La escala se extrajo a `escalaMaxima`, que nunca devuelve 0 y además cubre la
+> lista vacía (`Math.max()` sin argumentos devuelve `-Infinity`). Se extrajo como función
+> pura a propósito: así se prueba sin renderizar. 4 tests. La clave de las barras pasó de
+> `key={i}` a la etiqueta.
 
 **Dónde:** `components/fuel/BarChart.tsx:8` y `:18`.
 
