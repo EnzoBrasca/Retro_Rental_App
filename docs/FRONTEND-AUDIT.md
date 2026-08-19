@@ -57,13 +57,17 @@ en la máquina de quien programó.
 | Severidad | Total | Resueltas | Parciales | Pendientes |
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 3 | 0 | 0 |
-| Alta | 6 | 0 | 0 | 6 |
+| Alta | 6 | 2 | 1 | 3 |
 | Media | 8 | 0 | 0 | 8 |
-| Baja | 14 | 0 | 0 | 14 |
-| **Total** | **31** | **3** | **0** | **28** |
+| Baja | 14 | 1 | 0 | 13 |
+| **Total** | **31** | **6** | **1** | **24** |
 
-**Fase 1 cerrada** (rama `fix/fase-1-frontend-criticos`): las tres críticas resueltas. El
-backend pasó de 304 a 305 tests, y `tsc --noEmit` sigue limpio.
+**Fases 1 y 2 cerradas** (rama `fix/fase-1-frontend-criticos`, que las acumula: no se
+despliega hasta terminar la auditoría, para no generar un APK por fase). El backend pasó de
+304 a 305 tests, y `tsc --noEmit` sigue limpio.
+
+`STATE-01` queda en `[~]`: la condición de carrera está resuelta, pero la cancelación real
+de la conexión (`AbortController`) se difiere.
 
 Una corrección a la propia auditoría: al implementar `STATE-00` se verificó que **la mitad
 del hallazgo no era válida** (el arrastre de `precioEditado`). El detalle está escrito en el
@@ -348,7 +352,19 @@ registrada"* — y que el backend trate el null como "no tocar". Es feo, pero de
 
 # ALTAS
 
-## [ ] UI-00 — Un registro puede terminar con la cuenta creada y el usuario sin saber su username
+## [x] UI-00 — Un registro puede terminar con la cuenta creada y el usuario sin saber su username
+
+> **Resuelto.** El `login(res)` corre antes del `Alert`, que quedó como aviso con
+> `cancelable: false`. La sesión ya no depende de que alguien toque un botón.
+>
+> **Un matiz que apareció al implementarlo:** mover el `login` dentro del `try` del registro
+> creaba un pozo nuevo — si `login` falla (escritura a SecureStore), el `catch` habría dicho
+> *"No se pudo crear la cuenta"* con la cuenta YA creada, mandando al usuario a reintentar
+> con un documento tomado. El `login` va en su propio `try` interno: pase lo que pase con la
+> sesión, el Alert con el username se muestra igual.
+>
+> Queda pendiente el complemento sugerido (botón de copiar el username en Perfil). El dato
+> ya es visible ahí (`ProfileView` lo pinta desde `user.username`), así que no es urgente.
 
 **Dónde:** `app/(auth)/register.tsx:80-92`.
 
@@ -385,7 +401,21 @@ copiar, así deja de ser un dato de una sola oportunidad.
 
 ---
 
-## [ ] STATE-01 — `useFetch` no cancela ni descarta respuestas viejas: condición de carrera en cada filtro
+## [~] STATE-01 — `useFetch` no cancela ni descarta respuestas viejas: condición de carrera en cada filtro
+
+> **Resuelto en la corrección, parcial en la red.** `useFetch` numera cada ejecución y solo
+> la más reciente escribe estado; también descarta si el componente se desmontó. Arregla a
+> los **8** consumidores de una (el hallazgo decía 6: hoy son 8). El contrato de `deps` quedó
+> documentado en el JSDoc del hook.
+>
+> **Queda pendiente el `AbortController` real.** Esto descarta la respuesta, no corta la
+> conexión: sobre la red del yacimiento se siguen bajando bytes que no se usan. Cortarla de
+> verdad exige pasar un `signal` por `api.ts` y por cada función de `services/`, y por los 8
+> consumidores — un refactor ancho sobre código sin tests. Va después de `BLD-00`.
+>
+> Corrección menor al hallazgo: el warning de setState sobre un componente desmontado que
+> menciona más abajo ya no existe — React 19 lo removió. La guarda se mantiene igual, pero
+> por no hacer trabajo al pedo, no por el warning.
 
 **Dónde:** `hooks/useFetch.ts:14-30`. Impacta a **los seis consumidores** del hook.
 
@@ -457,7 +487,17 @@ cambia `deps`; todo lo que `fn` lea de afuera tiene que estar en `deps`."*
 
 ---
 
-## [ ] PERF-00 — `TicketsABM`: un request por tecla en el filtro de monto, sin debounce ni guarda de carrera
+## [x] PERF-00 — `TicketsABM`: un request por tecla en el filtro de monto, sin debounce ni guarda de carrera
+
+> **Resuelto.** Debounce de 350 ms sobre monto mín/máx antes de que entren a `filtros`, y la
+> misma guarda de generación de `useFetch` dentro de `cargar`. Los desplegables siguen
+> disparando al instante: son selecciones discretas, no tecleo.
+>
+> **No** se migró `TicketsABM` al `useFetch` compartido: siguen existiendo dos
+> implementaciones de paginación (esta y la de `historial.tsx`). Decisión explícita — el
+> hook no sabe paginar y reescribir la carga del ABM sin tests era más riesgo que el que
+> resuelve. Candidato a unificar después de `BLD-00`, junto con los dos mapeadores
+> `Ticket → Row` de `DATA-00`.
 
 **Dónde:** `components/admin/TicketsABM.tsx:59-103`.
 
@@ -1123,7 +1163,9 @@ como hermano detrás de la hoja, en vez de como padre.
 
 ---
 
-## [ ] BLD-01 — `AGENTS.md` manda leer los docs de Expo 56; está instalado el 54
+## [x] BLD-01 — `AGENTS.md` manda leer los docs de Expo 56; está instalado el 54
+
+> **Resuelto**: `mobile/AGENTS.md` apunta a `https://docs.expo.dev/versions/v54.0.0/`.
 
 **Dónde:** `mobile/AGENTS.md` contra `mobile/package.json`.
 
