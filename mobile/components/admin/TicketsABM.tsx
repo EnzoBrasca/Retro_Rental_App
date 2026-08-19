@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '../../constants/theme';
 import { FilterDropdown } from '../fuel/FilterDropdown';
@@ -17,6 +17,10 @@ import { getAdminEmpleados, type Empleado } from '../../services/empleados';
 import { getProveedores, type Proveedor } from '../../services/catalogos';
 
 const PAGE_SIZE = 20;
+
+// Retardo antes de que un monto tipeado dispare la consulta. 350 ms alcanza
+// para cubrir el tecleo continuo sin que se sienta trabado al terminar.
+const DEBOUNCE_MONTO_MS = 350;
 
 // Sentinel de "todos" para los OptionChips, que son single-select y no admiten
 // null como valor seleccionable. Mismo criterio que el filtro de la analítica.
@@ -57,16 +61,31 @@ export function TicketsABM() {
   const [montoMax, setMontoMax] = useState('');
   const [incluirAnulados, setIncluirAnulados] = useState(false);
 
+  // Los montos entran a los filtros CON RETARDO. Escribir "150000" en el input
+  // son seis pulsaciones, y cada una disparaba su propia consulta paginada
+  // contra la tabla que más crece del sistema: 1, 15, 150, 1500, 15000, 150000.
+  // Los desplegables de operario y vehículo no necesitan esto: son selecciones
+  // discretas, no tecleo.
+  const [montoMinAplicado, setMontoMinAplicado] = useState('');
+  const [montoMaxAplicado, setMontoMaxAplicado] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setMontoMinAplicado(montoMin);
+      setMontoMaxAplicado(montoMax);
+    }, DEBOUNCE_MONTO_MS);
+    return () => clearTimeout(id);
+  }, [montoMin, montoMax]);
+
   const filtros = useMemo<AdminTicketFilters>(
     () => ({
       empleadoId: empleadoId === TODOS ? null : empleadoId,
       vehiculoId: vehiculoId === TODOS ? null : vehiculoId,
-      montoMin: parseMonto(montoMin),
-      montoMax: parseMonto(montoMax),
+      montoMin: parseMonto(montoMinAplicado),
+      montoMax: parseMonto(montoMaxAplicado),
       incluirAnulados,
       size: PAGE_SIZE,
     }),
-    [empleadoId, vehiculoId, montoMin, montoMax, incluirAnulados],
+    [empleadoId, vehiculoId, montoMinAplicado, montoMaxAplicado, incluirAnulados],
   );
 
   // Los catálogos se piden una sola vez: alimentan los chips de filtro y la
@@ -78,20 +97,31 @@ export function TicketsABM() {
       .catch((e) => setError(e instanceof Error ? e.message : 'No se pudieron cargar los catálogos.'));
   }, []);
 
+  // Misma guarda que useFetch: cada carga se numera y solo la más reciente
+  // escribe. Sin esto la respuesta de un filtro viejo puede llegar después de la
+  // del nuevo y dejar la lista mostrando tickets que no corresponden al filtro
+  // que dice la pantalla. En una rendición de gastos, eso es peor que un error.
+  const generacion = useRef(0);
+
   const cargar = useCallback(
     async (destino: number) => {
+      const propia = ++generacion.current;
+      const vigente = () => generacion.current === propia;
       setLoading(true);
       setError(null);
       try {
         const res = await getAdminTickets({ ...filtros, page: destino });
+        if (!vigente()) return;
         setTickets(res.content);
         setPage(res.page.number);
         setTotalPages(res.page.totalPages);
         setTotal(res.page.totalElements);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'No se pudieron cargar los tickets.');
+        if (vigente()) {
+          setError(e instanceof Error ? e.message : 'No se pudieron cargar los tickets.');
+        }
       } finally {
-        setLoading(false);
+        if (vigente()) setLoading(false);
       }
     },
     [filtros],
