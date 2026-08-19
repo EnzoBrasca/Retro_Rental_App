@@ -24,7 +24,16 @@ const FILTERS: Filtro[] = ['Todos', 'Esta semana', 'Este mes'];
 // combustible, precio/L y la foto del ticket) se abre al tocarla.
 const LoadRow = memo(function LoadRow({ item, onPress }: { item: Row; onPress: (r: Row) => void }) {
   return (
-    <Pressable style={styles.card} onPress={() => onPress(item)}>
+    <Pressable
+      style={styles.card}
+      onPress={() => onPress(item)}
+      accessibilityRole="button"
+      // La card solo muestra litros e importe; el resto (proveedor, fecha,
+      // combustible) está en el detalle que abre. El label dice de qué carga se
+      // trata para no anunciar dos números sueltos sin contexto.
+      accessibilityLabel={`Carga de ${item.litros} litros en ${item.identificador}, ${formatMoney(item.costo)}, ${item.fecha}`}
+      accessibilityHint="Abre el detalle de la carga"
+    >
       <View style={styles.litrosBox}>
         <Text style={styles.litros}>{item.litros}</Text>
         <Text style={styles.litrosUnit}>L</Text>

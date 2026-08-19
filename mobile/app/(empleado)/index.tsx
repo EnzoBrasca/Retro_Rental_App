@@ -124,6 +124,12 @@ const VehiculoCard = memo(function VehiculoCard({
       style={[styles.card, enMantenimiento && styles.cardDisabled]}
       onPress={() => onOpen(item.id)}
       disabled={enMantenimiento}
+      accessibilityRole="button"
+      accessibilityLabel={`${tituloVehiculo(item)}, ${estadoLabel[item.estado]}. ${operarioText}`}
+      accessibilityState={{ disabled: enMantenimiento }}
+      accessibilityHint={
+        enMantenimiento ? undefined : 'Abre el registro de carga para este vehículo'
+      }
     >
       <View style={styles.cardTop}>
         <View style={styles.cardIcon}>
@@ -165,9 +171,15 @@ const HerramientaCard = memo(function HerramientaCard({
   onOpen: (id: number) => void;
 }) {
   return (
-    <Pressable style={styles.card} onPress={() => onOpen(item.id)}>
+    <Pressable
+      style={styles.card}
+      onPress={() => onOpen(item.id)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.nombre}, herramienta, capacidad ${item.capacidad} litros`}
+      accessibilityHint="Abre el registro de carga para esta herramienta"
+    >
       <View style={styles.cardTop}>
-        <View style={styles.cardIcon}>
+        <View style={styles.cardIcon} accessibilityElementsHidden importantForAccessibility="no">
           <Text style={{ fontSize: 22 }}>🔧</Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -346,7 +358,12 @@ export default function FlotaScreen() {
             <Text style={styles.backAdminText}>‹ Admin</Text>
           </Pressable>
         )}
-        <Pressable style={styles.helpBtn} onPress={open}>
+        <Pressable
+          style={styles.helpBtn}
+          onPress={open}
+          accessibilityRole="button"
+          accessibilityLabel="Ver el tutorial"
+        >
           <Text style={styles.helpText}>?</Text>
         </Pressable>
       </View>

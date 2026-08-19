@@ -393,7 +393,12 @@ export default function EscanearScreen() {
       <View style={styles.cameraWrap}>
         <SafeAreaView style={styles.cameraHeader} edges={['top']}>
           <Text style={styles.cameraTitle}>FOTOGRAFIAR TICKET</Text>
-          <Pressable onPress={() => setStage('form')} hitSlop={10}>
+          <Pressable
+            onPress={() => setStage('form')}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Cerrar la cámara y volver al formulario"
+          >
             <Text style={styles.cameraClose}>✕</Text>
           </Pressable>
         </SafeAreaView>

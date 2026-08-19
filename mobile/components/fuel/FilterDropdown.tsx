@@ -72,7 +72,16 @@ export function FilterDropdown<T extends string | number>(props: FilterDropdownP
   return (
     <View>
       <Text style={styles.label}>{props.label}</Text>
-      <Pressable ref={triggerRef} style={styles.trigger} onPress={openDropdown}>
+      <Pressable
+        ref={triggerRef}
+        style={styles.trigger}
+        onPress={openDropdown}
+        accessibilityRole="button"
+        // El contenido visible del control es un texto truncado más un "▾". El
+        // label dice qué filtro es y qué tiene puesto ahora mismo.
+        accessibilityLabel={`Filtrar por ${props.label}, actualmente ${summary}`}
+        accessibilityState={{ expanded: open }}
+      >
         <Text style={styles.triggerText} numberOfLines={1}>
           {summary}
         </Text>
