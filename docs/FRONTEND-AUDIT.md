@@ -57,10 +57,10 @@ en la máquina de quien programó.
 | Severidad | Total | Resueltas | Parciales | Pendientes |
 | --- | --- | --- | --- | --- |
 | Crítica | 3 | 3 | 0 | 0 |
-| Alta | 6 | 3 | 1 | 2 |
-| Media | 8 | 2 | 0 | 6 |
-| Baja | 14 | 2 | 1 | 11 |
-| **Total** | **31** | **10** | **2** | **19** |
+| Alta | 6 | 4 | 2 | 0 |
+| Media | 8 | 6 | 0 | 2 |
+| Baja | 14 | 4 | 1 | 9 |
+| **Total** | **31** | **17** | **3** | **11** |
 
 **Fases 1, 2 y 3 cerradas, Fase 4 en curso** (rama `fix/fase-1-frontend-criticos`, que las
 acumula: no se despliega hasta terminar la auditoría, para no generar un APK por fase).
@@ -114,6 +114,8 @@ tenerlo presente antes de tomar un hallazgo como un hecho:
 | Un filtro muerto que el audit no vio, encontrado por el linter en su primera corrida | `BLD-00` |
 | `DATA-02` está **mal clasificado**: es del orden de las críticas, no una media | `DATA-02` |
 | `NAV-00` necesita `useFocusEffect`, no `useEffect` — el hallazgo no lo dice y con `useEffect` el arreglo rompe las otras pestañas | `NAV-00` |
+| `eslint-plugin-react-native-a11y` **no es instalable**: topa en ESLint 8 y el proyecto está en 9 | `A11Y-00` |
+| Los `Pressable` son **66**, no 67 | `A11Y-00` |
 
 Esta auditoría se hizo **leyendo**, no ejecutando: es un mapa, no un territorio. Cada
 hallazgo hay que verificarlo contra el código antes de implementarlo. Desde la Fase 3 eso es
@@ -563,7 +565,18 @@ implementaciones de paginación con los mismos dos bugs.
 
 ---
 
-## [ ] A11Y-00 — 67 controles táctiles, cero props de accesibilidad, y 24 de ellos son solo un glifo
+## [~] A11Y-00 — 67 controles táctiles, cero props de accesibilidad, y 24 de ellos son solo un glifo
+
+> **Resuelto lo que se anuncia mal, sin linter que lo sostenga.** De 0 a **54 props** en 9
+> archivos: la barra de tabs (`accessibilityRole="tab"` + `accessibilityState`), los botones
+> destructivos del admin (que ahora nombran su objetivo), navegación de período, anular
+> ticket, cerrar cámara y detalle, tutorial, el desplegable de filtros y las cards de flota
+> e historial. Los íconos decorativos quedan ocultos al lector.
+>
+> **`eslint-plugin-react-native-a11y` NO se pudo instalar.** Su última versión (3.5.1)
+> declara `peer eslint "^3 || … || ^8"` y el proyecto está en ESLint 9. No existe versión
+> compatible. Forzarlo daría una regla que no corre — exactamente lo que critica `BLD-00`.
+> Queda `[~]` por eso: la accesibilidad está puesta, pero nada impide que se pierda de nuevo.
 
 **Dónde:** todo el proyecto. Verificado: `rg "accessibilityLabel|accessibilityRole|accessibilityHint|accessible="` sobre `app/`, `components/`, `context/` y `hooks/` devuelve **cero resultados** en 6.336 líneas.
 
@@ -608,7 +621,13 @@ Como no hay linter (`BLD-00`), esto se va a volver a llenar. Al configurar ESLin
 
 ---
 
-## [ ] UI-01 — La pantalla de Perfil finge que guarda datos que no guarda
+## [x] UI-01 — La pantalla de Perfil finge que guarda datos que no guarda
+
+> **Resuelto por la vía honesta** (decisión del usuario): la pantalla pasa a solo lectura. Se
+> fueron los lápices que no persistían, el switch de notificaciones sin sistema detrás, el
+> "✓ Cuenta verificada" fijo y la obra inventada. Verificado en el backend que **no existe
+> ningún endpoint** para que un usuario edite sus propios datos. Cuando exista un `PUT /me`,
+> la edición vuelve con estado de guardado, error y reversión.
 
 **Dónde:** `components/fuel/ProfileView.tsx`, pantalla compartida entre operario y admin.
 
@@ -738,7 +757,16 @@ cobertura. El front está en cero. La misma app, dos estándares distintos.
 
 # MEDIAS
 
-## [ ] PERF-01 — La flota del operario se pinta con `ScrollView` + `.map()`: nada se virtualiza
+## [x] PERF-01 — La flota del operario se pinta con `ScrollView` + `.map()`: nada se virtualiza
+
+> **Resuelto.** La flota pasa a `SectionList`, que encaja con las dos secciones, con
+> `removeClippedSubviews`, `maxToRenderPerBatch` y `windowSize`. El buscador y los filtros van
+> en `ListHeaderComponent` **como elemento, no como función**: pasar una función remonta el
+> subárbol en cada render y el input pierde el foco a la primera tecla.
+>
+> **Es el cambio estructural más grande de la auditoría y no hay tests de componentes.**
+> Verificar a mano en el APK: scroll de la flota, foco del buscador al tipear, y los mensajes
+> de "no hay nada que coincida" con cada combinación de filtros.
 
 **Dónde:** `app/(empleado)/index.tsx:281-338`; el mismo patrón en
 `app/(administrador)/index.tsx` (flota, empleados, habilitados) y en `TicketsABM`.
@@ -768,7 +796,10 @@ menos urgente porque pagina de a 20, pero conviene por consistencia.
 
 ---
 
-## [ ] PERF-02 — `memo` neutralizado: las props nunca son estables
+## [x] PERF-02 — `memo` neutralizado: las props nunca son estables
+
+> **Resuelto** con `useCallback` en `openScan` y `openScanHerramienta`, más `useMemo` en
+> `operativos` y `enTaller`. Recién ahora el `memo` de las cards hace algo.
 
 **Dónde:** `app/(empleado)/index.tsx:89` y `:135`.
 
@@ -835,7 +866,11 @@ volver a sacar el ticket del bolsillo con las manos sucias.
 
 ---
 
-## [ ] DEAD-00 — `constants/Colors.ts` sin usar, y ~85% de `data/mock.ts` es código muerto
+## [x] DEAD-00 — `constants/Colors.ts` sin usar, y ~85% de `data/mock.ts` es código muerto
+
+> **Resuelto.** `data/mock.ts` (232 líneas) y `constants/Colors.ts` borrados. `TUTORIAL_STEPS`
+> se mudó a `constants/tutorial.ts` — es copy de producto, no un mock. Con eso se van también
+> el `export let` global mutable y los dos únicos `any` del proyecto.
 
 **Dónde:** `constants/Colors.ts` (11 líneas), `data/mock.ts` (127 líneas).
 
@@ -880,7 +915,11 @@ que hay pantallas todavía sin cablear.
 
 ---
 
-## [ ] UI-02 — Un mock maneja la pantalla de perfil real, acoplado por índice de array
+## [x] UI-02 — Un mock maneja la pantalla de perfil real, acoplado por índice de array
+
+> **Resuelto.** Los valores se derivan de `user` en cada render en vez de copiarse por índice
+> desde `PROFILE_FIELDS`. Eso resuelve además la nota del hallazgo anterior: una copia con
+> `useState(() => ...)` no se re-sincronizaba si `user` cambiaba después del montaje.
 
 **Dónde:** `components/fuel/ProfileView.tsx:32-42`.
 
@@ -1047,7 +1086,11 @@ campo miente sobre lo que hay guardado. Arreglar los dos juntos.
 
 # BAJAS
 
-## [ ] UI-05 — "¿Olvidaste tu contraseña?" no es un botón
+## [x] UI-05 — "¿Olvidaste tu contraseña?" no es un botón
+
+> **Resuelto.** Reemplazado por la verdad: *"Si no podés ingresar, pedile al administrador que
+> restablezca tu contraseña."* No hay flujo de recuperación en el backend, así que un link
+> sería otra promesa vacía.
 
 **Dónde:** `app/(auth)/login.tsx:131`.
 
@@ -1067,7 +1110,10 @@ ingresar, pedile al administrador que restablezca tu contraseña."* Que es la ve
 
 ---
 
-## [ ] UI-06 — El tutorial promete un cambio de idioma que no existe
+## [x] UI-06 — El tutorial promete un cambio de idioma que no existe
+
+> **Resuelto** al mudar el tutorial a `constants/tutorial.ts`: el paso 4 ya no promete editar
+> los datos (no persiste) ni cambiar el idioma (no hay i18n).
 
 **Dónde:** `data/mock.ts:64`.
 
