@@ -1,4 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  ReactNode,
+} from 'react';
 import { AppState } from 'react-native';
 import { AuthResponse } from '../services/auth';
 import { onUnauthorized, saveLastUsername } from '../services/session';
@@ -83,7 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // El backend puede rechazar el token aunque no haya vencido por reloj (secret
   // rotado, usuario eliminado). El 401 es la señal definitiva: cerramos sesión.
-  useEffect(() => onUnauthorized(() => { void logout(); }), [logout]);
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        void logout();
+      }),
+    [logout],
+  );
 
   // La sesión puede vencer con la app abierta en segundo plano. Al volver a
   // primer plano revisamos el reloj para no mostrar pantallas de un usuario
@@ -104,17 +118,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // El AuthResponse trae token + datos del usuario. sessionStorage se encarga
   // de separarlos: el token a SecureStore, el resto a AsyncStorage.
-  const login = async (data: AuthResponse) => {
+  const login = useCallback(async (data: AuthResponse) => {
     await saveSession(data);
     await saveLastUsername(data.username);
     setUser(data);
-  };
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
-      {children}
-    </AuthContext.Provider>
+  // El valor va memoizado: un objeto literal cambia de identidad en CADA render
+  // del provider, y este provider envuelve la app entera. Hoy se disimula porque
+  // su estado casi no cambia, pero el día que alguien le agregue estado que
+  // cambie seguido, re-renderiza todo consumidor de useAuth() del proyecto.
+  const value = useMemo(
+    () => ({ user, isLoading, login, logout }),
+    [user, isLoading, login, logout],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 // Hook de conveniencia: cualquier pantalla hace `const { user } = useAuth()`.

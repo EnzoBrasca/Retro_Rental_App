@@ -41,12 +41,27 @@ function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           const { Icon, label } = config;
 
           const onPress = () => {
-            const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
             if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
           };
 
           return (
-            <Pressable key={route.key} style={styles.tab} onPress={onPress}>
+            // Esta es la navegación principal de toda el área de operario. Sin
+            // el rol y el estado, para un lector de pantalla no hay pestañas:
+            // hay tres cosas tocables sin relación entre sí y sin forma de
+            // saber cuál está activa.
+            <Pressable
+              key={route.key}
+              style={styles.tab}
+              onPress={onPress}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: focused }}
+              accessibilityLabel={label}
+            >
               <Icon width={24} height={24} color={focused ? colors.bgDeep : 'rgba(0,0,0,0.5)'} />
               <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>{label}</Text>
             </Pressable>

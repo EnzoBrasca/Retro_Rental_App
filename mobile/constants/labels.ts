@@ -65,6 +65,87 @@ export function formatMoney(n: number): string {
   return '$' + Math.round(n).toLocaleString('es-AR');
 }
 
+/**
+ * Convierte a número un valor tipeado por una persona en un teclado numérico.
+ *
+ * POR QUÉ EXISTE. Cada formulario hacía `parseFloat(texto.replace(',', '.'))`.
+ * `String.replace` con un string reemplaza SOLO la primera ocurrencia y no toca
+ * los puntos de miles, así que con la convención argentina —punto para miles,
+ * coma para decimales— salían números válidos y equivocados:
+ *
+ *   "12.500,75"  ->  12,5        (un precio por litro con error de mil veces)
+ *   "1.234,5"    ->  1,234       (una carga de camión como 1,2 litros)
+ *
+ * Ninguno falla con un error: se guardan y siguen.
+ *
+ * Devuelve NaN si el texto no es un número, incluida la basura pegada al final
+ * ("152340km"), que `parseFloat` se comía sin chistar. Todos los llamadores ya
+ * validan con `<= 0`, `>= 0` o `Number.isFinite`, así que NaN los frena solo.
+ */
+export function parseNumero(texto: string): number {
+  const limpio = texto.trim();
+  // Solo dígitos, separadores y un signo adelante. Cualquier otra cosa es
+  // basura y se rechaza entera, en vez de recortarla.
+  if (!/^-?[\d.,]+$/.test(limpio)) return NaN;
+
+  const puntos = (limpio.match(/\./g) ?? []).length;
+  const comas = (limpio.match(/,/g) ?? []).length;
+
+  let decimal: '.' | ',' | null = null;
+  if (puntos > 0 && comas > 0) {
+    // Con los dos presentes manda el ÚLTIMO: cubre la convención argentina
+    // ("1.234,5") y también la inglesa ("1,234.5").
+    decimal = limpio.lastIndexOf(',') > limpio.lastIndexOf('.') ? ',' : '.';
+  } else if (comas === 1) {
+    decimal = ',';
+  } else if (puntos === 1) {
+    // UN PUNTO SOLO ES AMBIGUO: "1.234" son 1234 litros, pero "58.5" son 58,5.
+    // Se resuelve por la forma del grupo: exactamente 3 dígitos después, 1 a 3
+    // antes y sin cero adelante es un separador de miles ("0.500" no lo es,
+    // nadie escribe cero como millar). Cualquier otra forma es un decimal.
+    decimal = /^-?[1-9]\d{0,2}\.\d{3}$/.test(limpio) ? null : '.';
+  } else if (comas > 1 || puntos > 1) {
+    // Varios separadores del mismo tipo solo tienen sentido como miles.
+    decimal = null;
+  }
+
+  const miles = decimal === ',' ? '.' : decimal === '.' ? ',' : puntos > 0 ? '.' : ',';
+
+  let entera = limpio;
+  let decimales = '';
+  if (decimal !== null) {
+    const corte = limpio.lastIndexOf(decimal);
+    entera = limpio.slice(0, corte);
+    decimales = limpio.slice(corte + 1);
+    if (!/^\d+$/.test(decimales)) return NaN;
+  }
+
+  // La parte entera tiene que ser o un número pelado, o grupos de miles BIEN
+  // formados. Sin este chequeo "12,5,3" pasaría como 1253: sacar los
+  // separadores sin mirar la forma convierte cualquier cosa en un número.
+  const sep = miles === '.' ? '\\.' : ',';
+  if (!new RegExp(`^-?(\\d+|\\d{1,3}(${sep}\\d{3})+)$`).test(entera)) return NaN;
+
+  const n = Number(entera.split(miles).join('') + (decimales ? `.${decimales}` : ''));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/**
+ * Igual que `parseNumero` pero para los campos que el backend guarda como
+ * entero: la lectura del odómetro/horómetro y la capacidad del tanque.
+ *
+ * `parseInt("1.523", 10)` devolvía 1 — una lectura de 1.523 km entraba como
+ * 1 km y le arruinaba al vehículo el cálculo de consumo real.
+ *
+ * Un decimal se REDONDEA, no se trunca. No se puede persistir (usoAcumulado es
+ * Integer en el backend), y redondear pierde menos de una unidad; truncar es lo
+ * que venía haciendo `parseInt`.
+ */
+export function parseEntero(texto: string): number {
+  const n = parseNumero(texto);
+  return Number.isFinite(n) ? Math.round(n) : NaN;
+}
+
 const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
 /** Formatea un ISO date (yyyy-mm-dd) a "06 Jul 2026". */

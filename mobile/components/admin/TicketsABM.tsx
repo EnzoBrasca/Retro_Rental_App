@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '../../constants/theme';
 import { FilterDropdown } from '../fuel/FilterDropdown';
 import { LoadDetailModal, type Row } from '../fuel/LoadDetailModal';
 import { Loading, ErrorState, EmptyState } from '../fuel/ScreenState';
-import { formatFecha, formatMoney } from '../../constants/labels';
+import { formatFecha, formatMoney, parseNumero } from '../../constants/labels';
 import {
   getAdminTickets,
   anularTicket,
@@ -17,6 +17,10 @@ import { getAdminEmpleados, type Empleado } from '../../services/empleados';
 import { getProveedores, type Proveedor } from '../../services/catalogos';
 
 const PAGE_SIZE = 20;
+
+// Retardo antes de que un monto tipeado dispare la consulta. 350 ms alcanza
+// para cubrir el tecleo continuo sin que se sienta trabado al terminar.
+const DEBOUNCE_MONTO_MS = 350;
 
 // Sentinel de "todos" para los OptionChips, que son single-select y no admiten
 // null como valor seleccionable. Mismo criterio que el filtro de la analítica.
@@ -57,41 +61,75 @@ export function TicketsABM() {
   const [montoMax, setMontoMax] = useState('');
   const [incluirAnulados, setIncluirAnulados] = useState(false);
 
+  // Los montos entran a los filtros CON RETARDO. Escribir "150000" en el input
+  // son seis pulsaciones, y cada una disparaba su propia consulta paginada
+  // contra la tabla que más crece del sistema: 1, 15, 150, 1500, 15000, 150000.
+  // Los desplegables de operario y vehículo no necesitan esto: son selecciones
+  // discretas, no tecleo.
+  const [montoMinAplicado, setMontoMinAplicado] = useState('');
+  const [montoMaxAplicado, setMontoMaxAplicado] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => {
+      setMontoMinAplicado(montoMin);
+      setMontoMaxAplicado(montoMax);
+    }, DEBOUNCE_MONTO_MS);
+    return () => clearTimeout(id);
+  }, [montoMin, montoMax]);
+
   const filtros = useMemo<AdminTicketFilters>(
     () => ({
       empleadoId: empleadoId === TODOS ? null : empleadoId,
       vehiculoId: vehiculoId === TODOS ? null : vehiculoId,
-      montoMin: parseMonto(montoMin),
-      montoMax: parseMonto(montoMax),
+      montoMin: parseMonto(montoMinAplicado),
+      montoMax: parseMonto(montoMaxAplicado),
       incluirAnulados,
       size: PAGE_SIZE,
     }),
-    [empleadoId, vehiculoId, montoMin, montoMax, incluirAnulados],
+    [empleadoId, vehiculoId, montoMinAplicado, montoMaxAplicado, incluirAnulados],
   );
 
   // Los catálogos se piden una sola vez: alimentan los chips de filtro y la
   // resolución de IDs a nombres. Sin ellos la lista mostraría "Vehículo #3".
   useEffect(() => {
-    Promise.all([getAdminVehiculos(), getAdminHerramientas(), getAdminEmpleados(), getProveedores()])
+    Promise.all([
+      getAdminVehiculos(),
+      getAdminHerramientas(),
+      getAdminEmpleados(),
+      getProveedores(),
+    ])
       .then(([vehiculos, herramientas, empleados, proveedores]) =>
-        setCatalogos({ vehiculos, herramientas, empleados, proveedores }))
-      .catch((e) => setError(e instanceof Error ? e.message : 'No se pudieron cargar los catálogos.'));
+        setCatalogos({ vehiculos, herramientas, empleados, proveedores }),
+      )
+      .catch((e) =>
+        setError(e instanceof Error ? e.message : 'No se pudieron cargar los catálogos.'),
+      );
   }, []);
+
+  // Misma guarda que useFetch: cada carga se numera y solo la más reciente
+  // escribe. Sin esto la respuesta de un filtro viejo puede llegar después de la
+  // del nuevo y dejar la lista mostrando tickets que no corresponden al filtro
+  // que dice la pantalla. En una rendición de gastos, eso es peor que un error.
+  const generacion = useRef(0);
 
   const cargar = useCallback(
     async (destino: number) => {
+      const propia = ++generacion.current;
+      const vigente = () => generacion.current === propia;
       setLoading(true);
       setError(null);
       try {
         const res = await getAdminTickets({ ...filtros, page: destino });
+        if (!vigente()) return;
         setTickets(res.content);
         setPage(res.page.number);
         setTotalPages(res.page.totalPages);
         setTotal(res.page.totalElements);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'No se pudieron cargar los tickets.');
+        if (vigente()) {
+          setError(e instanceof Error ? e.message : 'No se pudieron cargar los tickets.');
+        }
       } finally {
-        setLoading(false);
+        if (vigente()) setLoading(false);
       }
     },
     [filtros],
@@ -242,7 +280,12 @@ export function TicketsABM() {
               {/* Un ticket anulado no se vuelve a anular: el backend responde
                   409 y el botón no tendría a dónde llevar. */}
               {!anulado && (
-                <Pressable style={styles.iconBtn} onPress={() => anular(fila)}>
+                <Pressable
+                  style={styles.iconBtn}
+                  onPress={() => anular(fila)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Anular la carga de ${fila.litros} litros de ${fila.identificador}`}
+                >
                   <Text style={styles.iconBtnText}>✕</Text>
                 </Pressable>
               )}
@@ -277,7 +320,7 @@ export function TicketsABM() {
 
 // "" y basura no son 0: son "sin filtro". Devolver 0 filtraría por monto cero.
 function parseMonto(texto: string): number | null {
-  const n = parseFloat(texto.replace(',', '.'));
+  const n = parseNumero(texto);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -287,8 +330,10 @@ function parseMonto(texto: string): number | null {
  */
 function toRow(t: Ticket, cat: Catalogos): Row & { operario: string } {
   // Exactamente uno de los dos viene con valor (ver services/tickets.ts).
-  const vehiculo = t.idVehiculo != null ? cat.vehiculos.find((v) => v.id === t.idVehiculo) : undefined;
-  const herramienta = t.idHerramienta != null ? cat.herramientas.find((h) => h.id === t.idHerramienta) : undefined;
+  const vehiculo =
+    t.idVehiculo != null ? cat.vehiculos.find((v) => v.id === t.idVehiculo) : undefined;
+  const herramienta =
+    t.idHerramienta != null ? cat.herramientas.find((h) => h.id === t.idHerramienta) : undefined;
   const proveedor = cat.proveedores.find((p) => p.id === t.idProveedor);
   const empleado = cat.empleados.find((e) => e.username === t.empleadoUsername);
   return {
@@ -321,7 +366,13 @@ function toRow(t: Ticket, cat: Catalogos): Row & { operario: string } {
 const styles = StyleSheet.create({
   // Los tres de abajo son los mismos valores que usa la analítica: el panel de
   // filtros tiene que leerse como el mismo componente en las dos pestañas.
-  caption: { fontSize: 11.5, color: colors.textFaint, marginBottom: 16, marginTop: 8, fontFamily: fonts.sans },
+  caption: {
+    fontSize: 11.5,
+    color: colors.textFaint,
+    marginBottom: 16,
+    marginTop: 8,
+    fontFamily: fonts.sans,
+  },
   panel: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -330,7 +381,13 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
-  panelLabel: { fontSize: 10, letterSpacing: 1.5, color: colors.primary, marginBottom: 10, fontFamily: fonts.sansSemi },
+  panelLabel: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: colors.primary,
+    marginBottom: 10,
+    fontFamily: fonts.sansSemi,
+  },
   filterRow: { flexDirection: 'row', gap: 10 },
   filterRowItem: { flex: 1 },
   fieldHint: { fontSize: 11, color: colors.textFaint, marginBottom: 6, fontFamily: fonts.sans },
@@ -360,7 +417,13 @@ const styles = StyleSheet.create({
   checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   checkboxTick: { fontSize: 12, color: colors.bgDeep, fontFamily: fonts.sansSemi },
   toggleText: { fontSize: 12, color: colors.textMuted, fontFamily: fonts.sans },
-  count: { fontSize: 11, color: colors.textFaint, fontFamily: fonts.sans, marginTop: 16, marginBottom: 10 },
+  count: {
+    fontSize: 11,
+    color: colors.textFaint,
+    fontFamily: fonts.sans,
+    marginTop: 16,
+    marginBottom: 10,
+  },
   card: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -377,7 +440,13 @@ const styles = StyleSheet.create({
   cardMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   cardName: { fontFamily: fonts.displayBold, fontSize: 15, color: colors.text },
   cardSub: { fontSize: 11, color: colors.textFaint, marginTop: 2, fontFamily: fonts.sans },
-  anuladoTag: { fontSize: 10, color: colors.danger, marginTop: 4, fontFamily: fonts.sansSemi, letterSpacing: 0.5 },
+  anuladoTag: {
+    fontSize: 10,
+    color: colors.danger,
+    marginTop: 4,
+    fontFamily: fonts.sansSemi,
+    letterSpacing: 0.5,
+  },
   chevron: { fontSize: 22, color: colors.textDim, marginLeft: 4 },
   iconBtn: {
     width: 34,
@@ -396,7 +465,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
-    backgroundColor: '#1b1d20',
+    backgroundColor: colors.surfaceMuted,
   },
   pagerBtnOff: { opacity: 0.4 },
   pagerText: { fontFamily: fonts.sansSemi, fontSize: 13, color: colors.text },
