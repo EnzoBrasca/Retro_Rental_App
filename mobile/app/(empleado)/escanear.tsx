@@ -33,11 +33,15 @@ import { getProveedores, getPrecios } from '../../services/catalogos';
 import { analyzeTicket, createTicket } from '../../services/tickets';
 import { comprimirTicket } from '../../services/imagenes';
 import { combustibleLabel, formatMoney, parseEntero, parseNumero } from '../../constants/labels';
+import { precioMezcla } from '../../constants/mezcla';
 
 // Una herramienta no tiene combustible fijo (a diferencia de un vehículo): se
-// elige carga por carga. Salvo GNC, que no aplica a una herramienta portátil.
+// elige carga por carga. Quedan afuera GNC, que no aplica a una herramienta
+// portátil, y ACEITE, que NO es un combustible: es el insumo con el que se
+// prepara la mezcla, y ofrecerlo como carga sería ofrecer llenar la motosierra
+// de aceite puro.
 const COMBUSTIBLE_HERRAMIENTA_OPTS = (Object.keys(combustibleLabel) as TipoCombustible[])
-  .filter((k) => k !== 'GNC')
+  .filter((k) => k !== 'GNC' && k !== 'ACEITE')
   .map((k) => ({ key: k, label: combustibleLabel[k] }));
 
 type Stage = 'capture' | 'analyzing' | 'form';
@@ -78,6 +82,10 @@ export default function EscanearScreen() {
   // otra cosa. Se guarda como texto para no pelear con comas y decimales
   // mientras se tipea.
   const [precioEditado, setPrecioEditado] = useState('');
+  // Precio por litro del ACEITE, solo para una carga de mezcla. Es el dato que
+  // el operario SÍ puede leer (está en la botella), a diferencia del precio de
+  // la mezcla. Se prellena con el vigente del proveedor si ya está cargado.
+  const [precioAceite, setPrecioAceite] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -266,24 +274,40 @@ export default function EscanearScreen() {
         )
       : undefined;
 
-  // Referencia para MEZCLA cuando el proveedor todavía no tiene un precio
-  // propio: el vigente de NAFTA_SUPER de ESE proveedor (mismo criterio que
-  // usa el backend para crearlo, ver TicketService.resolvePrecioPorCombustible).
-  // Solo aplica a una herramienta: un vehículo siempre tiene su idPrecio ya
-  // resuelto por el catálogo.
-  const precioNaftaSuperProveedor =
-    idProveedor != null
-      ? data?.precios.find(
-          (p) => p.idProveedor === idProveedor && p.tipoCombustible === 'NAFTA_SUPER',
-        )
-      : undefined;
-  const esMezclaSinPrecioPropio =
-    idHerramienta != null && tipoCombustibleSel === 'MEZCLA' && !precioSel;
+  // --------------------------------------------------------------- mezcla
+  // El precio de la mezcla no se elige: se calcula. Nadie la vende en un
+  // surtidor, así que pedirle al operario "el precio por litro de la mezcla"
+  // era pedirle un número que no existe. Lo que sí puede leer es el precio del
+  // aceite (está en la botella); el de la nafta ya está en el catálogo.
+  const esMezcla = idHerramienta != null && tipoCombustibleSel === 'MEZCLA';
 
-  // Base para prellenar/comparar el precio por litro: el vigente de la
-  // combinación (proveedor, combustible) si existe, o el de NAFTA_SUPER como
-  // referencia cuando es una MEZCLA que el proveedor todavía no tiene cargada.
-  const precioBase = precioSel ?? (esMezclaSinPrecioPropio ? precioNaftaSuperProveedor : undefined);
+  const vigenteDelProveedor = (tipo: TipoCombustible) =>
+    idProveedor != null
+      ? data?.precios.find((p) => p.idProveedor === idProveedor && p.tipoCombustible === tipo)
+      : undefined;
+
+  const precioNaftaProveedor = esMezcla ? vigenteDelProveedor('NAFTA_SUPER') : undefined;
+  const precioAceiteVigente = esMezcla ? vigenteDelProveedor('ACEITE') : undefined;
+
+  const aceiteNum = parseNumero(precioAceite) || 0;
+  // Relación nafta:aceite de ESTA máquina (50 = 50:1). Sin herramienta no aplica.
+  const relacionMezcla = herramientaSel?.relacionMezcla ?? null;
+
+  // El precio que se le muestra al operario ANTES de confirmar. El backend hace
+  // la misma cuenta para el que se guarda; `precioMezcla` está aislado y testeado
+  // con los mismos casos que MezclaCalculator justamente para que no diverjan.
+  const mezclaCalculada = esMezcla
+    ? precioMezcla(precioNaftaProveedor?.precioUnitario, aceiteNum, relacionMezcla)
+    : null;
+
+  // Base para prellenar/comparar el precio por litro: la mezcla calculada cuando
+  // hay con qué calcularla, o el vigente de (proveedor, combustible).
+  //
+  // Es un NÚMERO y no el objeto Precio a propósito: la mezcla calculada no tiene
+  // fila en el catálogo, así que envolverla en un objeto creaba una referencia
+  // nueva en cada render y el efecto de prellenado de abajo se disparaba en
+  // bucle, pisando lo que el operario estuviera tipeando.
+  const precioBaseValor = mezclaCalculada ?? precioSel?.precioUnitario ?? null;
 
   const litrosNum = parseNumero(litros) || 0;
 
@@ -293,31 +317,68 @@ export default function EscanearScreen() {
   // el último valor aplicado, no contra el valor actual del input.
   const ultimoPrecioAplicado = useRef<number | null>(null);
   useEffect(() => {
-    if (precioBase && ultimoPrecioAplicado.current !== precioBase.precioUnitario) {
-      ultimoPrecioAplicado.current = precioBase.precioUnitario;
-      setPrecioEditado(String(precioBase.precioUnitario));
+    if (precioBaseValor != null && ultimoPrecioAplicado.current !== precioBaseValor) {
+      ultimoPrecioAplicado.current = precioBaseValor;
+      setPrecioEditado(String(precioBaseValor));
     }
-    if (!precioBase) {
+    if (precioBaseValor == null) {
       ultimoPrecioAplicado.current = null;
       setPrecioEditado('');
     }
-  }, [precioBase]);
+  }, [precioBaseValor]);
+
+  // El aceite del proveedor prellena su campo, con el mismo criterio que el
+  // precio: no se pisa lo que el empleado ya tipeó dentro de la misma selección.
+  const ultimoAceiteAplicado = useRef<number | null>(null);
+  useEffect(() => {
+    const vigente = precioAceiteVigente?.precioUnitario ?? null;
+    if (vigente != null && ultimoAceiteAplicado.current !== vigente) {
+      ultimoAceiteAplicado.current = vigente;
+      setPrecioAceite(String(vigente));
+    }
+    if (vigente == null) {
+      ultimoAceiteAplicado.current = null;
+      setPrecioAceite('');
+    }
+  }, [precioAceiteVigente]);
 
   // Alta: hay proveedor y combustible resueltos pero el catálogo no tiene un
   // precio para esa combinación. Pasa sobre todo con un proveedor recién dado de
   // alta desde un ticket, que nace sin precios. Antes esto era un callejón sin
   // salida ("pedile al administrador que lo cargue"); ahora el empleado tipea el
   // precio y esa primera carga lo deja como vigente.
-  const esAltaDePrecio = idProveedor != null && tipoCombustibleSel != null && !precioBase;
+  const esAltaDePrecio =
+    idProveedor != null && tipoCombustibleSel != null && precioBaseValor == null;
 
   const precioNum = parseNumero(precioEditado) || 0;
   // El total sigue al precio que el empleado ve, no al del catálogo.
   const total = precioNum > 0 ? litrosNum * precioNum : 0;
   // Solo se manda si difiere de la base: si es igual, que resuelva el backend.
   const precioFueCorregido =
-    precioBase != null && precioNum > 0 && Math.abs(precioNum - precioBase.precioUnitario) > 0.001;
+    precioBaseValor != null && precioNum > 0 && Math.abs(precioNum - precioBaseValor) > 0.001;
   // En un alta no hay base contra la cual comparar: el valor tipeado ES el dato.
-  const precioAEnviar = esAltaDePrecio || precioFueCorregido ? precioNum : undefined;
+  //
+  // En una mezcla CALCULADA no se manda nada salvo que el operario haya pisado
+  // el resultado: si se mandara el valor calculado, el backend lo tomaría como
+  // una corrección manual y guardaría ese número en vez de recalcularlo con los
+  // insumos, que es justo lo que este cambio viene a evitar.
+  const precioAEnviar =
+    mezclaCalculada != null
+      ? precioFueCorregido
+        ? precioNum
+        : undefined
+      : esAltaDePrecio || precioFueCorregido
+        ? precioNum
+        : undefined;
+
+  // El aceite viaja cuando el operario lo cargó o lo cambió: ahí actualiza el
+  // catálogo del proveedor y la próxima carga en esa estación ya no lo pide.
+  const aceiteAEnviar =
+    esMezcla &&
+    aceiteNum > 0 &&
+    Math.abs(aceiteNum - (precioAceiteVigente?.precioUnitario ?? 0)) > 0.001
+      ? aceiteNum
+      : undefined;
 
   const submit = async () => {
     setError(null);
@@ -358,6 +419,7 @@ export default function EscanearScreen() {
           idHerramienta: idHerramienta ?? undefined,
           usoAcumulado: usoNum,
           precioUnitario: precioAEnviar,
+          precioAceite: aceiteAEnviar,
           fechaCarga: fechaCarga ?? undefined,
         },
         fotoUri,
@@ -524,6 +586,40 @@ export default function EscanearScreen() {
                 onChange={setIdProveedor}
               />
 
+              {/* La mezcla no se compra hecha: se prepara con nafta y aceite.
+                  Por eso acá se pide el precio del aceite -- que el operario
+                  puede leer en la botella -- y no el de la mezcla, que no
+                  figura en ningún surtidor. */}
+              {esMezcla && idProveedor != null && (
+                <>
+                  <Text style={styles.label}>Precio del aceite por litro</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={precioAceite}
+                    onChangeText={setPrecioAceite}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={colors.textDim}
+                  />
+                  {!precioNaftaProveedor ? (
+                    <Text style={styles.precioWarn}>
+                      Para calcular la mezcla falta el precio de nafta súper de esta estación.
+                      Cargalo con un ticket de nafta, o ingresá abajo el precio de la mezcla a mano.
+                    </Text>
+                  ) : precioAceiteVigente ? (
+                    <Text style={styles.precioHint}>
+                      Precio de aceite cargado para esta estación. Cambialo si la botella salió otro
+                      valor.
+                    </Text>
+                  ) : (
+                    <Text style={styles.precioWarn}>
+                      Esta estación todavía no tiene precio de aceite. Ingresá el de la botella:
+                      queda cargado para las próximas cargas.
+                    </Text>
+                  )}
+                </>
+              )}
+
               <Text style={styles.label}>Precio por litro</Text>
               {!idProveedor ? (
                 <Text style={styles.precioHint}>Elegí el proveedor para ver el precio.</Text>
@@ -543,10 +639,20 @@ export default function EscanearScreen() {
                   />
                   {/* Se avisa cuando el valor difiere de la base, para que una
                       corrección sea siempre deliberada y no un error de tipeo. */}
-                  {precioBase && precioFueCorregido ? (
+                  {precioBaseValor != null && precioFueCorregido ? (
                     <Text style={styles.precioHint}>
                       Corregís el precio de {combustibleLabel[tipoCombustibleSel]}:{' '}
-                      {formatMoney(precioBase.precioUnitario)} → {formatMoney(precioNum)} / L
+                      {formatMoney(precioBaseValor)} → {formatMoney(precioNum)} / L
+                    </Text>
+                  ) : mezclaCalculada != null ? (
+                    /* El resultado del cálculo, con la cuenta a la vista: sin
+                       mostrarla, un número que se mueve solo al cambiar el aceite
+                       parece un error de la app. Queda editable igual, por si la
+                       relación está mal cargada o compraron mezcla ya preparada. */
+                    <Text style={styles.precioHint}>
+                      Calculado con nafta a {formatMoney(precioNaftaProveedor!.precioUnitario)},
+                      aceite a {formatMoney(aceiteNum)} y relación {relacionMezcla}:1. Cambialo solo
+                      si pagaste otra cosa.
                     </Text>
                   ) : esAltaDePrecio ? (
                     /* Sin precio en el catálogo el campo arranca vacío (lo deja
@@ -556,11 +662,6 @@ export default function EscanearScreen() {
                     <Text style={styles.precioWarn}>
                       Todavía no hay precio de {combustibleLabel[tipoCombustibleSel]} para este
                       proveedor. Ingresá el del surtidor: queda cargado para las próximas cargas.
-                    </Text>
-                  ) : esMezclaSinPrecioPropio ? (
-                    <Text style={styles.precioHint}>
-                      Este proveedor todavía no tiene un precio de mezcla propio: te mostramos el de
-                      nafta súper como base. Corregilo al precio real de la mezcla.
                     </Text>
                   ) : (
                     <Text style={styles.precioHint}>

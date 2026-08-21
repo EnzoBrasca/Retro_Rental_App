@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -256,20 +257,31 @@ class TicketServiceTest {
 
     // --------------------------------------------------- precio por combustible
 
+    /** Deja al proveedor con un vigente del combustible pedido. */
+    private Precio vigenteDe(TipoCombustible tipo, String valor, int id) {
+        Precio p = new Precio();
+        p.setId(id);
+        p.setPrecioUnitario(new BigDecimal(valor));
+        p.setServicio(Servicio.COMBUSTIBLE);
+        p.setTipoCombustible(tipo);
+        p.setProveedor(proveedor);
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, tipo)).thenReturn(Optional.of(p));
+        return p;
+    }
+
+    private void sinVigenteDe(TipoCombustible tipo) {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, tipo)).thenReturn(Optional.empty());
+    }
+
     @Test
-    void herramientaConMezcla_sinPrecioPrevio_copiaElDeNaftaSuperDelProveedor() {
-        // El proveedor no tiene (YPF, MEZCLA) todavia, pero si tiene (YPF,
-        // NAFTA_SUPER): el service tiene que crear la mezcla copiando ese valor.
-        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
-            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.empty());
-        Precio naftaSuper = new Precio();
-        naftaSuper.setId(20);
-        naftaSuper.setPrecioUnitario(PRECIO_VIGENTE);
-        naftaSuper.setServicio(Servicio.COMBUSTIBLE);
-        naftaSuper.setTipoCombustible(TipoCombustible.NAFTA_SUPER);
-        naftaSuper.setProveedor(proveedor);
-        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
-            proveedor, TipoCombustible.NAFTA_SUPER)).thenReturn(Optional.of(naftaSuper));
+    void herramientaConMezcla_conNaftaYAceite_calculaElPrecioEnVezDeCopiarlo() {
+        // El cambio de fondo: antes la mezcla se creaba COPIANDO el precio de
+        // nafta super, que es la mezcla SIN el aceite. Ahora sale de la cuenta.
+        Precio nafta = vigenteDe(TipoCombustible.NAFTA_SUPER, "2000.00", 20);
+        Precio aceite = vigenteDe(TipoCombustible.ACEITE, "15000.00", 21);
+        sinVigenteDe(TipoCombustible.MEZCLA);
 
         service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez");
 
@@ -278,9 +290,11 @@ class TicketServiceTest {
         Precio creado = captor.getValue();
         assertEquals(TipoCombustible.MEZCLA, creado.getTipoCombustible());
         assertEquals(proveedor, creado.getProveedor());
-        assertEquals(PRECIO_VIGENTE, creado.getPrecioUnitario());
-        // El de nafta super no se toca ni se cierra: solo sirvio de referencia.
-        assertNull(naftaSuper.getFechaHasta());
+        // (2000 x 50 + 15000) / 51, con la relacion 50:1 de la herramienta.
+        assertEquals(new BigDecimal("2254.90"), creado.getPrecioUnitario());
+        // Ni la nafta ni el aceite se tocan: solo alimentan la cuenta.
+        assertNull(nafta.getFechaHasta());
+        assertNull(aceite.getFechaHasta());
 
         ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
         verify(ticketRepository).save(ticketCaptor.capture());
@@ -288,22 +302,58 @@ class TicketServiceTest {
     }
 
     @Test
-    void herramientaConMezcla_conPrecioPrevio_usaElSuyoYNoLoPisaConElDeNafta() {
-        Precio mezclaVigente = new Precio();
-        mezclaVigente.setId(30);
-        mezclaVigente.setPrecioUnitario(new BigDecimal("2450.00"));
-        mezclaVigente.setServicio(Servicio.COMBUSTIBLE);
-        mezclaVigente.setTipoCombustible(TipoCombustible.MEZCLA);
-        mezclaVigente.setProveedor(proveedor);
-        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
-            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.of(mezclaVigente));
+    void herramientaConMezcla_conPrecioDeAceiteTipeado_loGuardaYRecalcula() {
+        vigenteDe(TipoCombustible.NAFTA_SUPER, "2000.00", 20);
+        sinVigenteDe(TipoCombustible.ACEITE);
+        sinVigenteDe(TipoCombustible.MEZCLA);
+
+        CreateTicketRequest req =
+            requestHerramientaConCombustible(TipoCombustible.MEZCLA, null);
+        req.setPrecioAceite(new BigDecimal("15000.00"));
+
+        service.create(req, "juanperez");
+
+        // Dos altas: el aceite entra al catalogo (para no volver a pedirlo en la
+        // proxima carga de esa estacion) y la mezcla sale de la cuenta.
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository, times(2)).save(captor.capture());
+        List<Precio> guardados = captor.getAllValues();
+
+        Precio aceite = guardados.get(0);
+        assertEquals(TipoCombustible.ACEITE, aceite.getTipoCombustible());
+        assertEquals(new BigDecimal("15000.00"), aceite.getPrecioUnitario());
+
+        Precio mezcla = guardados.get(1);
+        assertEquals(TipoCombustible.MEZCLA, mezcla.getTipoCombustible());
+        assertEquals(new BigDecimal("2254.90"), mezcla.getPrecioUnitario());
+    }
+
+    @Test
+    void herramientaConMezcla_relacionMasRica_encareceLaMezcla() {
+        herramienta.setRelacionMezcla(25);
+        vigenteDe(TipoCombustible.NAFTA_SUPER, "2000.00", 20);
+        vigenteDe(TipoCombustible.ACEITE, "15000.00", 21);
+        sinVigenteDe(TipoCombustible.MEZCLA);
 
         service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez");
 
-        // No se crea ni se toca ningun precio: ya habia uno vigente.
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository).save(captor.capture());
+        // 25:1 lleva el doble de aceite: (2000 x 25 + 15000) / 26 = 2500.
+        assertEquals(new BigDecimal("2500.00"), captor.getValue().getPrecioUnitario());
+    }
+
+    @Test
+    void herramientaConMezcla_siElCalculoNoCambiaNada_noAbreFilaNueva() {
+        vigenteDe(TipoCombustible.NAFTA_SUPER, "2000.00", 20);
+        vigenteDe(TipoCombustible.ACEITE, "15000.00", 21);
+        Precio mezclaVigente = vigenteDe(TipoCombustible.MEZCLA, "2254.90", 30);
+
+        service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez");
+
+        // Sin esto, cada carga de mezcla abriria una fila de precio identica a la
+        // anterior y el historial creceria sin decir nada.
         verify(precioRepository, never()).save(any(Precio.class));
-        verify(precioRepository, never()).findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
-            proveedor, TipoCombustible.NAFTA_SUPER);
 
         ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
         verify(ticketRepository).save(ticketCaptor.capture());
@@ -311,11 +361,29 @@ class TicketServiceTest {
     }
 
     @Test
-    void herramientaConMezcla_sinNaftaSuperDelProveedor_rechazaConErrorClaro() {
-        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
-            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.empty());
-        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
-            proveedor, TipoCombustible.NAFTA_SUPER)).thenReturn(Optional.empty());
+    void herramientaConMezcla_sinInsumosParaCalcular_usaLaMezclaVigente() {
+        // Sin nafta ni aceite no hay cuenta posible, pero hay un precio de mezcla
+        // cargado de antes: es el mejor dato disponible y no se traba la carga.
+        sinVigenteDe(TipoCombustible.NAFTA_SUPER);
+        sinVigenteDe(TipoCombustible.ACEITE);
+        Precio mezclaVigente = vigenteDe(TipoCombustible.MEZCLA, "2450.00", 30);
+
+        service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez");
+
+        verify(precioRepository, never()).save(any(Precio.class));
+
+        ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
+        verify(ticketRepository).save(ticketCaptor.capture());
+        assertEquals(mezclaVigente, ticketCaptor.getValue().getPrecio());
+    }
+
+    @Test
+    void herramientaConMezcla_sinNadaDeDondeSacarElPrecio_rechazaConErrorClaro() {
+        // Ni insumos para calcular, ni mezcla vigente, ni precio tipeado: no hay
+        // de donde sacar el numero y no se inventa uno.
+        sinVigenteDe(TipoCombustible.MEZCLA);
+        sinVigenteDe(TipoCombustible.NAFTA_SUPER);
+        sinVigenteDe(TipoCombustible.ACEITE);
 
         ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
             () -> service.create(requestHerramientaConCombustible(TipoCombustible.MEZCLA, null), "juanperez"));
@@ -323,6 +391,23 @@ class TicketServiceTest {
         assertEquals(ErrorCode.PRECIO_BASE_MEZCLA_NOT_FOUND, ex.getCode());
         verify(precioRepository, never()).save(any(Precio.class));
         verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void herramientaConMezcla_sinInsumosPeroConPrecioTipeado_daDeAlta() {
+        // El camino manual del cambio anterior sigue vivo como ultima salida: el
+        // calculo es una mejora, no un reemplazo que deje al operario trabado.
+        sinVigenteDe(TipoCombustible.MEZCLA);
+        sinVigenteDe(TipoCombustible.NAFTA_SUPER);
+        sinVigenteDe(TipoCombustible.ACEITE);
+
+        service.create(requestHerramientaConCombustible(
+            TipoCombustible.MEZCLA, new BigDecimal("2300.00")), "juanperez");
+
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository).save(captor.capture());
+        assertEquals(TipoCombustible.MEZCLA, captor.getValue().getTipoCombustible());
+        assertEquals(new BigDecimal("2300.00"), captor.getValue().getPrecioUnitario());
     }
 
     @Test
