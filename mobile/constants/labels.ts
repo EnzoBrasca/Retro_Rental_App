@@ -14,6 +14,9 @@ export const combustibleLabel: Record<TipoCombustible, string> = {
   GASOIL_GRADO_3: 'Gasoil Grado 3',
   GNC: 'GNC',
   MEZCLA: 'Mezcla (nafta + aceite)',
+  // No es un combustible cargable: es el insumo de la mezcla. Aparece en el
+  // catálogo de precios, nunca como opción de carga.
+  ACEITE: 'Aceite 2 tiempos',
 };
 
 export const tipoVehiculoLabel: Record<TipoVehiculo, string> = {

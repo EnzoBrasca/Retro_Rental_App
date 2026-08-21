@@ -116,8 +116,19 @@ export function etiquetaConsumo(tipo: TipoVehiculo | null): string {
 }
 // MEZCLA es nafta con aceite: solo la usan herramientas como la motosierra, un
 // vehículo nunca la tiene como tipoCombustible fijo.
+//
+// ACEITE tampoco se carga: NO es un combustible, es el insumo con el que se
+// prepara la mezcla. Está en esta unión porque el catálogo le lleva el precio
+// por proveedor con la misma maquinaria que al resto, pero nunca debe aparecer
+// como opción de carga (ver COMBUSTIBLE_HERRAMIENTA_OPTS en escanear.tsx).
 export type TipoCombustible =
-  'NAFTA_SUPER' | 'NAFTA_PREMIUM' | 'GASOIL_GRADO_2' | 'GASOIL_GRADO_3' | 'GNC' | 'MEZCLA';
+  | 'NAFTA_SUPER'
+  | 'NAFTA_PREMIUM'
+  | 'GASOIL_GRADO_2'
+  | 'GASOIL_GRADO_3'
+  | 'GNC'
+  | 'MEZCLA'
+  | 'ACEITE';
 
 export interface Vehiculo {
   id: number;
