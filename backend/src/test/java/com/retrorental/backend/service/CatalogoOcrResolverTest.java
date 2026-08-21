@@ -154,12 +154,12 @@ class CatalogoOcrResolverTest {
     }
 
     /**
-     * Sin vigente previo NO hay contra qué comparar el margen, así que el precio
-     * leído se acepta: es el único dato que hay. El margen protege de una
-     * desviación, no de un catálogo vacío.
+     * Sin vigente previo Y con el catálogo vacío de ese combustible no hay NADA
+     * contra qué comparar, así que el precio leído se acepta: es el único dato
+     * que hay. Ni el margen ni la banda protegen de un catálogo vacío.
      */
     @Test
-    void sinPrecioVigentePrevio_aceptaElLeidoAunqueSeaAlto() {
+    void sinPrecioVigentePrevio_ySinCatalogo_aceptaElLeidoAunqueSeaAlto() {
         when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(any(), any()))
             .thenReturn(Optional.empty());
         when(proveedorRepository.findByServicio(Servicio.COMBUSTIBLE)).thenReturn(List.of(ypf));
@@ -167,6 +167,53 @@ class CatalogoOcrResolverTest {
         TicketAnalysisResponse res = resolver.resolver(ocr("YPF En Ruta", 99999.0));
 
         assertThat(res.precioUnitario()).isEqualByComparingTo("99999.0");
+    }
+
+    /**
+     * El hueco que el margen NO cubría: proveedor sin vigente propio, pero con
+     * otras estaciones cotizando ese combustible. Antes, lo que leyera el OCR
+     * entraba al catálogo sin filtro y quedaba vigente para todos los que
+     * cargaran despues en esa estación — el caso de peor visibilidad y mayor
+     * daño. Ahora se mide contra lo que cobran las demás.
+     */
+    @Test
+    void sinPrecioVigentePrevio_peroConBandaEnElCatalogo_descartaElAlucinado() {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(any(), any()))
+            .thenReturn(Optional.empty());
+        when(proveedorRepository.findByServicio(Servicio.COMBUSTIBLE)).thenReturn(List.of(ypf));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioAsc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(vigente));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioDesc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(vigente));
+
+        TicketAnalysisResponse res = resolver.resolver(ocr("YPF En Ruta", 99999.0));
+
+        // Se degrada, no se rompe: el precio queda vacío y el formulario se lo
+        // pide al empleado, en vez de prellenar la alucinación del OCR.
+        assertThat(res.precioUnitario()).isNull();
+        assertThat(res.idPrecio()).isNull();
+        verify(precioRepository, never()).save(any(Precio.class));
+    }
+
+    @Test
+    void sinPrecioVigentePrevio_conLeidoDentroDeLaBanda_loDaDeAlta() {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(any(), any()))
+            .thenReturn(Optional.empty());
+        when(proveedorRepository.findByServicio(Servicio.COMBUSTIBLE)).thenReturn(List.of(ypf));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioAsc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(vigente));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioDesc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(vigente));
+
+        // 2086 vigente en otra estacion, 2100 leido: dentro de los 30.
+        TicketAnalysisResponse res = resolver.resolver(ocr("YPF En Ruta", 2100.0));
+
+        assertThat(res.precioUnitario()).isEqualByComparingTo("2100.0");
+        verify(precioRepository).save(any(Precio.class));
     }
 
     // ------------------------------------------------------------------
