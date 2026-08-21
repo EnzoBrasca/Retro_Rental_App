@@ -462,6 +462,14 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 // discriminada en vez de forzarlas a un único shape.
 type FlotaItem = { kind: 'vehiculo'; v: Vehiculo } | { kind: 'herramienta'; h: Herramienta };
 
+// Proporción nafta:aceite que se asume cuando no hay una cargada. Espejo de
+// Herramienta.RELACION_MEZCLA_DEFAULT en el backend.
+const RELACION_MEZCLA_DEFAULT = 50;
+// Rango aceptado, espejo del CHECK de la base (V13). Las relaciones reales van
+// de 16:1 en máquinas muy viejas a 100:1; el tope corta el dedazo.
+const RELACION_MEZCLA_MIN = 1;
+const RELACION_MEZCLA_MAX = 200;
+
 type FormState = {
   identificador: string;
   modelo: string;
@@ -478,6 +486,8 @@ type FormState = {
   // Solo para HERRAMIENTA: una herramienta no tiene identificador, se nombra
   // directamente.
   nombreHerramienta: string;
+  // Solo para HERRAMIENTA: proporción nafta:aceite (50 = 50:1).
+  relacionMezcla: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -491,6 +501,9 @@ const emptyForm = (): FormState => ({
   usoAcumulado: '',
   consumoPromedio: '',
   nombreHerramienta: '',
+  // La proporción más común en máquinas 2 tiempos modernas, igual que el
+  // default del backend (Herramienta.RELACION_MEZCLA_DEFAULT).
+  relacionMezcla: String(RELACION_MEZCLA_DEFAULT),
 });
 
 const formFrom = (v: Vehiculo): FormState => ({
@@ -509,6 +522,7 @@ const formFrom = (v: Vehiculo): FormState => ({
   usoAcumulado: String(v.usoAcumulado),
   consumoPromedio: String(v.consumoPromedio),
   nombreHerramienta: '',
+  relacionMezcla: String(RELACION_MEZCLA_DEFAULT),
 });
 
 const formFromHerramienta = (h: Herramienta): FormState => ({
@@ -522,6 +536,9 @@ const formFromHerramienta = (h: Herramienta): FormState => ({
   usoAcumulado: '',
   consumoPromedio: '',
   nombreHerramienta: h.nombre,
+  // Las herramientas cargadas antes de este cambio llegan con el 50 que les
+  // puso la migración; el ?? cubre la respuesta de un backend todavía viejo.
+  relacionMezcla: String(h.relacionMezcla ?? RELACION_MEZCLA_DEFAULT),
 });
 
 function VehiclesABM() {
@@ -586,7 +603,13 @@ function VehiclesABM() {
       const capacidad = parseEntero(form.capacidadTanque);
       if (!(capacidad > 0)) return setFormError('Capacidad inválida.');
 
-      const payload = { nombre: form.nombreHerramienta.trim(), capacidad };
+      const relacionMezcla = parseEntero(form.relacionMezcla);
+      if (!(relacionMezcla >= RELACION_MEZCLA_MIN && relacionMezcla <= RELACION_MEZCLA_MAX))
+        return setFormError(
+          `La relación de mezcla debe estar entre ${RELACION_MEZCLA_MIN} y ${RELACION_MEZCLA_MAX}.`,
+        );
+
+      const payload = { nombre: form.nombreHerramienta.trim(), capacidad, relacionMezcla };
       try {
         setSaving(true);
         if (editing === 'new') await createHerramienta(payload);
@@ -739,6 +762,21 @@ function VehiclesABM() {
               keyboardType="number-pad"
               onChangeText={(t) => setForm((f) => ({ ...f, capacidadTanque: t }))}
             />
+
+            <Text style={[styles.fieldHint, { marginTop: 12 }]}>Relación de mezcla</Text>
+            <TextInput
+              style={styles.abmInput}
+              value={form.relacionMezcla}
+              keyboardType="number-pad"
+              onChangeText={(t) => setForm((f) => ({ ...f, relacionMezcla: t }))}
+              placeholder={String(RELACION_MEZCLA_DEFAULT)}
+              placeholderTextColor={colors.textDim}
+            />
+            <Text style={styles.fieldNote}>
+              Partes de nafta por cada parte de aceite: {form.relacionMezcla || '?'}:1. Está en el
+              manual de la máquina. Con este dato se calcula el precio de la mezcla, así el operario
+              no tiene que estimarlo. Si la herramienta no usa mezcla, dejalo como está.
+            </Text>
           </>
         ) : (
           <>

@@ -110,6 +110,86 @@ class HerramientaServiceTest {
         assertEquals(new BigDecimal("0.40"), resp.capacidad());
     }
 
+    // ------------------------------------------------- relacion de mezcla
+
+    @Test
+    void create_conRelacionDeMezcla_laPersiste() {
+        CreateHerramientaRequest req = new CreateHerramientaRequest();
+        req.setNombre("Motosierra vieja");
+        req.setCapacidad(new BigDecimal("0.30"));
+        req.setRelacionMezcla(25);
+        when(herramientaRepository.save(any(Herramienta.class))).thenAnswer(i -> i.getArgument(0));
+
+        HerramientaResponse resp = service.create(req);
+
+        assertEquals(25, resp.relacionMezcla());
+    }
+
+    /**
+     * El APK 1.7.0 sigue instalado y su ABM no manda relacionMezcla. Si el campo
+     * fuera obligatorio, el alta de herramientas se le romperia al admin hasta
+     * que actualice. Por eso es opcional y el service completa el default.
+     */
+    @Test
+    void create_sinRelacionDeMezcla_usaElDefault() {
+        CreateHerramientaRequest req = new CreateHerramientaRequest();
+        req.setNombre("Bidon 20L");
+        req.setCapacidad(new BigDecimal("20.00"));
+        when(herramientaRepository.save(any(Herramienta.class))).thenAnswer(i -> i.getArgument(0));
+
+        HerramientaResponse resp = service.create(req);
+
+        assertEquals(Herramienta.RELACION_MEZCLA_DEFAULT, resp.relacionMezcla());
+    }
+
+    @Test
+    void update_conRelacionDeMezcla_laActualiza() {
+        Herramienta existente = herramienta();
+        when(herramientaRepository.findById(1)).thenReturn(Optional.of(existente));
+        when(herramientaRepository.save(any(Herramienta.class))).thenAnswer(i -> i.getArgument(0));
+
+        UpdateHerramientaRequest req = new UpdateHerramientaRequest();
+        req.setNombre("Motosierra Husqvarna");
+        req.setCapacidad(new BigDecimal("0.40"));
+        req.setRelacionMezcla(32);
+
+        assertEquals(32, service.update(1, req).relacionMezcla());
+    }
+
+    /**
+     * A diferencia del resto de los campos, una relacion ausente NO pisa la que
+     * ya estaba. El PUT es reemplazo completo, pero un cliente viejo que omite el
+     * campo estaria borrando un dato que el admin cargo a mano, y encima en
+     * silencio. Conservarla es lo unico que no pierde informacion.
+     */
+    @Test
+    void update_sinRelacionDeMezcla_conservaLaQueYaTenia() {
+        Herramienta existente = herramienta();
+        existente.setRelacionMezcla(25);
+        when(herramientaRepository.findById(1)).thenReturn(Optional.of(existente));
+        when(herramientaRepository.save(any(Herramienta.class))).thenAnswer(i -> i.getArgument(0));
+
+        UpdateHerramientaRequest req = new UpdateHerramientaRequest();
+        req.setNombre("Motosierra Husqvarna");
+        req.setCapacidad(new BigDecimal("0.40"));
+
+        assertEquals(25, service.update(1, req).relacionMezcla());
+    }
+
+    @Test
+    void update_deUnaHerramientaSinRelacion_completaElDefault() {
+        Herramienta existente = herramienta();
+        existente.setRelacionMezcla(null);
+        when(herramientaRepository.findById(1)).thenReturn(Optional.of(existente));
+        when(herramientaRepository.save(any(Herramienta.class))).thenAnswer(i -> i.getArgument(0));
+
+        UpdateHerramientaRequest req = new UpdateHerramientaRequest();
+        req.setNombre("Motosierra Husqvarna");
+        req.setCapacidad(new BigDecimal("0.40"));
+
+        assertEquals(Herramienta.RELACION_MEZCLA_DEFAULT, service.update(1, req).relacionMezcla());
+    }
+
     @Test
     void desactivar_marcaFechaBaja() {
         Herramienta existente = herramienta();
