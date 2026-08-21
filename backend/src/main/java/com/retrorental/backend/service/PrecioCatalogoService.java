@@ -73,15 +73,13 @@ public class PrecioCatalogoService {
      *   de alta el vigente, previa validación contra la banda del catálogo (ver
      *   validarAltaInicial). Es el caso del proveedor recién dado de alta desde un
      *   ticket, que nace sin precios y antes dejaba al empleado sin poder cargar.
-     * - Si NO lo tiene, no hay precio tipeado y es MEZCLA (nafta con aceite): no
-     *   es un producto que vendan las estaciones, así que se crea copiando como
-     *   valor inicial el vigente de NAFTA_SUPER del MISMO proveedor. El empleado
-     *   ve ese valor y lo corrige al precio real de la mezcla (sin tope de margen,
-     *   ver fueraDeMargen). Si el proveedor tampoco tiene ese NAFTA_SUPER, no hay
-     *   de dónde copiar: error explícito, no se inventa un precio en cero.
-     * - Para cualquier otro combustible sin vigente y sin precio tipeado: error
-     *   explícito. Sin valor del empleado ni referencia de la cual copiar, no hay
-     *   de dónde sacar el número.
+     * - Para cualquier combustible sin vigente y sin precio tipeado: error
+     *   explícito. Sin valor del empleado no hay de dónde sacar el número.
+     *
+     * La MEZCLA NO pasa por acá: su precio se calcula, no se elige (ver
+     * resolveMezcla). Y no puede llegar por el camino del vehículo, porque
+     * ningún vehículo carga mezcla — lo garantiza el CHECK de
+     * vehiculos.tipo_combustible.
      */
     public Precio resolvePorCombustible(Proveedor proveedor, TipoCombustible tipoCombustible,
                                         BigDecimal precioManual) {
@@ -90,26 +88,100 @@ public class PrecioCatalogoService {
             return vigente;
         }
 
-        // El alta manual va ANTES del fallback de MEZCLA: si el empleado tipeó el
-        // precio real, ese dato le gana a copiar el de la nafta como aproximación.
         if (precioManual != null) {
             validarAltaInicial(precioManual, tipoCombustible, "precioUnitario");
             return reemplazarVigente(proveedor, tipoCombustible, precioManual);
         }
 
-        if (tipoCombustible == TipoCombustible.MEZCLA) {
-            Precio base = precioRepository
-                .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(proveedor, TipoCombustible.NAFTA_SUPER)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                    ErrorCode.PRECIO_BASE_MEZCLA_NOT_FOUND,
-                    "El proveedor no tiene un precio vigente de nafta super para tomar como base de la mezcla",
-                    "idProveedor"));
-            return reemplazarVigente(proveedor, TipoCombustible.MEZCLA, base.getPrecioUnitario());
-        }
-
         throw new ResourceNotFoundException(
             ErrorCode.PRECIO_NOT_FOUND_PARA_COMBUSTIBLE,
             "El proveedor no tiene un precio vigente para ese combustible", "idProveedor");
+    }
+
+    /**
+     * Resuelve el precio de una carga de MEZCLA (nafta con aceite, 2 tiempos).
+     *
+     * La mezcla es el único producto cuyo precio se CALCULA en vez de elegirse,
+     * y por eso tiene su propio camino. Nadie la vende en un surtidor: no está
+     * en el ticket ni en ninguna etiqueta. Antes se le pedía ese número al
+     * empleado ofreciéndole como valor inicial el de NAFTA_SUPER — que es la
+     * mezcla SIN el aceite, o sea el error entero. Ahora sale de datos que sí se
+     * pueden observar: el precio del aceite (está en la botella) y el de la
+     * nafta (ya vive en el catálogo).
+     *
+     * Orden de resolución:
+     *
+     * 1. Si viene precioAceite, actualiza el vigente de (proveedor, ACEITE) para
+     *    que la próxima carga en esa estación ya no lo pida.
+     * 2. Con nafta y aceite del proveedor, calcula. Si el resultado coincide con
+     *    la mezcla vigente, la reutiliza en vez de abrir una fila nueva.
+     * 3. Si no se puede calcular (falta la nafta o el aceite) pero hay una mezcla
+     *    vigente, se usa esa: es el mejor dato disponible.
+     * 4. Si tampoco hay vigente pero el empleado tipeó un precio, ese da de alta
+     *    (misma vía que cualquier otro combustible).
+     * 5. Si no hay ninguna de las tres cosas, error explícito.
+     *
+     * Los pasos 3 y 4 existen para que esto NUNCA sea un callejón sin salida: el
+     * cálculo es una mejora sobre el camino manual, no un reemplazo que deje al
+     * operario sin salida cuando le falta un insumo.
+     */
+    public Precio resolveMezcla(Proveedor proveedor, int relacion,
+                                BigDecimal precioAceite, BigDecimal precioManual) {
+        Precio aceite = resolveAceite(proveedor, precioAceite);
+        Precio nafta = vigenteDe(proveedor, TipoCombustible.NAFTA_SUPER);
+        Precio vigenteMezcla = vigenteDe(proveedor, TipoCombustible.MEZCLA);
+
+        if (nafta != null && aceite != null) {
+            BigDecimal calculado = MezclaCalculator.calcular(
+                nafta.getPrecioUnitario(), aceite.getPrecioUnitario(), relacion);
+
+            // compareTo ignora la escala (2254.9 == 2254.90). Si el cálculo no
+            // movió el precio, no se abre una fila nueva por cada carga.
+            if (vigenteMezcla != null
+                && vigenteMezcla.getPrecioUnitario().compareTo(calculado) == 0) {
+                return vigenteMezcla;
+            }
+            return reemplazarVigente(proveedor, TipoCombustible.MEZCLA, calculado);
+        }
+
+        if (vigenteMezcla != null) {
+            return vigenteMezcla;
+        }
+
+        if (precioManual != null) {
+            validarAltaInicial(precioManual, TipoCombustible.MEZCLA, "precioUnitario");
+            return reemplazarVigente(proveedor, TipoCombustible.MEZCLA, precioManual);
+        }
+
+        throw new ResourceNotFoundException(
+            ErrorCode.PRECIO_BASE_MEZCLA_NOT_FOUND,
+            "No se puede resolver el precio de la mezcla: falta el precio de la nafta o el del"
+                + " aceite de este proveedor. Ingresá el del aceite o el de la mezcla.",
+            "precioAceite");
+    }
+
+    /**
+     * El vigente de (proveedor, ACEITE), actualizándolo si el empleado informó
+     * uno nuevo. Que el aceite viva en el catálogo es lo que hace que solo se
+     * pida una vez por estación y no en cada carga.
+     *
+     * Se valida con la BANDA y nunca con el margen. El margen (±30) está
+     * calibrado para combustibles de ~$2.000/L; el aceite ronda los $15.000/L y
+     * se mueve en saltos mucho más grandes, así que ese tope trabaría casi
+     * cualquier actualización legítima. La banda, en cambio, se arma con los
+     * aceites vigentes de las demás estaciones, así que escala sola con el
+     * producto (ver fueraDeBandaDeAlta y la exención de ACEITE en fueraDeMargen).
+     */
+    private Precio resolveAceite(Proveedor proveedor, BigDecimal precioAceite) {
+        Precio vigente = vigenteDe(proveedor, TipoCombustible.ACEITE);
+        if (precioAceite == null) {
+            return vigente;
+        }
+        if (vigente != null && vigente.getPrecioUnitario().compareTo(precioAceite) == 0) {
+            return vigente;
+        }
+        validarAltaInicial(precioAceite, TipoCombustible.ACEITE, "precioAceite");
+        return reemplazarVigente(proveedor, TipoCombustible.ACEITE, precioAceite);
     }
 
     /** El precio vigente de (proveedor, combustible), o null si no hay. */
@@ -158,7 +230,14 @@ public class PrecioCatalogoService {
         if (propuesto == null || vigente == null) {
             return false;
         }
-        if (tipoCombustible == TipoCombustible.MEZCLA) {
+        // ACEITE queda exento por una razón distinta a la de MEZCLA: el margen es
+        // un valor ABSOLUTO calibrado para combustibles de ~$2.000/L. El aceite
+        // ronda los $15.000/L y se mueve en saltos mucho mayores, así que ±30
+        // trabaría casi cualquier actualización legítima. Su control es la banda
+        // (ver resolveAceite), que se arma con los aceites de las demás
+        // estaciones y escala sola con el producto.
+        if (tipoCombustible == TipoCombustible.MEZCLA
+            || tipoCombustible == TipoCombustible.ACEITE) {
             return false;
         }
         return propuesto.subtract(vigente).abs().compareTo(margenMaximo) > 0;
