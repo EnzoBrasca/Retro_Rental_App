@@ -149,11 +149,14 @@ export function analyzeTicket(fotoUri: string): Promise<TicketAnalysis> {
 // Datos de la carga (sin la foto, que va aparte como archivo multipart).
 export interface CreateTicketPayload {
   litros: number;
-  // Exactamente uno de los dos, nunca ambos: un vehículo ya tiene el precio
-  // resuelto en el catálogo (idPrecio); una herramienta no tiene combustible
-  // fijo, así que manda el elegido para ESTA carga (tipoCombustible) y el
-  // backend resuelve el precio (crea el de MEZCLA copiando el de NAFTA_SUPER
-  // del proveedor si todavía no existe, ver TicketService.resolvePrecioPorCombustible).
+  // Nunca ambos: un vehículo manda el precio ya resuelto del catálogo
+  // (idPrecio); una herramienta no tiene combustible fijo, así que manda el
+  // elegido para ESTA carga (tipoCombustible) y el backend resuelve el precio.
+  //
+  // Los dos pueden ir vacíos a la vez en un caso: un vehículo cuyo proveedor
+  // todavía no tiene precio de su combustible. Ahí no hay idPrecio que elegir
+  // y va solo precioUnitario; el combustible NO se manda, el backend lo lee de
+  // la ficha del vehículo (ver PrecioCatalogoService.resolvePorCombustible).
   idPrecio?: number;
   tipoCombustible?: TipoCombustible;
   idProveedor: number;
@@ -165,8 +168,9 @@ export interface CreateTicketPayload {
   // vehículo (sin ella no se puede calcular el consumo real entre cargas). Una
   // herramienta no tiene contador, así que NO se manda en ese caso.
   usoAcumulado?: number;
-  // Precio por litro realmente pagado. Solo se manda si el empleado corrigió el
-  // del catálogo; si va vacío, el backend usa el vigente (idPrecio).
+  // Precio por litro realmente pagado. Se manda cuando el empleado corrigió el
+  // del catálogo, o cuando no había ninguno y lo cargó de cero (ahí es el único
+  // dato del que sale el precio). Si va vacío, el backend usa el vigente.
   precioUnitario?: number;
   fechaCarga?: string; // ISO opcional; el backend usa "ahora" si falta
 }
