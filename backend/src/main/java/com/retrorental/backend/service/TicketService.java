@@ -16,6 +16,7 @@ import com.retrorental.backend.model.Ticket;
 import com.retrorental.backend.model.Vehiculo;
 import com.retrorental.backend.model.enums.Estado;
 import com.retrorental.backend.model.enums.Rol;
+import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.repository.HerramientaRepository;
 import com.retrorental.backend.repository.PersonaRepository;
 import com.retrorental.backend.repository.ProveedorRepository;
@@ -77,11 +78,32 @@ public class TicketService {
 
         // Vehiculo: idPrecio ya trae el catalogo resuelto. Herramienta: manda
         // tipoCombustible en su lugar (no hay un idPrecio previo que elegir), y
-        // el precio se resuelve/crea aca (ver resolvePrecioPorCombustible). Cual
-        // de los dos vino lo garantiza @OrigenCargaCoherente.
-        Precio precio = request.getIdPrecio() != null
-            ? precioCatalogo.resolvePorId(request.getIdPrecio(), proveedor)
-            : precioCatalogo.resolvePorCombustible(proveedor, request.getTipoCombustible());
+        // el precio se resuelve/crea aca. Cual de los dos vino lo garantiza
+        // @OrigenCargaCoherente.
+        //
+        // Tercer caso: un VEHICULO cuyo proveedor todavia no tiene precio de su
+        // combustible (tipico del proveedor recien dado de alta desde un ticket,
+        // que nace sin precios). Ahi no hay idPrecio que elegir en el formulario,
+        // asi que el empleado tipea el precio y el request viaja sin idPrecio. El
+        // combustible NO viaja: se lee del vehiculo, que lo tiene fijo, y asi el
+        // contrato "un vehiculo no manda tipoCombustible" queda intacto.
+        //
+        // El vehiculo se resuelve ACA y no mas abajo justamente por eso: el
+        // precio puede depender de su combustible.
+        Vehiculo vehiculo = request.getIdVehiculo() != null
+            ? resolveVehiculoCargable(request.getIdVehiculo())
+            : null;
+
+        Precio precio;
+        if (request.getIdPrecio() != null) {
+            precio = precioCatalogo.resolvePorId(request.getIdPrecio(), proveedor);
+        } else {
+            TipoCombustible combustible = vehiculo != null
+                ? vehiculo.getTipoCombustible()
+                : request.getTipoCombustible();
+            precio = precioCatalogo.resolvePorCombustible(
+                proveedor, combustible, request.getPrecioUnitario());
+        }
 
         // Precio realmente pagado. Si el empleado lo corrigio (el del catalogo
         // estaba desactualizado), se valida el margen y el catalogo se actualiza:
@@ -102,11 +124,8 @@ public class TicketService {
         // @OrigenCargaCoherente en el request y el CHECK de la base). Una
         // herramienta no tiene contador: no hay lectura que validar ni
         // operario que actualizar.
-        Vehiculo vehiculo = null;
         Herramienta herramienta;
-        if (request.getIdVehiculo() != null) {
-            vehiculo = resolveVehiculoCargable(request.getIdVehiculo());
-
+        if (vehiculo != null) {
             // Un odometro/horometro no retrocede. Si la lectura es menor que la
             // ultima registrada, casi siempre es un error de tipeo: se rechaza con el
             // valor anterior a la vista para que el empleado pueda corregirlo.

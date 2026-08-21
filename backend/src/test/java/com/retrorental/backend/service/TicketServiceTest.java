@@ -354,6 +354,146 @@ class TicketServiceTest {
             proveedor, TipoCombustible.NAFTA_SUPER);
     }
 
+    // ------------------------------------------------ alta manual del precio
+
+    // Un vehiculo cuyo proveedor todavia no tiene precio de su combustible: no
+    // hay idPrecio que elegir en el catalogo, asi que el empleado lo tipea y el
+    // request viaja sin idPrecio y con precioUnitario.
+    private CreateTicketRequest requestVehiculoAlta(BigDecimal precioUnitario) {
+        CreateTicketRequest req = new CreateTicketRequest();
+        req.setLitros(new BigDecimal("50.0"));
+        req.setIdProveedor(1);
+        req.setIdVehiculo(5);
+        req.setPrecioUnitario(precioUnitario);
+        req.setUsoAcumulado(1200);
+        return req;
+    }
+
+    /** Deja al proveedor SIN vigente de gasoil y al catalogo con una banda. */
+    private void proveedorSinGasoilPeroConBandaEnElCatalogo() {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.empty());
+        Precio masBarato = new Precio();
+        masBarato.setPrecioUnitario(new BigDecimal("2000.00"));
+        Precio masCaro = new Precio();
+        masCaro.setPrecioUnitario(new BigDecimal("2100.00"));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioAsc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(masBarato));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioDesc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(masCaro));
+    }
+
+    @Test
+    void vehiculoSinPrecioEnElCatalogo_conPrecioManual_daDeAltaElVigente() {
+        proveedorSinGasoilPeroConBandaEnElCatalogo();
+
+        service.create(requestVehiculoAlta(new BigDecimal("2090.00")), "juanperez");
+
+        // El combustible NO viaja en el request: sale del vehiculo, que lo tiene
+        // fijo. Asi el contrato "un vehiculo no manda tipoCombustible" no cambia.
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository).save(captor.capture());
+        Precio creado = captor.getValue();
+        assertEquals(TipoCombustible.GASOIL_GRADO_2, creado.getTipoCombustible());
+        assertEquals(proveedor, creado.getProveedor());
+        assertEquals(new BigDecimal("2090.00"), creado.getPrecioUnitario());
+        assertNull(creado.getFechaHasta());
+
+        ArgumentCaptor<Ticket> ticketCaptor = ArgumentCaptor.forClass(Ticket.class);
+        verify(ticketRepository).save(ticketCaptor.capture());
+        assertEquals(creado, ticketCaptor.getValue().getPrecio());
+    }
+
+    @Test
+    void vehiculoSinPrecioEnElCatalogo_conPrecioFueraDeBanda_rechaza() {
+        proveedorSinGasoilPeroConBandaEnElCatalogo();
+
+        // 20860 en vez de 2086: el dedazo que la banda existe para atajar.
+        ConflictException ex = assertThrows(ConflictException.class,
+            () -> service.create(requestVehiculoAlta(new BigDecimal("20860.00")), "juanperez"));
+
+        assertEquals(ErrorCode.PRECIO_FUERA_DE_RANGO, ex.getCode());
+        verify(precioRepository, never()).save(any(Precio.class));
+        verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void vehiculoSinPrecioEnElCatalogo_sinPrecioManual_sigueRechazando() {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.empty());
+
+        // Sin idPrecio Y sin precio tipeado no hay de donde sacar el valor: no se
+        // inventa uno en cero.
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
+            () -> service.create(requestVehiculoAlta(null), "juanperez"));
+
+        assertEquals(ErrorCode.PRECIO_NOT_FOUND_PARA_COMBUSTIBLE, ex.getCode());
+        verify(ticketRepository, never()).save(any(Ticket.class));
+    }
+
+    @Test
+    void herramientaSinPrecioEnElCatalogo_conPrecioManual_daDeAltaElVigente() {
+        proveedorSinGasoilPeroConBandaEnElCatalogo();
+
+        // Un bidon de gasoil en una estacion que no lo tiene cargado: hasta ahora
+        // moria en PRECIO_NOT_FOUND_PARA_COMBUSTIBLE y dejaba al empleado trabado.
+        service.create(requestHerramientaConCombustible(
+            TipoCombustible.GASOIL_GRADO_2, new BigDecimal("2090.00")), "juanperez");
+
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository).save(captor.capture());
+        assertEquals(new BigDecimal("2090.00"), captor.getValue().getPrecioUnitario());
+        assertEquals(TipoCombustible.GASOIL_GRADO_2, captor.getValue().getTipoCombustible());
+    }
+
+    @Test
+    void mezclaSinNaftaSuperDelProveedor_conPrecioManual_daDeAltaEnVezDeRechazar() {
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.MEZCLA)).thenReturn(Optional.empty());
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.NAFTA_SUPER)).thenReturn(Optional.empty());
+        Precio mezclaDeOtro = new Precio();
+        mezclaDeOtro.setPrecioUnitario(new BigDecimal("3000.00"));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioAsc(
+                TipoCombustible.MEZCLA)).thenReturn(Optional.of(mezclaDeOtro));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioDesc(
+                TipoCombustible.MEZCLA)).thenReturn(Optional.of(mezclaDeOtro));
+
+        // El empleado tipea el precio real de la mezcla: ya no hace falta que el
+        // proveedor tenga nafta super de la cual copiar.
+        service.create(requestHerramientaConCombustible(
+            TipoCombustible.MEZCLA, new BigDecimal("3020.00")), "juanperez");
+
+        ArgumentCaptor<Precio> captor = ArgumentCaptor.forClass(Precio.class);
+        verify(precioRepository).save(captor.capture());
+        assertEquals(new BigDecimal("3020.00"), captor.getValue().getPrecioUnitario());
+        assertEquals(TipoCombustible.MEZCLA, captor.getValue().getTipoCombustible());
+    }
+
+    @Test
+    void altaManual_seValidaContraLaBandaYNoContraElMargenDelProveedor() {
+        // Sin vigente propio no hay margen que aplicar (fueraDeMargen devuelve
+        // false con vigente null): sin la banda, este valor entraba limpio.
+        when(precioRepository.findByProveedorAndTipoCombustibleAndFechaHastaIsNull(
+            proveedor, TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.empty());
+        Precio unico = new Precio();
+        unico.setPrecioUnitario(new BigDecimal("2100.00"));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioAsc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(unico));
+        when(precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioDesc(
+                TipoCombustible.GASOIL_GRADO_2)).thenReturn(Optional.of(unico));
+
+        // Tipear 21 en vez de 2100: un techo solo lo dejaria pasar.
+        assertThrows(ConflictException.class,
+            () -> service.create(requestVehiculoAlta(new BigDecimal("21.00")), "juanperez"));
+    }
+
     // ----------------------------------------------------------- herramienta
 
     @Test
