@@ -138,6 +138,21 @@ public class CatalogoOcrResolver {
             return vigente;
         }
 
+        // Mismo control cuando NO hay vigente contra el cual medir: el proveedor
+        // recien dado de alta desde este mismo ticket nace sin precios, y hasta
+        // aca lo que leyera el OCR entraba al catalogo sin ningun filtro. Es el
+        // peor de los dos casos, no el mas leve: el precio que se crea queda
+        // vigente para todos los que carguen despues en esa estacion. Se mide
+        // contra lo que cobran las demas estaciones por ese combustible (ver
+        // fueraDeBandaDeAlta).
+        //
+        // Tampoco lanza, por el mismo motivo que arriba: devuelve vigente, que en
+        // el alta es null. El formulario muestra el precio en blanco y el empleado
+        // lo tipea, en vez de arrastrar la alucinacion del OCR ya prellenada.
+        if (precioCatalogo.fueraDeBandaDeAlta(objetivo, tipoCombustible)) {
+            return vigente;
+        }
+
         return precioCatalogo.reemplazarVigente(proveedor, tipoCombustible, objetivo);
     }
 
