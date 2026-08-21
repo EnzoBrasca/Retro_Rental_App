@@ -88,10 +88,14 @@ public class TicketService {
         // combustible NO viaja: se lee del vehiculo, que lo tiene fijo, y asi el
         // contrato "un vehiculo no manda tipoCombustible" queda intacto.
         //
-        // El vehiculo se resuelve ACA y no mas abajo justamente por eso: el
-        // precio puede depender de su combustible.
+        // Los DOS origenes se resuelven ACA y no mas abajo justamente por eso: el
+        // precio depende del combustible del vehiculo, y el de la mezcla depende
+        // ademas de la relacion nafta:aceite de la herramienta.
         Vehiculo vehiculo = request.getIdVehiculo() != null
             ? resolveVehiculoCargable(request.getIdVehiculo())
+            : null;
+        Herramienta herramienta = request.getIdHerramienta() != null
+            ? resolveHerramientaCargable(request.getIdHerramienta())
             : null;
 
         Precio precio;
@@ -101,8 +105,17 @@ public class TicketService {
             TipoCombustible combustible = vehiculo != null
                 ? vehiculo.getTipoCombustible()
                 : request.getTipoCombustible();
-            precio = precioCatalogo.resolvePorCombustible(
-                proveedor, combustible, request.getPrecioUnitario());
+
+            // La MEZCLA tiene camino propio porque su precio se CALCULA a partir
+            // del de la nafta, el del aceite y la relacion de la maquina, en vez
+            // de elegirse del catalogo (ver PrecioCatalogoService.resolveMezcla).
+            // Solo puede venir de una herramienta: ningun vehiculo carga mezcla,
+            // lo garantiza el CHECK de vehiculos.tipo_combustible.
+            precio = combustible == TipoCombustible.MEZCLA && herramienta != null
+                ? precioCatalogo.resolveMezcla(proveedor, herramienta.getRelacionMezcla(),
+                    request.getPrecioAceite(), request.getPrecioUnitario())
+                : precioCatalogo.resolvePorCombustible(
+                    proveedor, combustible, request.getPrecioUnitario());
         }
 
         // Precio realmente pagado. Si el empleado lo corrigio (el del catalogo
@@ -124,7 +137,6 @@ public class TicketService {
         // @OrigenCargaCoherente en el request y el CHECK de la base). Una
         // herramienta no tiene contador: no hay lectura que validar ni
         // operario que actualizar.
-        Herramienta herramienta;
         if (vehiculo != null) {
             // Un odometro/horometro no retrocede. Si la lectura es menor que la
             // ultima registrada, casi siempre es un error de tipeo: se rechaza con el
@@ -149,9 +161,6 @@ public class TicketService {
             if (persona instanceof Empleado emp) {
                 vehiculo.setOperario(emp);
             }
-            herramienta = null;
-        } else {
-            herramienta = resolveHerramientaCargable(request.getIdHerramienta());
         }
 
         // Subimos a MinIO y guardamos SOLO la key (la URL presignada expira).
