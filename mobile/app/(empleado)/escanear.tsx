@@ -303,12 +303,21 @@ export default function EscanearScreen() {
     }
   }, [precioBase]);
 
+  // Alta: hay proveedor y combustible resueltos pero el catálogo no tiene un
+  // precio para esa combinación. Pasa sobre todo con un proveedor recién dado de
+  // alta desde un ticket, que nace sin precios. Antes esto era un callejón sin
+  // salida ("pedile al administrador que lo cargue"); ahora el empleado tipea el
+  // precio y esa primera carga lo deja como vigente.
+  const esAltaDePrecio = idProveedor != null && tipoCombustibleSel != null && !precioBase;
+
   const precioNum = parseNumero(precioEditado) || 0;
   // El total sigue al precio que el empleado ve, no al del catálogo.
   const total = precioNum > 0 ? litrosNum * precioNum : 0;
   // Solo se manda si difiere de la base: si es igual, que resuelva el backend.
   const precioFueCorregido =
     precioBase != null && precioNum > 0 && Math.abs(precioNum - precioBase.precioUnitario) > 0.001;
+  // En un alta no hay base contra la cual comparar: el valor tipeado ES el dato.
+  const precioAEnviar = esAltaDePrecio || precioFueCorregido ? precioNum : undefined;
 
   const submit = async () => {
     setError(null);
@@ -317,11 +326,9 @@ export default function EscanearScreen() {
     if (idHerramienta && !tipoCombustibleHerramienta)
       return setError('Elegí el combustible de esta carga.');
     if (!idProveedor) return setError('Elegí el proveedor.');
-    // precioBase cubre los dos casos: el vigente ya resuelto (precioSel), o el
-    // de NAFTA_SUPER como referencia inicial de una MEZCLA que el proveedor
-    // todavía no tiene cargada. Si no hay ninguno de los dos, no hay de dónde
-    // partir.
-    if (!precioBase) return setError('No hay un precio cargado para ese proveedor y combustible.');
+    // Ya no se exige precioBase: si el catálogo no tiene precio para esa
+    // combinación, el valor tipeado alcanza y lo da de alta (esAltaDePrecio).
+    // El único requisito sigue siendo que haya un precio, venga de donde venga.
     if (litrosNum <= 0) return setError('Ingresá los litros cargados.');
     if (precioNum <= 0) return setError('Ingresá el precio por litro.');
 
@@ -350,7 +357,7 @@ export default function EscanearScreen() {
           idVehiculo: idVehiculo ?? undefined,
           idHerramienta: idHerramienta ?? undefined,
           usoAcumulado: usoNum,
-          precioUnitario: precioFueCorregido ? precioNum : undefined,
+          precioUnitario: precioAEnviar,
           fechaCarga: fechaCarga ?? undefined,
         },
         fotoUri,
@@ -524,7 +531,7 @@ export default function EscanearScreen() {
                 <Text style={styles.precioHint}>
                   Elegí el combustible de esta carga para ver el precio.
                 </Text>
-              ) : precioBase ? (
+              ) : (
                 <>
                   <TextInput
                     style={styles.input}
@@ -536,10 +543,19 @@ export default function EscanearScreen() {
                   />
                   {/* Se avisa cuando el valor difiere de la base, para que una
                       corrección sea siempre deliberada y no un error de tipeo. */}
-                  {precioFueCorregido ? (
+                  {precioBase && precioFueCorregido ? (
                     <Text style={styles.precioHint}>
                       Corregís el precio de {combustibleLabel[tipoCombustibleSel]}:{' '}
                       {formatMoney(precioBase.precioUnitario)} → {formatMoney(precioNum)} / L
+                    </Text>
+                  ) : esAltaDePrecio ? (
+                    /* Sin precio en el catálogo el campo arranca vacío (lo deja
+                       así el efecto de prellenado) y el empleado lo tipea. Se
+                       avisa que queda como referencia para los demás: no es una
+                       corrección puntual de esta carga. */
+                    <Text style={styles.precioWarn}>
+                      Todavía no hay precio de {combustibleLabel[tipoCombustibleSel]} para este
+                      proveedor. Ingresá el del surtidor: queda cargado para las próximas cargas.
                     </Text>
                   ) : esMezclaSinPrecioPropio ? (
                     <Text style={styles.precioHint}>
@@ -553,11 +569,6 @@ export default function EscanearScreen() {
                     </Text>
                   )}
                 </>
-              ) : (
-                <Text style={styles.precioWarn}>
-                  No hay un precio cargado para ese proveedor y combustible. Escaneá un ticket de
-                  esa combinación o pedile al administrador que lo cargue.
-                </Text>
               )}
 
               <Text style={styles.label}>Litros</Text>
