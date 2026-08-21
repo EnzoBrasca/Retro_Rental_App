@@ -48,6 +48,17 @@ public class CreateTicketRequest implements CargaOrigen {
     @Positive(message = "El precio por litro debe ser mayor a cero")
     private BigDecimal precioUnitario;
 
+    // Precio por litro del ACEITE 2 tiempos, solo para una carga de MEZCLA.
+    // Opcional: si el proveedor ya tiene un vigente de aceite no hace falta
+    // mandarlo. Cuando viene, actualiza el catalogo de (proveedor, ACEITE) y con
+    // el se recalcula la mezcla.
+    //
+    // Es el dato que el empleado SI puede leer -- esta en la botella --, a
+    // diferencia del precio de la mezcla, que no existe en ningun surtidor. Ver
+    // PrecioCatalogoService.resolveMezcla.
+    @Positive(message = "El precio del aceite debe ser mayor a cero")
+    private BigDecimal precioAceite;
+
     // Lectura del odometro/horometro del vehiculo al momento de la carga.
     // Obligatoria SOLO cuando el origen es un vehiculo (una herramienta no
     // tiene contador ni horometro): lo exige @OrigenCargaCoherente, no un
