@@ -172,6 +172,11 @@ export interface CreateTicketPayload {
   // del catálogo, o cuando no había ninguno y lo cargó de cero (ahí es el único
   // dato del que sale el precio). Si va vacío, el backend usa el vigente.
   precioUnitario?: number;
+  // Precio por litro del ACEITE, solo en una carga de MEZCLA. Es el dato que el
+  // operario SÍ puede leer (está en la botella), a diferencia del precio de la
+  // mezcla, que no existe en ningún surtidor. Cuando viaja, actualiza el
+  // catálogo de (proveedor, ACEITE) y con él se recalcula la mezcla.
+  precioAceite?: number;
   fechaCarga?: string; // ISO opcional; el backend usa "ahora" si falta
 }
 
@@ -198,6 +203,10 @@ export function createTicket(
   if (payload.usoAcumulado != null) form.append('usoAcumulado', String(payload.usoAcumulado));
   if (payload.precioUnitario != null) {
     form.append('precioUnitario', String(payload.precioUnitario));
+  }
+  // Solo en una carga de mezcla, y solo si el operario lo cargó o lo cambió.
+  if (payload.precioAceite != null) {
+    form.append('precioAceite', String(payload.precioAceite));
   }
   if (payload.fechaCarga) form.append('fechaCarga', payload.fechaCarga);
   // La foto solo se adjunta si el empleado la sacó. En React Native un archivo
