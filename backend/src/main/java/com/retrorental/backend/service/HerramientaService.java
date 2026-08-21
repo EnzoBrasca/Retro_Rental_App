@@ -44,6 +44,10 @@ public class HerramientaService {
         Herramienta herramienta = new Herramienta();
         herramienta.setNombre(normalizar(request.getNombre()));
         herramienta.setCapacidad(request.getCapacidad());
+        herramienta.setRelacionMezcla(
+            request.getRelacionMezcla() != null
+                ? request.getRelacionMezcla()
+                : Herramienta.RELACION_MEZCLA_DEFAULT);
         return toResponse(herramientaRepository.save(herramienta));
     }
 
@@ -56,6 +60,17 @@ public class HerramientaService {
 
         herramienta.setNombre(normalizar(request.getNombre()));
         herramienta.setCapacidad(request.getCapacidad());
+
+        // La relacion es el UNICO campo que no se pisa cuando viene ausente. El
+        // PUT es reemplazo completo, pero un cliente viejo que la omite estaria
+        // borrando en silencio un dato que el admin cargo a mano. Conservar la
+        // que estaba es lo unico que no pierde informacion; el default solo
+        // entra si la herramienta no tenia ninguna.
+        if (request.getRelacionMezcla() != null) {
+            herramienta.setRelacionMezcla(request.getRelacionMezcla());
+        } else if (herramienta.getRelacionMezcla() == null) {
+            herramienta.setRelacionMezcla(Herramienta.RELACION_MEZCLA_DEFAULT);
+        }
 
         return toResponse(herramientaRepository.save(herramienta));
     }
@@ -91,6 +106,7 @@ public class HerramientaService {
             herramienta.getId(),
             herramienta.getNombre(),
             herramienta.getCapacidad(),
+            herramienta.getRelacionMezcla(),
             herramienta.getFechaBaja()
         );
     }
