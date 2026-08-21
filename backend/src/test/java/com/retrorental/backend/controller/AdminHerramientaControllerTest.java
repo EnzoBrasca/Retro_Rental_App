@@ -51,7 +51,7 @@ class AdminHerramientaControllerTest extends AbstractControllerTest {
     }
 
     private HerramientaResponse sampleResponse() {
-        return new HerramientaResponse(1, "Motosierra Stihl", new BigDecimal("0.30"), null);
+        return new HerramientaResponse(1, "Motosierra Stihl", new BigDecimal("0.30"), 50, null);
     }
 
     @Test
