@@ -33,7 +33,7 @@ class HerramientaControllerTest extends AbstractControllerTest {
     private HerramientaService herramientaService;
 
     private HerramientaResponse sample() {
-        return new HerramientaResponse(1, "Motosierra Stihl", new BigDecimal("0.30"), null);
+        return new HerramientaResponse(1, "Motosierra Stihl", new BigDecimal("0.30"), 50, null);
     }
 
     @Test

@@ -12,6 +12,9 @@ public record HerramientaResponse(
     Integer id,
     String nombre,
     BigDecimal capacidad,
+    // Proporcion nafta:aceite (50 = 50:1). Alimenta el ABM del admin y el
+    // calculo del precio de la mezcla. Ver Herramienta.relacionMezcla.
+    Integer relacionMezcla,
     LocalDate fechaBaja
 ) {
 }
