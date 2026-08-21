@@ -63,25 +63,38 @@ public class PrecioCatalogoService {
     }
 
     /**
-     * Resuelve el precio de una carga de HERRAMIENTA, que no manda idPrecio (no
-     * hay uno resuelto de antemano: el combustible se elige carga por carga) sino
-     * el tipoCombustible elegido.
+     * Resuelve el precio de una carga por su COMBUSTIBLE, sin un idPrecio previo
+     * del catálogo. Lo usan la herramienta (cuyo combustible se elige carga por
+     * carga) y el vehículo cuyo proveedor todavía no tiene precio de su
+     * combustible fijo — ahí no hay nada que elegir en el formulario.
      *
      * - Si el proveedor ya tiene un vigente de ese combustible, se usa tal cual.
-     * - Si NO lo tiene y es MEZCLA (nafta con aceite): no es un producto que
-     *   vendan las estaciones, así que se crea copiando como valor inicial el
-     *   vigente de NAFTA_SUPER del MISMO proveedor. El empleado ve ese valor y lo
-     *   corrige al precio real de la mezcla (sin tope de margen, ver
-     *   fueraDeMargen). Si el proveedor tampoco tiene ese NAFTA_SUPER, no hay de
-     *   dónde copiar: error explícito, no se inventa un precio en cero.
-     * - Para cualquier otro combustible sin vigente (ej. un bidón de GASOIL en un
-     *   proveedor que no lo tiene cargado): error explícito. A diferencia de
-     *   MEZCLA, ningún otro combustible tiene una referencia de la que copiar.
+     * - Si NO lo tiene y el empleado tipeó un precio (precioManual): ese valor da
+     *   de alta el vigente, previa validación contra la banda del catálogo (ver
+     *   validarAltaInicial). Es el caso del proveedor recién dado de alta desde un
+     *   ticket, que nace sin precios y antes dejaba al empleado sin poder cargar.
+     * - Si NO lo tiene, no hay precio tipeado y es MEZCLA (nafta con aceite): no
+     *   es un producto que vendan las estaciones, así que se crea copiando como
+     *   valor inicial el vigente de NAFTA_SUPER del MISMO proveedor. El empleado
+     *   ve ese valor y lo corrige al precio real de la mezcla (sin tope de margen,
+     *   ver fueraDeMargen). Si el proveedor tampoco tiene ese NAFTA_SUPER, no hay
+     *   de dónde copiar: error explícito, no se inventa un precio en cero.
+     * - Para cualquier otro combustible sin vigente y sin precio tipeado: error
+     *   explícito. Sin valor del empleado ni referencia de la cual copiar, no hay
+     *   de dónde sacar el número.
      */
-    public Precio resolvePorCombustible(Proveedor proveedor, TipoCombustible tipoCombustible) {
+    public Precio resolvePorCombustible(Proveedor proveedor, TipoCombustible tipoCombustible,
+                                        BigDecimal precioManual) {
         Precio vigente = vigenteDe(proveedor, tipoCombustible);
         if (vigente != null) {
             return vigente;
+        }
+
+        // El alta manual va ANTES del fallback de MEZCLA: si el empleado tipeó el
+        // precio real, ese dato le gana a copiar el de la nafta como aproximación.
+        if (precioManual != null) {
+            validarAltaInicial(precioManual, tipoCombustible, "precioUnitario");
+            return reemplazarVigente(proveedor, tipoCombustible, precioManual);
         }
 
         if (tipoCombustible == TipoCombustible.MEZCLA) {
@@ -159,6 +172,66 @@ public class PrecioCatalogoService {
                 ErrorCode.PRECIO_FUERA_DE_RANGO,
                 "El precio ingresado (" + propuesto + ") se aleja mas de " + margenMaximo
                     + " del precio vigente (" + vigente + "). Verificá el importe.",
+                campo);
+        }
+    }
+
+    /**
+     * Si el precio propuesto para un ALTA se sale de lo que cobra el mercado.
+     *
+     * fueraDeMargen cubre la CORRECCION: hay un vigente del MISMO proveedor y se
+     * mide contra él. Cuando el proveedor todavía no tiene vigente de ese
+     * combustible no hay tal referencia, y hasta acá ese valor entraba al catálogo
+     * sin control alguno — el caso de peor visibilidad y mayor daño, porque el
+     * precio que se crea queda vigente para todos los que carguen después.
+     *
+     * La referencia acá es el propio catálogo: la franja que va del vigente más
+     * barato al más caro de ESE combustible entre TODOS los proveedores, abierta
+     * por margenMaximo en las dos puntas. Se mueve sola con la inflación, sin un
+     * número mágico que alguien tenga que ir a actualizar.
+     *
+     * Las dos puntas importan: un techo solo deja pasar tipear 12 en vez de 1200.
+     *
+     * A diferencia de fueraDeMargen, la MEZCLA NO queda exenta. Allá se la exime
+     * porque se la compara contra el vigente de NAFTA_SUPER, del que se aleja
+     * legítimamente por el aceite; acá la referencia son OTRAS MEZCLAS del
+     * catálogo, así que la comparación es válida y el tope rige.
+     *
+     * Si no hay NINGÚN vigente de ese combustible en todo el sistema no hay banda
+     * que construir, y no se inventa un rango: se acepta. Mismo criterio que
+     * fueraDeMargen con vigente en null.
+     */
+    public boolean fueraDeBandaDeAlta(BigDecimal propuesto, TipoCombustible tipoCombustible) {
+        if (propuesto == null || tipoCombustible == null) {
+            return false;
+        }
+
+        BigDecimal techo = precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioDesc(tipoCombustible)
+            .map(Precio::getPrecioUnitario)
+            .orElse(null);
+        BigDecimal piso = precioRepository
+            .findFirstByTipoCombustibleAndFechaHastaIsNullOrderByPrecioUnitarioAsc(tipoCombustible)
+            .map(Precio::getPrecioUnitario)
+            .orElse(null);
+
+        if (techo == null || piso == null) {
+            return false;
+        }
+
+        return propuesto.compareTo(techo.add(margenMaximo)) > 0
+            || propuesto.compareTo(piso.subtract(margenMaximo)) < 0;
+    }
+
+    /** Igual que fueraDeBandaDeAlta pero cortando la operación: la usa la carga manual. */
+    public void validarAltaInicial(BigDecimal propuesto, TipoCombustible tipoCombustible,
+                                   String campo) {
+        if (fueraDeBandaDeAlta(propuesto, tipoCombustible)) {
+            throw new ConflictException(
+                ErrorCode.PRECIO_FUERA_DE_RANGO,
+                "El precio ingresado (" + propuesto + ") se aleja mas de " + margenMaximo
+                    + " de lo que cobran las demas estaciones por ese combustible."
+                    + " Verificá el importe.",
                 campo);
         }
     }

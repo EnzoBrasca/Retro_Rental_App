@@ -9,9 +9,12 @@ import jakarta.validation.ConstraintValidatorContext;
  *  1. Exactamente uno de idVehiculo/idHerramienta debe venir.
  *  2. usoAcumulado (lectura del contador) es obligatorio SOLO si el origen es
  *     un vehiculo: una herramienta no tiene contador ni horometro.
- *  3. idPrecio es obligatorio SOLO para un vehiculo (el catalogo ya trae el
- *     precio resuelto) y tipoCombustible NO se le puede mandar (su combustible
- *     es fijo).
+ *  3. Para un vehiculo tiene que venir idPrecio (el catalogo ya trae el precio
+ *     resuelto) O BIEN precioUnitario: cuando el proveedor todavia no tiene
+ *     precio de ese combustible no hay idPrecio que elegir en el formulario, y
+ *     el empleado lo tipea a mano. tipoCombustible NO se le puede mandar en
+ *     ningun caso: el combustible de un vehiculo es fijo y el service lo lee de
+ *     su ficha.
  *  4. tipoCombustible es obligatorio SOLO para una herramienta (lo elige en
  *     el momento de la carga) e idPrecio NO se le puede mandar (no hay uno
  *     resuelto de antemano: lo resuelve el service, ver
@@ -47,9 +50,10 @@ public class OrigenCargaCoherenteValidator
             addViolation(context, "usoAcumulado",
                 "Una herramienta no tiene contador: no se debe indicar la lectura");
             valido = false;
-        } else if (idVehiculo != null && request.getIdPrecio() == null) {
+        } else if (idVehiculo != null
+            && request.getIdPrecio() == null && request.getPrecioUnitario() == null) {
             addViolation(context, "idPrecio",
-                "El precio es obligatorio para un vehiculo");
+                "Para un vehiculo se debe indicar el precio del catalogo o el precio por litro");
             valido = false;
         } else if (idVehiculo != null && request.getTipoCombustible() != null) {
             addViolation(context, "tipoCombustible",
