@@ -11,8 +11,14 @@ export type Servicio = 'COMBUSTIBLE' | 'REPUESTOS' | 'OTROS';
 export interface Proveedor {
   id: number;
   nombre: string;
-  cuit: string;
+  // Null en el proveedor genérico, que no identifica a ninguna empresa.
+  cuit: string | null;
   servicio: Servicio;
+  // "Otros": la fila que agrupa las cargas hechas en estaciones que la empresa
+  // no quiere dar de alta. No es una estación más — dos cargas suyas son en
+  // surtidores distintos —, así que su precio vigente NO sirve para prellenar
+  // la siguiente carga. El formulario lo trata como un alta de precio siempre.
+  generico: boolean;
 }
 
 export interface Precio {
