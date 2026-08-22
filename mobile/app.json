@@ -2,7 +2,7 @@
   "expo": {
     "name": "RetroRental",
     "slug": "retrorental",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "scheme": "fleettracker",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "ar.com.retrorental.app",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

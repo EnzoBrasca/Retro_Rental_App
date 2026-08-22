@@ -2,7 +2,9 @@ package com.retrorental.backend.service;
 
 import com.retrorental.backend.exception.ConflictException;
 import com.retrorental.backend.exception.ErrorCode;
+import com.retrorental.backend.exception.ResourceNotFoundException;
 import com.retrorental.backend.model.Precio;
+import com.retrorental.backend.model.Proveedor;
 import com.retrorental.backend.model.enums.TipoCombustible;
 import com.retrorental.backend.repository.PrecioRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -194,5 +196,94 @@ class PrecioCatalogoServiceTest {
 
         assertTrue(service.fueraDeBandaDeAlta(new BigDecimal("20860.00"), GASOIL));
         assertFalse(service.fueraDeBandaDeAlta(new BigDecimal("2050.00"), GASOIL));
+    }
+
+    // ------------------------------------------------- proveedor generico
+    //
+    // El proveedor generico ("Otros") agrupa cargas hechas en estaciones
+    // DISTINTAS entre si. Su precio vigente es el del surtidor de la carga
+    // anterior, que fue en otro lado: heredarlo calcularia el gasto de este
+    // ticket con el precio de otra estacion. Estos tests fijan que nunca se
+    // hereda, ni siquiera cuando el vigente existe.
+
+    private Proveedor proveedorGenerico() {
+        Proveedor p = new Proveedor();
+        p.setId(99);
+        p.setNombre("Otros");
+        p.setGenerico(true);
+        return p;
+    }
+
+    private Proveedor proveedorNormal() {
+        Proveedor p = new Proveedor();
+        p.setId(1);
+        p.setNombre("YPF");
+        p.setGenerico(false);
+        return p;
+    }
+
+    @Test
+    void generico_conVigente_igualUsaElPrecioTipeado() {
+        Proveedor otros = proveedorGenerico();
+        catalogoConBanda("2000.00", "2100.00");
+        // Vigente de la carga anterior, en OTRA estacion.
+        when(precioRepository
+            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(otros, GASOIL))
+            .thenReturn(Optional.of(precioDe("2000.00")));
+        when(precioRepository.save(any(Precio.class))).thenAnswer(i -> i.getArgument(0));
+
+        Precio resuelto = service.resolvePorCombustible(otros, GASOIL, new BigDecimal("2090.00"));
+
+        assertEquals(0, new BigDecimal("2090.00").compareTo(resuelto.getPrecioUnitario()),
+            "el precio tipeado en este surtidor tiene que ganarle al vigente de otra estacion");
+    }
+
+    @Test
+    void noGenerico_conVigente_loHereda() {
+        Proveedor ypf = proveedorNormal();
+        Precio vigente = precioDe("2000.00");
+        when(precioRepository
+            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(ypf, GASOIL))
+            .thenReturn(Optional.of(vigente));
+
+        Precio resuelto = service.resolvePorCombustible(ypf, GASOIL, new BigDecimal("2090.00"));
+
+        assertSame(vigente, resuelto, "un proveedor normal sigue heredando su vigente");
+    }
+
+    @Test
+    void generico_sinPrecioTipeado_lanza() {
+        Proveedor otros = proveedorGenerico();
+        when(precioRepository
+            .findByProveedorAndTipoCombustibleAndFechaHastaIsNull(otros, GASOIL))
+            .thenReturn(Optional.of(precioDe("2000.00")));
+
+        assertThrows(ResourceNotFoundException.class,
+            () -> service.resolvePorCombustible(otros, GASOIL, null),
+            "sin precio tipeado no hay de donde sacar el numero: el vigente no sirve");
+    }
+
+    @Test
+    void generico_elPrecioTipeadoSigueValidandoContraLaBanda() {
+        Proveedor otros = proveedorGenerico();
+        catalogoConBanda("2000.00", "2100.00");
+
+        // Sin margen contra el vigente propio (compararia contra otra estacion),
+        // el control que queda es la banda del resto del catalogo.
+        assertThrows(ConflictException.class,
+            () -> service.resolvePorCombustible(otros, GASOIL, new BigDecimal("20900.00")));
+    }
+
+    @Test
+    void generico_mezcla_noCalculaConInsumosDeOtraEstacion() {
+        Proveedor otros = proveedorGenerico();
+        when(precioRepository.save(any(Precio.class))).thenAnswer(i -> i.getArgument(0));
+
+        Precio resuelto = service.resolveMezcla(otros, 50, new BigDecimal("15000.00"),
+            new BigDecimal("2500.00"));
+
+        assertEquals(0, new BigDecimal("2500.00").compareTo(resuelto.getPrecioUnitario()),
+            "la nafta y el aceite del generico son de otro surtidor: no sirven de insumo");
+        assertEquals(TipoCombustible.MEZCLA, resuelto.getTipoCombustible());
     }
 }
