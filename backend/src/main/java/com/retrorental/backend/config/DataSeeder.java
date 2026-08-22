@@ -53,7 +53,11 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedProveedores() {
-        if (proveedorRepository.count() > 0) {
+        // Se cuentan las estaciones REALES y no todas las filas: el proveedor
+        // generico ("Otros") lo inserta la migracion V14, asi que contar todo
+        // daria 1 en una base recien creada y el seeder se saltearia el
+        // catalogo entero.
+        if (proveedorRepository.countByGenericoFalse() > 0) {
             log.info("[seed] proveedores ya existen, se omite");
             return;
         }
@@ -107,7 +111,11 @@ public class DataSeeder implements CommandLineRunner {
         LocalDate hoy = LocalDate.now();
 
         List<Precio> precios = new ArrayList<>();
-        for (Proveedor prov : proveedorRepository.findAll()) {
+        // El proveedor generico queda afuera A PROPOSITO: no es una estacion,
+        // asi que no tiene un precio propio que sembrar. Ademas, dejarlo con un
+        // vigente sembrado escondería el comportamiento que se espera de el —
+        // el formulario pide el precio en CADA carga (ver altaSiempre).
+        for (Proveedor prov : proveedorRepository.findByGenericoFalse()) {
             BigDecimal factor = FACTOR_POR_PROVEEDOR.getOrDefault(prov.getNombre(), BigDecimal.ONE);
             for (Map.Entry<TipoCombustible, BigDecimal> entry : PRECIO_BASE.entrySet()) {
                 BigDecimal valor = entry.getValue().multiply(factor).setScale(2, RoundingMode.HALF_UP);

@@ -14,4 +14,11 @@ public interface ProveedorRepository extends JpaRepository<Proveedor, Integer> {
     Optional<Proveedor> findByCuit(String cuit);
 
     List<Proveedor> findByServicio(Servicio servicio);
+
+    // Las estaciones REALES, sin el proveedor generico. Lo usa el seeder de dev:
+    // el generico lo crea la migracion V14, asi que contar/recorrer todas las
+    // filas le haria creer que el catalogo ya esta sembrado.
+    long countByGenericoFalse();
+
+    List<Proveedor> findByGenericoFalse();
 }

@@ -165,6 +165,11 @@ public class CatalogoOcrResolver {
         }
         String needle = estacion.toLowerCase();
         List<Proveedor> candidatos = proveedorRepository.findByServicio(Servicio.COMBUSTIBLE).stream()
+            // El generico ("Otros") nunca se matchea desde el OCR: no es una
+            // estacion que el ticket pueda nombrar, es la salida MANUAL para
+            // cuando el operario decide no dar de alta la que cargó. Sin este
+            // filtro, un nombre leído que contenga "otros" lo elegiría solo.
+            .filter(p -> !p.isGenerico())
             .filter(p -> {
                 String nombre = p.getNombre() == null ? "" : p.getNombre().toLowerCase();
                 return !nombre.isBlank() && (needle.contains(nombre) || nombre.contains(needle));

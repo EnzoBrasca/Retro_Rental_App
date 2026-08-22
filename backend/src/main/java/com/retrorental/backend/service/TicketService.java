@@ -98,8 +98,14 @@ public class TicketService {
             ? resolveHerramientaCargable(request.getIdHerramienta())
             : null;
 
+        // Un proveedor GENERICO no tiene catalogo propio que elegir: cada carga
+        // suya es en una estacion distinta, asi que un idPrecio de ese proveedor
+        // apunta al precio de OTRO surtidor. Se ignora a proposito y el precio
+        // se resuelve siempre del valor tipeado (ver PrecioCatalogoService.
+        // altaSiempre). El formulario ya no lo manda; esto cubre el caso de un
+        // cliente viejo o de una llamada armada a mano.
         Precio precio;
-        if (request.getIdPrecio() != null) {
+        if (request.getIdPrecio() != null && !proveedor.isGenerico()) {
             precio = precioCatalogo.resolvePorId(request.getIdPrecio(), proveedor);
         } else {
             TipoCombustible combustible = vehiculo != null

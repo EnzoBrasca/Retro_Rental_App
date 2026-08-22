@@ -68,6 +68,7 @@ public class PrecioCatalogoService {
      * carga) y el vehículo cuyo proveedor todavía no tiene precio de su
      * combustible fijo — ahí no hay nada que elegir en el formulario.
      *
+     * - Si el proveedor es GENERICO no hay herencia posible: ver altaSiempre.
      * - Si el proveedor ya tiene un vigente de ese combustible, se usa tal cual.
      * - Si NO lo tiene y el empleado tipeó un precio (precioManual): ese valor da
      *   de alta el vigente, previa validación contra la banda del catálogo (ver
@@ -83,6 +84,10 @@ public class PrecioCatalogoService {
      */
     public Precio resolvePorCombustible(Proveedor proveedor, TipoCombustible tipoCombustible,
                                         BigDecimal precioManual) {
+        if (proveedor.isGenerico()) {
+            return altaSiempre(proveedor, tipoCombustible, precioManual);
+        }
+
         Precio vigente = vigenteDe(proveedor, tipoCombustible);
         if (vigente != null) {
             return vigente;
@@ -127,6 +132,14 @@ public class PrecioCatalogoService {
      */
     public Precio resolveMezcla(Proveedor proveedor, int relacion,
                                 BigDecimal precioAceite, BigDecimal precioManual) {
+        // Un proveedor generico no tiene insumos propios de los que salga el
+        // calculo: su nafta y su aceite vigentes son de otra estacion. Sin
+        // insumos confiables se cae directo al camino manual (el paso 4), que
+        // existe justamente para que esto nunca sea un callejon sin salida.
+        if (proveedor.isGenerico()) {
+            return altaSiempre(proveedor, TipoCombustible.MEZCLA, precioManual);
+        }
+
         Precio aceite = resolveAceite(proveedor, precioAceite);
         Precio nafta = vigenteDe(proveedor, TipoCombustible.NAFTA_SUPER);
         Precio vigenteMezcla = vigenteDe(proveedor, TipoCombustible.MEZCLA);
@@ -182,6 +195,39 @@ public class PrecioCatalogoService {
         }
         validarAltaInicial(precioAceite, TipoCombustible.ACEITE, "precioAceite");
         return reemplazarVigente(proveedor, TipoCombustible.ACEITE, precioAceite);
+    }
+
+    /**
+     * Da de alta SIEMPRE un precio nuevo con el valor tipeado, sin mirar el
+     * vigente. Es el camino del proveedor GENERICO ("Otros").
+     *
+     * Por qué no puede heredar: el catálogo asume que un precio vigente de
+     * (proveedor, combustible) describe al mismo surtidor la próxima vez. Para
+     * el genérico eso es falso por construcción — dos cargas seguidas son en
+     * estaciones distintas —, así que su vigente es el precio de OTRO lado. Y
+     * heredarlo no sería solo impreciso: resolvePorCombustible devuelve el
+     * vigente sin mirar precioManual, o sea que el valor que el empleado leyó
+     * del surtidor se descartaría en silencio y el gasto del ticket quedaría
+     * calculado con el número equivocado.
+     *
+     * El control de cordura pasa a ser la BANDA (lo que cobran las demás
+     * estaciones por ese combustible) y no el margen contra el vigente propio,
+     * que acá compararía contra un surtidor sin relación con este.
+     *
+     * El vigente igual se reemplaza en vez de dejarse abierto: mantiene el
+     * invariante de un solo vigente por (proveedor, combustible) y deja la
+     * historia intacta, que es lo que los tickets viejos referencian.
+     */
+    private Precio altaSiempre(Proveedor proveedor, TipoCombustible tipoCombustible,
+                               BigDecimal precioManual) {
+        if (precioManual == null) {
+            throw new ResourceNotFoundException(
+                ErrorCode.PRECIO_NOT_FOUND_PARA_COMBUSTIBLE,
+                "Una carga en un proveedor sin registrar no tiene precio de catálogo:"
+                    + " ingresá el que pagaste.", "precioUnitario");
+        }
+        validarAltaInicial(precioManual, tipoCombustible, "precioUnitario");
+        return reemplazarVigente(proveedor, tipoCombustible, precioManual);
     }
 
     /** El precio vigente de (proveedor, combustible), o null si no hay. */
