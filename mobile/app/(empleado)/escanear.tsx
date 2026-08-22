@@ -264,11 +264,18 @@ export default function EscanearScreen() {
     ? vehiculoSel.tipoCombustible
     : tipoCombustibleHerramienta;
 
+  // "Otros": el proveedor genérico, para una carga en una estación que la
+  // empresa no quiere dar de alta. Su catálogo de precios no se puede reusar
+  // entre cargas — cada una es en un surtidor distinto —, así que abajo se lo
+  // trata como si no tuviera precio: campo vacío, valor tipeado, sin prellenar.
+  const proveedorGenerico =
+    data?.proveedores.find((p) => p.id === idProveedor)?.generico === true;
+
   // El precio se deriva de la intersección proveedor × combustible del ítem.
   // Se exige idProveedor != null y un combustible resuelto: si no, no se busca
   // (un idProveedor null matchearía por error los precios legacy sin proveedor).
   const precioSel =
-    idProveedor != null && tipoCombustibleSel != null
+    idProveedor != null && tipoCombustibleSel != null && !proveedorGenerico
       ? data?.precios.find(
           (p) => p.idProveedor === idProveedor && p.tipoCombustible === tipoCombustibleSel,
         )
@@ -281,8 +288,12 @@ export default function EscanearScreen() {
   // aceite (está en la botella); el de la nafta ya está en el catálogo.
   const esMezcla = idHerramienta != null && tipoCombustibleSel === 'MEZCLA';
 
+  // Mismo criterio que precioSel: en el genérico, la nafta y el aceite
+  // "vigentes" son los de la carga anterior, que fue en otra estación. Usarlos
+  // como insumo del cálculo daría una mezcla con el precio de otro surtidor,
+  // así que acá tampoco se los toma y la mezcla se tipea a mano.
   const vigenteDelProveedor = (tipo: TipoCombustible) =>
-    idProveedor != null
+    idProveedor != null && !proveedorGenerico
       ? data?.precios.find((p) => p.idProveedor === idProveedor && p.tipoCombustible === tipo)
       : undefined;
 
@@ -589,8 +600,12 @@ export default function EscanearScreen() {
               {/* La mezcla no se compra hecha: se prepara con nafta y aceite.
                   Por eso acá se pide el precio del aceite -- que el operario
                   puede leer en la botella -- y no el de la mezcla, que no
-                  figura en ningún surtidor. */}
-              {esMezcla && idProveedor != null && (
+                  figura en ningún surtidor.
+
+                  En "Otros" no se pide: el cálculo necesita la nafta de ESA
+                  estación y el genérico no tiene una, así que el aceite no
+                  tendría con qué combinarse y ahí la mezcla se tipea directo. */}
+              {esMezcla && idProveedor != null && !proveedorGenerico && (
                 <>
                   <Text style={styles.label}>Precio del aceite por litro</Text>
                   <TextInput
@@ -653,6 +668,17 @@ export default function EscanearScreen() {
                       Calculado con nafta a {formatMoney(precioNaftaProveedor!.precioUnitario)},
                       aceite a {formatMoney(aceiteNum)} y relación {relacionMezcla}:1. Cambialo solo
                       si pagaste otra cosa.
+                    </Text>
+                  ) : proveedorGenerico ? (
+                    /* El genérico va antes que esAltaDePrecio (que también da
+                       true acá) porque el motivo es otro y el aviso de aquel
+                       sería falso: en "Otros" el precio NO queda de referencia
+                       para las próximas cargas, justamente porque la próxima va
+                       a ser en otra estación. */
+                    <Text style={styles.precioWarn}>
+                      Cargas en {'"Otros"'} no guardan precio de referencia: cada una es en una
+                      estación distinta. Ingresá el de{' '}
+                      {combustibleLabel[tipoCombustibleSel]} que pagaste en este surtidor.
                     </Text>
                   ) : esAltaDePrecio ? (
                     /* Sin precio en el catálogo el campo arranca vacío (lo deja
