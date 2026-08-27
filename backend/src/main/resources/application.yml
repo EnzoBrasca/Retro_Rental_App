@@ -61,7 +61,9 @@ spring:
 app:
   jwt:
     secret: ${JWT_SECRET}
-    expiration: ${JWT_EXPIRATION:3600000}
+    # 30 dias (2592000000 ms). Antes 1h: el cliente pidio no tener que
+    # reloguearse cada hora, solo una vez al mes.
+    expiration: ${JWT_EXPIRATION:2592000000}
   consumo:
     # Cuantas cargas mira el consumo "reciente" del vehiculo, ademas del
     # historico completo. Comparar uno contra otro deja ver cuando una maquina
