@@ -12,10 +12,9 @@
 # Automatico (cron del servidor, todos los dias a las 3 AM):
 #   0 3 * * * cd /ruta/al/repo && ./infra/scripts/backup.sh >> /var/log/retrorental-backup.log 2>&1
 #
-# IMPORTANTE: esto deja los backups en el MISMO servidor. Eso te cubre de un
-# borrado accidental o de una migracion mal hecha, pero NO de que se muera el
-# server. Copialos a otro lado (rclone a un bucket, scp a otra maquina) o el dia
-# que se caiga el disco perdes los backups junto con los datos.
+# Los backups quedan en el disco local Y se copian a un bucket de Cloudflare
+# R2 via rclone (remote "r2", configurado con `rclone config`). La retencion
+# en R2 la maneja una lifecycle rule del bucket, no este script.
 
 set -euo pipefail
 
@@ -65,10 +64,21 @@ docker run --rm \
     -v "$(cd "${DESTINO}" && pwd):/backup" \
     alpine tar czf "/backup/minio-${SELLO}.tar.gz" -C /data .
 
-# --- Retencion ---------------------------------------------------------------
+# --- Retencion local -----------------------------------------------------
 echo ">> Borrando backups de mas de ${RETENCION_DIAS} dias..."
 find "${DESTINO}" -name 'db-*.dump'      -mtime "+${RETENCION_DIAS}" -delete
 find "${DESTINO}" -name 'minio-*.tar.gz' -mtime "+${RETENCION_DIAS}" -delete
+
+# --- Copia fuera del servidor (Cloudflare R2) ---------------------------------
+# La retencion en R2 la maneja una lifecycle rule del bucket, no este script.
+R2_REMOTE="${R2_REMOTE:-r2:retrorental-backups}"
+if command -v rclone >/dev/null 2>&1; then
+    echo ">> Subiendo a ${R2_REMOTE}..."
+    rclone copy "${DESTINO}/db-${SELLO}.dump"    "${R2_REMOTE}"
+    rclone copy "${DESTINO}/minio-${SELLO}.tar.gz" "${R2_REMOTE}"
+else
+    echo "ADVERTENCIA: rclone no esta instalado, se salteo la copia a R2." >&2
+fi
 
 echo ">> Listo:"
 ls -lh "${DESTINO}/db-${SELLO}.dump" "${DESTINO}/minio-${SELLO}.tar.gz"
