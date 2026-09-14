@@ -12,7 +12,7 @@
     },
     "android": {
       "package": "ar.com.retrorental.app",
-      "versionCode": 11,
+      "versionCode": 13,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -22,6 +22,9 @@
       "predictiveBackGestureEnabled": false,
       "allowBackup": false,
       "permissions": ["android.permission.CAMERA"]
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
     },
     "web": {
       "bundler": "metro"
@@ -51,6 +54,9 @@
         "projectId": "8d71118e-8f55-443d-925b-952c761d0bad"
       }
     },
-    "owner": "retro-rental"
+    "owner": "retro-rental",
+    "updates": {
+      "url": "https://u.expo.dev/8d71118e-8f55-443d-925b-952c761d0bad"
+    }
   }
 }
