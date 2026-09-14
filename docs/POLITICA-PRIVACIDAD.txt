@@ -1,0 +1,72 @@
+POLÍTICA DE PRIVACIDAD — RETRORENTAL
+Última actualización: 31 de agosto de 2026
+
+Esta aplicación ("RetroRental") es una herramienta interna de uso exclusivo
+para el personal de la empresa, destinada a la gestión de flota y la carga
+de combustible de sus vehículos. No está disponible al público general.
+
+1. RESPONSABLE DEL TRATAMIENTO
+   [COMPLETAR: razón social de la empresa, CUIT y correo de contacto]
+
+2. DATOS QUE RECOLECTAMOS
+   Para poder usar la app, el empleado provee los siguientes datos al
+   registrar su cuenta:
+   - Nombre y apellido
+   - Documento de identidad (DNI)
+   - Número de teléfono
+   - Contraseña (almacenada de forma cifrada, nunca en texto plano)
+
+   Durante el uso normal de la app, además se registran:
+   - Fotografías de tickets de carga de combustible (tomadas con la cámara
+     o seleccionadas de la galería del dispositivo)
+   - Datos de las cargas de combustible: vehículo, proveedor, litros,
+     precio, fecha y hora
+   - Datos de mantenimiento y estado de los vehículos de la flota
+
+3. PARA QUÉ USAMOS ESOS DATOS
+   Exclusivamente para el funcionamiento de la app: identificar al
+   empleado que realiza cada carga, llevar el registro de combustible y
+   mantenimiento de la flota, y permitir a los administradores de la
+   empresa supervisar esa información.
+
+   No usamos los datos con fines publicitarios, no los vendemos ni los
+   compartimos con terceros ajenos a la empresa.
+
+4. DÓNDE SE ALMACENAN LOS DATOS
+   Los datos se almacenan en servidores propios de la empresa (no en
+   servicios de terceros como Google, Meta o similares). Las fotografías
+   de tickets se guardan en un servicio de almacenamiento de objetos
+   propio; el resto de los datos, en una base de datos propia.
+
+5. PERMISOS DEL DISPOSITIVO
+   La app solicita permiso de CÁMARA únicamente para fotografiar tickets
+   de carga de combustible, y acceso a la GALERÍA únicamente para adjuntar
+   una foto ya existente del ticket. Ninguno de estos permisos se usa para
+   ningún otro fin.
+
+6. SERVICIOS DE TERCEROS
+   La app no utiliza servicios de analítica, publicidad ni rastreo de
+   terceros. Las actualizaciones de la aplicación se distribuyen a través
+   de Expo Application Services (EAS), que únicamente entrega el código
+   actualizado de la app y no accede a los datos descritos en el punto 2.
+
+7. RETENCIÓN Y BAJA DE DATOS
+   Los datos se conservan mientras el empleado mantenga una relación
+   laboral vigente con la empresa. Un empleado puede solicitar la
+   eliminación de sus datos personales escribiendo a
+   [COMPLETAR: correo de contacto]; la empresa dará de baja la cuenta y
+   sus datos personales dentro de un plazo razonable, salvo aquellos que
+   deba conservar por obligaciones legales o contables.
+
+8. SEGURIDAD
+   El acceso a la app requiere autenticación (usuario y contraseña). Las
+   comunicaciones entre la app y el servidor viajan cifradas (HTTPS).
+
+9. CAMBIOS A ESTA POLÍTICA
+   Esta política puede actualizarse para reflejar cambios en la app o en
+   la normativa aplicable. La fecha de la última actualización figura al
+   inicio de este documento.
+
+10. CONTACTO
+    Ante cualquier consulta sobre esta política o sobre el tratamiento de
+    tus datos, podés escribir a [COMPLETAR: correo de contacto].
